@@ -1,5 +1,4 @@
 {
-<<<<<<< HEAD
   "name": "@agegr/pi-web",
   "version": "0.8.8",
   "description": "Web UI for the pi coding agent",
@@ -76,48 +75,5 @@
     "remark-math": "^6.0.0",
     "tailwindcss": "^4.2.2",
     "typescript": "^5"
-=======
-  "name": "pi-web-sdk-spike",
-  "version": "0.1.0",
-  "private": true,
-  "type": "module",
-  "workspaces": [
-    "apps/*",
-    "packages/*"
-  ],
-  "engines": {
-    "node": ">=22.19.0"
-  },
-  "scripts": {
-    "test": "npm run test:protocol && npm run test:server && npm run test:web",
-    "check": "tsc --noEmit",
-    "test:protocol": "tsx --test packages/protocol/test/protocol.test.ts",
-    "test:server": "tsx --test apps/server/test/server.test.ts",
-    "test:web": "npm --workspace @pi-web/web run test",
-    "dev:server": "tsx apps/server/src/index.ts",
-    "dev:web": "npm --workspace @pi-web/web run dev",
-    "build:web": "npm --workspace @pi-web/web run build",
-    "spike:dry-run": "tsx src/spike/run.ts --dry-run",
-    "spike": "tsx src/spike/run.ts",
-    "spike:abort": "tsx src/spike/run.ts --abort-after-ms 2500"
-  },
-  "dependencies": {
-    "@earendil-works/pi-coding-agent": "0.84.1",
-    "@fastify/websocket": "11.3.0",
-    "fastify": "5.11.3",
-    "ignore": "^7.0.5",
-    "zod": "4.1.13"
-  },
-  "devDependencies": {
-    "@testing-library/jest-dom": "^6.9.1",
-    "@testing-library/react": "^16.3.2",
-    "@types/node": "24.12.4",
-    "@types/ws": "^8.5.14",
-    "jsdom": "^27.4.0",
-    "tsx": "4.21.0",
-    "typescript": "5.9.3",
-    "vitest": "^4.0.18",
-    "ws": "^8.18.3"
->>>>>>> 9e43d90e0453825dc478aa5a3a4d3a5914fd31dd
   }
 }
