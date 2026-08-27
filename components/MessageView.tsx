@@ -375,10 +375,10 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
             flex: 1,
             minWidth: 0,
             background: "var(--user-bg)",
-            border: "1px solid rgba(59,130,246,0.2)",
-            borderRadius: 12,
+            border: "1px solid rgba(59,130,246,0.14)",
+            borderRadius: "var(--radius-card)",
             padding: "8px 12px",
-            fontSize: 14,
+            fontSize: 15,
             lineHeight: 1.6,
             color: "var(--text)",
             wordBreak: "break-word",
@@ -1346,7 +1346,7 @@ function CompactionMessageView({ message }: { message: CustomMessage }) {
         </div>
 
         <div style={{ padding: "11px 13px 12px" }}>
-          <div style={{ color: "var(--text)", fontSize: 15, fontWeight: 700, lineHeight: 1.35 }}>
+          <div style={{ color: "var(--text)", fontSize: 15, fontWeight: 600, lineHeight: 1.35 }}>
              {t("i18n.conversationCompacted")}
           </div>
           <div style={{ marginTop: 3, marginBottom: 10, color: "var(--text)", fontSize: 14, lineHeight: 1.5 }}>

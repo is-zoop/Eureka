@@ -23,9 +23,26 @@ import {
   type AtQueryMatch, type FileIndexEntry,
 } from "@/lib/file-fuzzy";
 import { FolderIcon, getFileIcon } from "./FileIcons";
+import { useTheme } from "@/hooks/useTheme";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { useI18n } from "@/hooks/useI18n";
 import type { ToolPreset } from "@/lib/tool-presets";
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+} from "./ui/dropdown-menu";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "./ui/command";
 
 export interface AttachedImage {
   data: string;   // base64, no prefix
@@ -101,7 +118,6 @@ const TOOL_PRESET_MAP: Record<ToolPresetLabel, ToolPreset> = {
   full: "full",
 };
 const COMPOSITION_END_ENTER_GRACE_MS = 100;
-const MODEL_FILTER_THRESHOLD = 8;
 const MODEL_OPTION_COLLATOR = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
 const ANCHORED_MENU_GAP = 8;
 
@@ -169,6 +185,9 @@ const BUILTIN_SLASH_COMMANDS: SlashCommandPaletteItem[] = [
 
 const SLASH_SOURCES: SlashCommandSource[] = ["builtin", "extension", "prompt", "skill"];
 
+const COMMAND_PALETTE_SOURCES = ["builtin", "extension", "skill"] as const;
+type CommandPaletteSource = typeof COMMAND_PALETTE_SOURCES[number];
+
 const SLASH_SOURCE_GROUP_LABEL_KEYS: Record<SlashCommandSource, string> = {
   builtin: "chat.builtIn",
   extension: "chat.extensions",
@@ -209,9 +228,13 @@ export function buildSlashCommandLayout(
   dormancy: Record<string, boolean>,
 ) {
   let index = 0;
-  const groups = SLASH_SOURCES
+  const groups = COMMAND_PALETTE_SOURCES
     .map((source) => {
-      const sourceCommands = commands.filter((command) => command.source === source);
+      // Prompt commands are presented with built-ins for now. Their original
+      // source remains intact, so we can expose a dedicated group later.
+      const sourceCommands = source === "builtin"
+        ? commands.filter((command) => command.source === "builtin" || command.source === "prompt")
+        : commands.filter((command) => command.source === source);
       const orderedCommands = source === "skill"
         ? [
             ...sourceCommands.filter((command) => !isDormantSkillCommand(command, dormancy)),
@@ -229,6 +252,31 @@ export function buildSlashCommandLayout(
     commands: groups.flatMap((group) => group.items.map(({ command }) => command)),
     groups,
   };
+}
+
+function CommandPaletteIcon({ kind }: { kind: "add" | CommandPaletteSource }) {
+  const common = {
+    width: 16,
+    height: 16,
+    viewBox: "0 0 24 24",
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 1.7,
+    strokeLinecap: "round" as const,
+    strokeLinejoin: "round" as const,
+    "aria-hidden": true,
+  };
+
+  if (kind === "add") {
+    return <svg {...common}><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="8.5" cy="8.5" r="1.5" /><path d="m21 15-5-5L5 21" /><path d="M17 4v4M15 6h4" /></svg>;
+  }
+  if (kind === "extension") {
+    return <svg {...common}><path d="M8.5 3.5a2.5 2.5 0 1 1 4 2v2h2a2.5 2.5 0 1 1 0 4h-2v2a2.5 2.5 0 1 1-4 0v-2h-2a2.5 2.5 0 1 1 0-4h2v-2a2.5 2.5 0 0 1 0-2Z" /><path d="M12 7.5v4" /></svg>;
+  }
+  if (kind === "skill") {
+    return <svg {...common}><path d="m12 3 1.4 4.6L18 9l-4.6 1.4L12 15l-1.4-4.6L6 9l4.6-1.4L12 3Z" /><path d="m19 15 .7 2.3L22 18l-2.3.7L19 21l-.7-2.3L16 18l2.3-.7L19 15Z" /></svg>;
+  }
+  return <svg {...common}><path d="M5 6h14M5 12h9M5 18h14" /><path d="m16 10 3 2-3 2" /></svg>;
 }
 
 function imageToDraftImage(image: AttachedImage): ChatDraftImage {
@@ -395,6 +443,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
 }: Props, ref) {
   const { t } = useI18n();
   const isMobile = useIsMobile();
+  const { isDark } = useTheme();
   const [value, setValue] = useState(() => (draftKey ? getDraft(draftKey)?.value ?? "" : ""));
   const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
   const [modelDropdownRect, setModelDropdownRect] = useState<{ top: number; left: number; width: number } | null>(null);
@@ -408,6 +457,8 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   const trimmedValue = value.trimStart();
   const bashMode = attachedImages.length === 0 && trimmedValue.startsWith("!");
   const bashExcluded = bashMode && trimmedValue.startsWith("!!");
+  const [addMenuOpen, setAddMenuOpen] = useState(false);
+  const [addMenuQuery, setAddMenuQuery] = useState("");
   const [slashMenuOpen, setSlashMenuOpen] = useState(false);
   const [slashActiveIndex, setSlashActiveIndex] = useState(0);
   const [slashMenuMaxHeight, setSlashMenuMaxHeight] = useState<number | null>(null);
@@ -430,16 +481,15 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const modelDropdownPanelRef = useRef<HTMLDivElement>(null);
-  const toolDropdownRef = useRef<HTMLDivElement>(null);
-  const thinkingDropdownRef = useRef<HTMLDivElement>(null);
   const controlsMenuRef = useRef<HTMLDivElement>(null);
+  const addMenuAnchorRef = useRef<HTMLDivElement>(null);
+  const addMenuRef = useRef<HTMLDivElement>(null);
   const historyMenuRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const isComposingRef = useRef(false);
   const lastCompositionEndAtRef = useRef(0);
   const slashCommandsRequestedRef = useRef(false);
   const slashMenuRef = useRef<HTMLDivElement>(null);
-  const slashItemRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const atItemRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const historyItemRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const fileIndexMetaRef = useRef<{ cwd: string; fetchedAt: number } | null>(null);
@@ -769,31 +819,44 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     ? value.slice(1).toLowerCase()
     : null;
 
-  const filteredSlashCommands = (() => {
-    if (slashQuery === null) return [];
-    const commands = [...(isStreaming ? [] : BUILTIN_SLASH_COMMANDS), ...(slashCommands ?? [])];
-    return [...commands]
+  const commandPaletteOpen = addMenuOpen || (slashMenuOpen && slashQuery !== null);
+  const allSlashCommands = [...(isStreaming ? [] : BUILTIN_SLASH_COMMANDS), ...(slashCommands ?? [])];
+  const filterSlashCommands = (query: string) => {
+    const normalizedQuery = query.trim().toLowerCase();
+    return [...allSlashCommands]
       .filter((command) => {
+        if (!normalizedQuery) return true;
         const name = command.name.toLowerCase();
         const description = getSlashDescription(command, t).toLowerCase();
-        return name.includes(slashQuery) || description.includes(slashQuery);
+        return name.includes(normalizedQuery) || description.includes(normalizedQuery);
       })
       .sort((a, b) => {
-        const rankDelta = slashMatchRank(a, slashQuery, t) - slashMatchRank(b, slashQuery, t);
+        const rankDelta = normalizedQuery
+          ? slashMatchRank(a, normalizedQuery, t) - slashMatchRank(b, normalizedQuery, t)
+          : 0;
         if (rankDelta !== 0) return rankDelta;
         return SLASH_SOURCE_ORDER[a.source] - SLASH_SOURCE_ORDER[b.source]
           || MODEL_OPTION_COLLATOR.compare(a.name, b.name);
       });
-  })();
+  };
+
+  const filteredSlashCommands = slashQuery === null ? [] : filterSlashCommands(slashQuery);
+  const filteredAddMenuCommands = filterSlashCommands(addMenuQuery);
 
   const {
     commands: displayedSlashCommands,
     groups: groupedSlashCommands,
   } = buildSlashCommandLayout(filteredSlashCommands, skillDormancy);
+  const { groups: groupedAddMenuCommands } = buildSlashCommandLayout(filteredAddMenuCommands, skillDormancy);
+  const addImageMatches = !addMenuQuery.trim() || [
+    t("chat.addImage"),
+    t("chat.addImageDescription"),
+  ].join(" ").toLowerCase().includes(addMenuQuery.trim().toLowerCase());
+  const addMenuHasResults = addImageMatches || filteredAddMenuCommands.length > 0;
+  const commandDescriptionColor = "var(--text-muted)";
+  const commandPaletteBackground = isDark ? "var(--bg-panel)" : "#ffffff";
+  const commandPaletteRadius = 8;
 
-  const slashCommandCountLabel = filteredSlashCommands.length === 1
-    ? t(slashQuery ? "chat.match" : "chat.command")
-    : t(slashQuery ? "chat.matches" : "chat.commands", { count: filteredSlashCommands.length });
   const hasInputText = Boolean(value.trim());
   const canQueueStreamingMessage = hasInputText || attachedImages.length > 0;
 
@@ -967,6 +1030,8 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   const applySlashCommand = useCallback((command: SlashCommandPaletteItem) => {
     const nextValue = `/${command.name} `;
     setValue(nextValue);
+    setAddMenuOpen(false);
+    setAddMenuQuery("");
     setSlashMenuOpen(false);
     setSlashActiveIndex(0);
     requestAnimationFrame(() => {
@@ -1004,7 +1069,10 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     if (direction === "left") return Math.max(0, slashActiveIndex - 1);
     if (direction === "right") return Math.min(lastIndex, slashActiveIndex + 1);
 
-    const currentNode = slashItemRefs.current[slashActiveIndex];
+    const itemNodes = Array.from(
+      slashMenuRef.current?.querySelectorAll<HTMLElement>("[data-slash-index]") ?? [],
+    );
+    const currentNode = itemNodes.find((node) => Number(node.dataset.slashIndex) === slashActiveIndex);
     if (!currentNode) {
       return direction === "down"
         ? Math.min(lastIndex, slashActiveIndex + 1)
@@ -1019,7 +1087,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
 
     for (let index = 0; index <= lastIndex; index += 1) {
       if (index === slashActiveIndex) continue;
-      const node = slashItemRefs.current[index];
+      const node = itemNodes.find((item) => Number(item.dataset.slashIndex) === index);
       if (!node) continue;
       const rect = node.getBoundingClientRect();
       const candidateY = rect.top + rect.height / 2;
@@ -1185,24 +1253,30 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     if (slashQuery === null) {
       setSlashMenuOpen(false);
       setSlashActiveIndex(0);
-      slashCommandsRequestedRef.current = false;
       return;
     }
     setSlashMenuOpen(true);
     setSlashActiveIndex(0);
+  }, [slashQuery]);
+
+  useEffect(() => {
+    if (!commandPaletteOpen) {
+      slashCommandsRequestedRef.current = false;
+      return;
+    }
     if (!slashCommandsRequestedRef.current && onLoadSlashCommands) {
       slashCommandsRequestedRef.current = true;
       Promise.resolve(onLoadSlashCommands()).catch(() => {
         slashCommandsRequestedRef.current = false;
       });
     }
-  }, [slashQuery, onLoadSlashCommands]);
+  }, [commandPaletteOpen, onLoadSlashCommands]);
 
   // Lazy-load skill dormancy (disable-model-invocation) each time the slash
   // palette opens, so toggles made in the skills panel are reflected on the
   // next open. Failures degrade silently to the unannotated palette.
   useEffect(() => {
-    if (!slashMenuOpen || !cwd) return;
+    if (!commandPaletteOpen || !cwd) return;
     const requestCwd = cwd;
     let cancelled = false;
     setSkillDormancyState({ cwd: requestCwd, values: {} });
@@ -1223,7 +1297,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     return () => {
       cancelled = true;
     };
-  }, [slashMenuOpen, cwd]);
+  }, [commandPaletteOpen, cwd]);
 
   useEffect(() => {
     if (slashActiveIndex >= displayedSlashCommands.length) {
@@ -1232,12 +1306,10 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   }, [displayedSlashCommands.length, slashActiveIndex]);
 
   useEffect(() => {
-    slashItemRefs.current.length = displayedSlashCommands.length;
-  }, [displayedSlashCommands.length]);
-
-  useEffect(() => {
     if (!slashMenuOpen) return;
-    slashItemRefs.current[slashActiveIndex]?.scrollIntoView({ block: "nearest", inline: "nearest" });
+    slashMenuRef.current
+      ?.querySelector<HTMLElement>(`[data-slash-index="${slashActiveIndex}"]`)
+      ?.scrollIntoView({ block: "nearest", inline: "nearest" });
   }, [slashActiveIndex, slashMenuOpen]);
 
   useLayoutEffect(() => {
@@ -1296,7 +1368,6 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     })).sort(compareModelOptions);
   })();
   const filteredModelOptions = filterModelOptions(modelOptions, modelFilter);
-  const showModelFilter = modelOptions.length > MODEL_FILTER_THRESHOLD;
 
   // Group options by provider, preserving insertion order
   const modelsByProvider: { provider: string; options: ModelOption[] }[] = [];
@@ -1334,22 +1405,31 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
         setModelDropdownOpen(false);
         setModelFilter("");
       }
-      if (toolDropdownRef.current && !toolDropdownRef.current.contains(e.target as Node)) {
-        setToolDropdownOpen(false);
-      }
-      if (thinkingDropdownRef.current && !thinkingDropdownRef.current.contains(e.target as Node)) {
-        setThinkingDropdownOpen(false);
-      }
       if (controlsMenuRef.current && !controlsMenuRef.current.contains(e.target as Node)) {
         setControlsMenuOpen(false);
       }
       if (historyMenuRef.current && !historyMenuRef.current.contains(e.target as Node) && !textareaRef.current?.contains(e.target as Node)) {
         setHistoryMenuOpen(false);
       }
+      if (
+        addMenuAnchorRef.current && !addMenuAnchorRef.current.contains(e.target as Node) &&
+        addMenuRef.current && !addMenuRef.current.contains(e.target as Node)
+      ) {
+        setAddMenuOpen(false);
+        setAddMenuQuery("");
+      }
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, []);
+
+  useEffect(() => {
+    if (!addMenuOpen) return;
+    const frameId = requestAnimationFrame(() => {
+      addMenuRef.current?.querySelector<HTMLInputElement>("[data-slot='command-input']")?.focus();
+    });
+    return () => cancelAnimationFrame(frameId);
+  }, [addMenuOpen]);
 
   useEffect(() => {
     if (!isMobile) setControlsMenuOpen(false);
@@ -1530,6 +1610,90 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
 
         {/* Main input */}
         <div style={{ position: "relative", minWidth: 0 }}>
+          {addMenuOpen && (
+            <div
+              ref={addMenuRef}
+              role="dialog"
+              aria-label={t("chat.addCommandMenu")}
+              style={{
+                position: "absolute",
+                left: 0,
+                right: 0,
+                bottom: "calc(100% + 8px)",
+                zIndex: 140,
+                height: isMobile ? 280 : 320,
+                border: "1px solid var(--border)",
+                borderRadius: commandPaletteRadius,
+                background: commandPaletteBackground,
+                boxShadow: "var(--shadow-overlay)",
+                overflow: "hidden",
+              }}
+            >
+              <Command shouldFilter={false} className="rounded-none bg-transparent text-[color:var(--text)]">
+                <CommandInput
+                  value={addMenuQuery}
+                  onValueChange={setAddMenuQuery}
+                  placeholder={t("chat.searchAddCommands")}
+                  onKeyDown={(event) => {
+                    if (event.key === "Escape") {
+                      event.preventDefault();
+                      setAddMenuOpen(false);
+                      setAddMenuQuery("");
+                    }
+                  }}
+                />
+                <CommandList className="max-h-none flex-1 px-1.5 pb-1.5" style={{ maxHeight: isMobile ? 224 : 264 }}>
+                  {!addMenuHasResults && <CommandEmpty>{t("chat.noMatchingCommands")}</CommandEmpty>}
+                  {addImageMatches && (
+                    <CommandGroup heading={t("chat.add")}>
+                      <CommandItem
+                        value="add-image"
+                        title={`${t("chat.addImage")} · ${t("chat.addImageDescription")}`}
+                        onSelect={() => {
+                          setAddMenuOpen(false);
+                          setAddMenuQuery("");
+                          fileInputRef.current?.click();
+                        }}
+                        className="cursor-pointer py-1.5 text-[color:var(--text)] data-[selected=true]:bg-[var(--bg-hover)]"
+                      >
+                        <span className="flex size-5 shrink-0 items-center justify-center text-[color:var(--text-muted)]"><CommandPaletteIcon kind="add" /></span>
+                        <span className="flex min-w-0 items-baseline gap-2">
+                          <span className="shrink-0 text-[13px] font-medium">{t("chat.addImage")}</span>
+                          <span className="truncate text-[11px]" style={{ color: commandDescriptionColor }}>{t("chat.addImageDescription")}</span>
+                        </span>
+                      </CommandItem>
+                    </CommandGroup>
+                  )}
+                  {slashCommandsLoading && (
+                    <div className="px-3 py-2 text-[11px] text-[color:var(--text-dim)]">{t("chat.loadingCommands")}</div>
+                  )}
+                  {groupedAddMenuCommands.map((group) => (
+                    <CommandGroup key={group.source} heading={t(SLASH_SOURCE_GROUP_LABEL_KEYS[group.source])}>
+                      {group.items.map(({ command }) => {
+                        const dormant = isDormantSkillCommand(command, skillDormancy);
+                        const description = getSlashDescription(command, t);
+                        return (
+                          <CommandItem
+                            key={`${command.source}:${command.name}`}
+                            value={`${command.source}:${command.name}`}
+                            title={description ? `/${command.name} · ${description}` : `/${command.name}`}
+                            onSelect={() => applySlashCommand(command)}
+                            className="cursor-pointer py-1.5 text-[color:var(--text)] data-[selected=true]:bg-[var(--bg-hover)]"
+                          >
+                            <span className="flex size-5 shrink-0 items-center justify-center text-[color:var(--text-muted)]"><CommandPaletteIcon kind={group.source} /></span>
+                            <span className="flex min-w-0 flex-1 items-baseline gap-2">
+                              <span className="shrink-0 text-[13px] font-medium">/{command.name}{dormant ? <span className="ml-1 text-[10px] font-normal text-[color:var(--text-dim)]">{t("chat.dormant")}</span> : null}</span>
+                              {description && <span className="truncate text-[11px]" style={{ color: commandDescriptionColor }}>{description}</span>}
+                            </span>
+                          </CommandItem>
+                        );
+                      })}
+                    </CommandGroup>
+                  ))}
+                </CommandList>
+              </Command>
+            </div>
+          )}
           {historyMenuOpen && inputHistory.length > 0 && (
             <div
               ref={historyMenuRef}
@@ -1617,7 +1781,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
               </div>
             </div>
           )}
-          {slashMenuOpen && slashQuery !== null && (
+          {slashMenuOpen && slashQuery !== null && !addMenuOpen && (
             <div
               ref={slashMenuRef}
               style={{
@@ -1625,147 +1789,66 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                 left: 0,
                 right: 0,
                 bottom: "calc(100% + 8px)",
-                zIndex: 120,
-                background: "var(--bg)",
+                zIndex: 140,
+                height: isMobile ? 280 : 320,
+                background: commandPaletteBackground,
                 border: "1px solid var(--border)",
-                borderRadius: 8,
-                boxShadow: "0 -6px 20px rgba(0,0,0,0.12)",
+                borderRadius: commandPaletteRadius,
+                boxShadow: "var(--shadow-overlay)",
                 overflow: "hidden",
                 boxSizing: "border-box",
                 display: "flex",
                 flexDirection: "column",
-                maxHeight: slashMenuMaxHeight === null
-                  ? "min(72.8vh, 598px)"
-                  : `min(72.8vh, 598px, ${slashMenuMaxHeight}px)`,
               }}
             >
-              <div
-                style={{
-                  padding: "8px 10px",
-                  borderBottom: "1px solid var(--border)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  gap: 8,
-                  fontSize: 11,
-                  color: "var(--text-dim)",
-                  flexShrink: 0,
-                }}
-              >
-                 <span>{slashCommandsLoading ? t("chat.loadingCommands") : t("chat.slashCommands", { label: slashCommandCountLabel })}</span>
-                 <span style={{ fontFamily: "var(--font-mono)" }}>{t("chat.tabEnter")}</span>
-              </div>
-              <div style={{ flex: "1 1 auto", minHeight: 0, overflowY: "auto", padding: 10 }}>
-                {!slashCommandsLoading && filteredSlashCommands.length === 0 ? (
-                  <div style={{ padding: "2px 2px 4px", fontSize: 12, color: "var(--text-dim)" }}>
-                     {t("chat.noCommands")}
-                  </div>
-                ) : (
-                  groupedSlashCommands.map((group) => (
-                    <section key={group.source} style={{ marginBottom: 12 }}>
-                      <div
-                        style={{
-                          position: "sticky",
-                          top: -10,
-                          zIndex: 1,
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "space-between",
-                          gap: 8,
-                          padding: "4px 0 6px",
-                          background: "var(--bg)",
-                          color: "var(--text-dim)",
-                          fontSize: 10,
-                          fontWeight: 600,
-                          textTransform: "uppercase",
-                        }}
-                      >
-                           <span>{t(SLASH_SOURCE_GROUP_LABEL_KEYS[group.source])}</span>
-                        <span style={{ fontFamily: "var(--font-mono)", fontWeight: 500 }}>{group.items.length}</span>
-                      </div>
-                      <div
-                        style={{
-                          display: "grid",
-                          gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-                          gap: 8,
-                        }}
-                      >
-                        {group.items.map(({ command, index }) => {
-                          const active = index === slashActiveIndex;
-                          const dormant = isDormantSkillCommand(command, skillDormancy);
-                          return (
-                            <button
-                              key={`${command.source}:${command.name}`}
-                              ref={(node) => {
-                                slashItemRefs.current[index] = node;
-                              }}
-                              type="button"
-                              onMouseDown={(e) => {
-                                e.preventDefault();
-                                applySlashCommand(command);
-                              }}
-                              onMouseEnter={() => setSlashActiveIndex(index)}
-                              style={{
-                                width: "100%",
-                                minWidth: 0,
-                                minHeight: 58,
-                                display: "flex",
-                                flexDirection: "column",
-                                gap: 4,
-                                justifyContent: "center",
-                                padding: "9px 10px",
-                                border: `1px solid ${active ? "var(--accent)" : "var(--border)"}`,
-                                borderRadius: 7,
-                                background: active ? "var(--bg-selected)" : "var(--bg-panel)",
-                                color: "var(--text)",
-                                cursor: "pointer",
-                                textAlign: "left",
-                                boxShadow: active ? "0 0 0 1px color-mix(in srgb, var(--accent) 28%, transparent)" : "none",
-                              }}
-                            >
-                              <span style={{
-                                fontSize: 13,
-                                fontFamily: "var(--font-mono)",
-                                overflowWrap: "anywhere",
-                                wordBreak: "break-word",
-                                color: dormant ? "var(--text-dim)" : undefined,
-                              }}>
-                                /{command.name}
-                                {dormant && (
-                                  <span style={{
-                                    marginLeft: 6,
-                                    padding: "0 4px",
-                                    border: "1px solid var(--border)",
-                                    borderRadius: 3,
-                                    fontSize: 9,
-                                    color: "var(--text-dim)",
-                                    whiteSpace: "nowrap",
-                                  }}>
-                                    {t("chat.dormant")}
-                                  </span>
-                                )}
-                              </span>
-                               {command.description && (
-                                <span style={{
-                                  display: "-webkit-box",
-                                  WebkitBoxOrient: "vertical",
-                                  WebkitLineClamp: 2,
-                                  overflow: "hidden",
-                                  fontSize: 11,
-                                  lineHeight: 1.35,
-                                  color: "var(--text-dim)",
-                                }}>
-                                   {getSlashDescription(command, t)}
-                                </span>
-                              )}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </section>
-                  ))
-                )}
-              </div>
+              <Command shouldFilter={false} className="rounded-none bg-transparent text-[color:var(--text)]">
+                <CommandInput
+                  value={slashQuery ?? ""}
+                  onValueChange={(query) => {
+                    const nextValue = `/${query}`;
+                    valueRef.current = nextValue;
+                    setValue(nextValue);
+                    setSlashActiveIndex(0);
+                  }}
+                  placeholder={t("chat.searchAddCommands")}
+                  onKeyDown={(event) => {
+                    if (event.key !== "Escape") return;
+                    event.preventDefault();
+                    setSlashMenuOpen(false);
+                    requestAnimationFrame(() => textareaRef.current?.focus());
+                  }}
+                />
+                <CommandList className="max-h-none flex-1 px-1.5 pb-1.5" style={{ maxHeight: isMobile ? 224 : 264 }}>
+                  {!slashCommandsLoading && filteredSlashCommands.length === 0 && <CommandEmpty>{t("chat.noCommands")}</CommandEmpty>}
+                  {groupedSlashCommands.map((group) => (
+                    <CommandGroup key={group.source} heading={t(SLASH_SOURCE_GROUP_LABEL_KEYS[group.source])}>
+                      {group.items.map(({ command, index }) => {
+                        const active = index === slashActiveIndex;
+                        const dormant = isDormantSkillCommand(command, skillDormancy);
+                        const description = getSlashDescription(command, t);
+                        return (
+                          <CommandItem
+                            key={`${command.source}:${command.name}`}
+                            data-slash-index={index}
+                            value={`${command.source}:${command.name}`}
+                            title={description ? `/${command.name} · ${description}` : `/${command.name}`}
+                            onSelect={() => applySlashCommand(command)}
+                            onMouseEnter={() => setSlashActiveIndex(index)}
+                            className="cursor-pointer py-1.5 text-[color:var(--text)] data-[selected=true]:bg-[var(--bg-hover)]"
+                            style={{ background: active ? "var(--bg-hover)" : undefined }}
+                          >
+                            <span className="flex size-5 shrink-0 items-center justify-center text-[color:var(--text-muted)]"><CommandPaletteIcon kind={group.source} /></span>
+                            <span className="flex min-w-0 flex-1 items-baseline gap-2">
+                              <span className="shrink-0 text-[13px] font-medium">/{command.name}{dormant ? <span className="ml-1 text-[10px] font-normal text-[color:var(--text-dim)]">{t("chat.dormant")}</span> : null}</span>
+                              {description && <span className="truncate text-[11px]" style={{ color: commandDescriptionColor }}>{description}</span>}
+                            </span>
+                          </CommandItem>
+                        );
+                      })}
+                    </CommandGroup>
+                  ))}
+                </CommandList>
+              </Command>
             </div>
           )}
           {atMenuOpen && atQuery !== null && (() => {
@@ -1871,14 +1954,14 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
               display: "flex",
               gap: 8,
               alignItems: "center",
-              background: "var(--bg)",
+              background: "var(--input-bg)",
               border: `1px solid ${bashMode ? "var(--tool-bg)" : isStreaming && (onSteer || onFollowUp)
                 ? "rgba(234,179,8,0.4)"
                 : "color-mix(in srgb, var(--border) 70%, transparent)"}`,
-              borderRadius: 14,
+              borderRadius: "var(--radius-popover)",
               padding: "10px 10px 10px 14px",
-              boxShadow: "0 1px 2px rgba(15,23,42,0.04), 0 8px 24px -12px rgba(15,23,42,0.10)",
-              transition: "border-color 0.15s, background 0.15s, box-shadow 0.15s",
+              boxShadow: "var(--shadow-soft)",
+              transition: "border-color var(--transition-ui), background var(--transition-ui), box-shadow var(--transition-ui)",
             } as React.CSSProperties}
           >
           <textarea
@@ -1922,7 +2005,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
               outline: "none",
               resize: "none",
               color: "var(--text)",
-              fontSize: 14,
+              fontSize: 15,
               lineHeight: 1.6,
               fontFamily: "inherit",
               minHeight: 24,
@@ -1946,8 +2029,8 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                     borderRadius: 8,
                     color: canQueueStreamingMessage ? "rgba(180,130,0,1)" : "var(--text-dim)",
                     cursor: canQueueStreamingMessage ? "pointer" : "not-allowed",
-                    fontSize: 13, fontWeight: 600, letterSpacing: "-0.01em",
-                    transition: "background 0.12s",
+                    fontSize: 14, fontWeight: 550, letterSpacing: "-0.01em",
+                    transition: "background var(--transition-ui)",
                   }}
                 >
                   <svg width="12" height="12" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -1969,8 +2052,8 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                     borderRadius: 8,
                     color: canQueueStreamingMessage ? "rgba(99,102,241,1)" : "var(--text-dim)",
                     cursor: canQueueStreamingMessage ? "pointer" : "not-allowed",
-                    fontSize: 13, fontWeight: 600, letterSpacing: "-0.01em",
-                    transition: "background 0.12s",
+                    fontSize: 14, fontWeight: 550, letterSpacing: "-0.01em",
+                    transition: "background var(--transition-ui)",
                   }}
                 >
                   <svg width="12" height="12" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -1990,22 +2073,29 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                 alignSelf: "flex-end",
                 display: "flex", alignItems: "center", gap: 6,
                 padding: "7px 14px",
-                background: (value.trim() || attachedImages.length) ? "var(--accent)" : "var(--bg-panel)",
+                background: (value.trim() || attachedImages.length) ? (isDark ? "#ffffff" : "#080707") : "var(--bg-panel)",
                 border: "none",
-                borderRadius: 8,
-                color: (value.trim() || attachedImages.length) ? "#fff" : "var(--text-dim)",
+                borderRadius: "var(--radius-control)",
+                color: (value.trim() || attachedImages.length) ? (isDark ? "#080707" : "#fff") : "var(--text-dim)",
                 cursor: (value.trim() || attachedImages.length) ? "pointer" : "not-allowed",
-                fontSize: 13,
-                fontWeight: 600,
+                fontSize: 14,
+                fontWeight: 550,
                 letterSpacing: "-0.01em",
-                boxShadow: (value.trim() || attachedImages.length) ? "0 1px 3px rgba(37,99,235,0.25)" : "none",
-                transition: "background 0.15s, box-shadow 0.15s",
+                boxShadow: (value.trim() || attachedImages.length) ? "0 4px 12px rgba(0,0,0,0.25)" : "none",
+                transition: "background var(--transition-ui), box-shadow var(--transition-ui)",
               }}
             >
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <line x1="2" y1="7" x2="11" y2="7" />
-                <polyline points="7.5 3 12 7 7.5 11" />
-              </svg>
+              <span
+                style={{
+                  width: 14, height: 14, flexShrink: 0, display: "inline-block",
+                  background: "currentColor",
+                  WebkitMaskImage: `url("data:image/svg+xml,%3csvg width='100%25' height='100%25' xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24'%3e%3cpath stroke='%23080707' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M10.5 13.5 21 3M10.627 13.828l2.628 6.758c.232.596.347.893.514.98a.5.5 0 0 0 .462 0c.167-.086.283-.384.515-.979l6.59-16.888c.21-.537.315-.806.258-.977a.5.5 0 0 0-.316-.316c-.172-.057-.44.048-.978.257L3.413 9.253c-.595.233-.893.349-.98.516a.5.5 0 0 0 0 .461c.087.167.385.283.98.514l6.758 2.629c.121.046.182.07.233.106a.5.5 0 0 1 .116.117c.037.05.06.111.232'/%3e%3c/svg%3e")`,
+                  maskImage: `url("data:image/svg+xml,%3csvg width='100%25' height='100%25' xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24'%3e%3cpath stroke='%23080707' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M10.5 13.5 21 3M10.627 13.828l2.628 6.758c.232.596.347.893.514.98a.5.5 0 0 0 .462 0c.167-.086.283-.384.515-.979l6.59-16.888c.21-.537.315-.806.258-.977a.5.5 0 0 0-.316-.316c-.172-.057-.44.048-.978.257L3.413 9.253c-.595.233-.893.349-.98.516a.5.5 0 0 0 0 .461c.087.167.385.283.98.514l6.758 2.629c.121.046.182.07.233.106a.5.5 0 0 1 .116.117c.037.05.06.111.232'/%3e%3c/svg%3e")`,
+                  WebkitMaskSize: "contain", maskSize: "contain",
+                  WebkitMaskRepeat: "no-repeat", maskRepeat: "no-repeat",
+                  WebkitMaskPosition: "center", maskPosition: "center",
+                }}
+              />
               {t("chat.send")}
             </button>
           )}
@@ -2030,34 +2120,43 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
 
           {/* LEFT: attach + model selector (idle) or steer/followup toggle (streaming) */}
           <div style={{ flex: isMobile ? "1 1 auto" : "0 0 auto", minWidth: 0, display: "flex", alignItems: "center", gap: 2 }}>
-            <button
-              onClick={() => fileInputRef.current?.click()}
-             title={t("chat.attachImage")}
-              style={{
-                flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
-                width: 32, height: 32, padding: 0,
-                background: "none", border: "none",
-                borderRadius: 9,
-                color: attachedImages.length ? "var(--accent)" : "var(--text-muted)",
-                cursor: "pointer",
-                opacity: 1,
-                transition: "background 0.12s, color 0.12s",
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = "var(--bg-hover)";
-                e.currentTarget.style.color = attachedImages.length ? "var(--accent)" : "var(--text)";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = "none";
-                e.currentTarget.style.color = attachedImages.length ? "var(--accent)" : "var(--text-muted)";
-              }}
-            >
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-                <circle cx="8.5" cy="8.5" r="1.5" />
-                <polyline points="21 15 16 10 5 21" />
-              </svg>
-            </button>
+            <div ref={addMenuAnchorRef} style={{ flexShrink: 0 }}>
+              <button
+                type="button"
+                onClick={() => {
+                  setSlashMenuOpen(false);
+                  setAddMenuOpen((open) => {
+                    if (open) setAddMenuQuery("");
+                    return !open;
+                  });
+                }}
+                aria-label={t("chat.openAddMenu")}
+                aria-expanded={addMenuOpen}
+                title={t("chat.openAddMenu")}
+                style={{
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  width: 32, height: 32, padding: 0,
+                  background: addMenuOpen ? "var(--bg-hover)" : "none", border: "none",
+                  borderRadius: 9,
+                  color: attachedImages.length ? "var(--accent)" : "var(--text-muted)",
+                  cursor: "pointer",
+                  transition: "background 0.12s, color 0.12s",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = "var(--bg-hover)";
+                  e.currentTarget.style.color = attachedImages.length ? "var(--accent)" : "var(--text)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = addMenuOpen ? "var(--bg-hover)" : "none";
+                  e.currentTarget.style.color = attachedImages.length ? "var(--accent)" : "var(--text-muted)";
+                }}
+              >
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
+                  <path d="M12 5v14M5 12h14" />
+                </svg>
+              </button>
+
+            </div>
             {/* Model selector — visible always, disabled while the session or switch is busy */}
             {(modelOptions.length > 0 || currentName || modelError) && onModelChange && (
                 <div ref={dropdownRef} style={{ position: "relative", flex: isMobile ? "1 1 auto" : undefined, minWidth: 0 }}>
@@ -2121,27 +2220,33 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                   {modelDropdownOpen && modelDropdownRect && (() => {
                     const viewportHeight = window.visualViewport?.height ?? window.innerHeight;
                     const bottom = viewportHeight - modelDropdownRect.top + 6;
-                    const maxH = Math.max(120, Math.min(modelDropdownRect.top - 8, viewportHeight * 0.6));
+                    const menuHeight = Math.max(160, Math.min(360, modelDropdownRect.top - 8, viewportHeight - 16));
                     // On mobile, pin to a small left margin and cap width to the
                     // viewport so long model names never push the panel off-screen.
                     const panelPos: React.CSSProperties = isMobile
                       ? { left: 8, right: 8, maxWidth: "calc(100vw - 16px)" }
-                      : { left: modelDropdownRect.left, width: "max-content", minWidth: modelDropdownRect.width };
+                      : { left: modelDropdownRect.left, width: 260 };
                     return (
                       <div ref={modelDropdownPanelRef} style={{
                       position: "fixed",
                       bottom,
                       ...panelPos,
-                      zIndex: 500, background: "var(--bg)", border: "1px solid var(--border)",
-                      borderRadius: 8, boxShadow: "0 -4px 16px rgba(0,0,0,0.10)",
-                      overflow: "hidden", maxHeight: maxH, display: "flex", flexDirection: "column",
+                      zIndex: 500,
+                      height: menuHeight,
+                      overflow: "hidden",
                       }}>
-                      {showModelFilter && (
-                        <div style={{ padding: "6px 8px", borderBottom: "1px solid var(--border)", flexShrink: 0 }}>
-                          <input
+                      <Command shouldFilter={false} style={{
+                        height: "100%",
+                        background: "var(--bg-panel)",
+                        color: "var(--text)",
+                        border: "1px solid var(--border)",
+                        borderRadius: "var(--radius-card)",
+                        boxShadow: "var(--shadow-soft)",
+                      }}>
+                        <CommandInput
                             value={modelFilter}
-                            onChange={(e) => setModelFilter(e.target.value)}
-                            onKeyDown={(e) => {
+                            onValueChange={setModelFilter}
+                            onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
                               if (e.key === "Escape") {
                                 setModelFilter("");
                                 setModelDropdownOpen(false);
@@ -2153,71 +2258,52 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                             autoComplete="off"
                             spellCheck={false}
                             style={{
-                              width: "100%",
                               minWidth: isMobile ? 0 : 220,
-                              fontSize: 11,
+                              fontSize: 12,
                               fontFamily: "var(--font-mono)",
-                              padding: "5px 8px",
-                              border: "1px solid var(--border)",
-                              borderRadius: 5,
-                              outline: "none",
-                              background: "var(--bg)",
                               color: "var(--text)",
-                              boxSizing: "border-box",
                             }}
-                          />
-                        </div>
-                      )}
-                      <div style={{ minHeight: 0, overflowY: "auto" }}>
+                        />
+                      <CommandList style={{ flex: 1, minHeight: 0, maxHeight: "none" }}>
                         {modelsByProvider.length === 0 ? (
-                          <div style={{ padding: "8px 12px", color: "var(--text-dim)", fontSize: 12, whiteSpace: "nowrap" }}>
+                          <CommandEmpty style={{ display: "block", color: "var(--text-muted)", fontSize: 12, whiteSpace: "nowrap" }}>
                             {modelFilter.trim() ? t("chat.noMatchingModels") : "No available models"}
-                          </div>
-                        ) : modelsByProvider.map((group, gi) => (
-                          <div key={group.provider}>
-                            {(modelsByProvider.length > 1) && (
-                              <div style={{
-                                padding: "6px 12px 4px",
-                                fontSize: 10, fontWeight: 600, color: "var(--text-dim)",
-                                textTransform: "uppercase", letterSpacing: "0.07em",
-                                borderTop: gi > 0 ? "1px solid var(--border)" : "none",
-                              }}>
-                                {group.provider}
-                              </div>
-                            )}
+                          </CommandEmpty>
+                        ) : modelsByProvider.map((group) => (
+                          <CommandGroup key={group.provider} heading={modelsByProvider.length > 1 ? group.provider.toUpperCase() : undefined}>
                             {group.options.map((opt) => {
                               const isActive = opt.modelId === model?.modelId && opt.provider === model?.provider;
                               return (
-                                <button
+                                <CommandItem
                                   key={`${opt.provider}:${opt.modelId}`}
-                                  onClick={() => {
+                                  value={`${opt.name} ${opt.modelId} ${opt.provider}`}
+                                  onSelect={() => {
                                     setModelDropdownOpen(false);
                                     setModelFilter("");
                                     if (!isActive || isAutoModelSelection) onModelChange(opt.provider, opt.modelId);
                                   }}
                                   style={{
-                                    display: "flex", alignItems: "center", gap: 8,
-                                    width: "100%", padding: "7px 12px",
-                                    background: isActive ? "var(--bg-selected)" : "none",
-                                    border: "none",
+                                    minHeight: 32,
+                                    padding: "6px 24px 6px 8px",
+                                    background: isActive ? "var(--bg-selected)" : "transparent",
                                     color: isActive ? "var(--text)" : "var(--text-muted)",
-                                    cursor: "pointer", fontSize: 12, textAlign: "left",
+                                    cursor: "pointer", fontSize: 12,
                                     fontWeight: isActive ? 600 : 400,
-                                    whiteSpace: "nowrap",
                                   }}
-                                  onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.background = "var(--bg-hover)"; }}
-                                  onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.background = "none"; }}
+                                  onMouseEnter={(event) => { if (!isActive) event.currentTarget.style.background = "var(--bg-hover)"; }}
+                                  onMouseLeave={(event) => { if (!isActive) event.currentTarget.style.background = "transparent"; }}
                                 >
                                   {isActive
                                     ? <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><polyline points="1.5 5 4 7.5 8.5 2.5" /></svg>
                                     : <span style={{ width: 10, flexShrink: 0 }} />}
-                                  {opt.name}
-                                </button>
+                                  <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{opt.name}</span>
+                                </CommandItem>
                               );
                             })}
-                          </div>
+                          </CommandGroup>
                         ))}
-                      </div>
+                      </CommandList>
+                      </Command>
                     </div>
                     );
                   })()}
@@ -2304,9 +2390,11 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
               } : null),
             }}>
             {!isStreaming && onThinkingLevelChange && (
-              <div ref={thinkingDropdownRef} style={{ position: "relative" }}>
+              <DropdownMenu open={thinkingDropdownOpen} onOpenChange={setThinkingDropdownOpen}>
+                <DropdownMenuTrigger
+                  render={
                 <button
-                  onClick={() => !isStreaming && setThinkingDropdownOpen((v) => !v)}
+                  type="button"
                   disabled={isStreaming}
                    title={t("chat.changeReasoning", { level: thinkingDisplayLabel })}
                    aria-label={t("chat.changeReasoningLabel")}
@@ -2341,14 +2429,26 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                   </svg>
                   {(!isMobile || controlsMenuOpen) && <span style={{ whiteSpace: "nowrap" }}>{thinkingDisplayLabel}</span>}
                 </button>
-                {thinkingDropdownOpen && (
-                  <div style={{
-                    position: "absolute", bottom: "calc(100% + 6px)",
-                    ...(isMobile ? { left: 0 } : { right: 0 }),
-                    zIndex: 100, background: "var(--bg)", border: "1px solid var(--border)",
-                    borderRadius: 8, boxShadow: "0 -4px 16px rgba(0,0,0,0.10)",
-                    overflow: "hidden", minWidth: 180,
-                  }}>
+                  }
+                />
+                <DropdownMenuContent
+                  align={isMobile ? "start" : "end"}
+                  side="top"
+                  sideOffset={6}
+                  style={{
+                    minWidth: 180,
+                    padding: 4,
+                    background: "var(--bg-panel)",
+                    color: "var(--text)",
+                    border: "1px solid var(--border)",
+                    borderRadius: "var(--radius-card)",
+                    boxShadow: "var(--shadow-soft)",
+                  }}
+                >
+                  <DropdownMenuGroup>
+                    <DropdownMenuLabel style={{ color: "var(--text-dim)", fontSize: 13 }}>
+                      {t("chat.changeReasoningLabel")}
+                    </DropdownMenuLabel>
                     {THINKING_LEVELS.filter((lvl) => {
                       if (!availableThinkingLevels) return true;
                       if (lvl === "auto") return true;
@@ -2360,41 +2460,46 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                       const displayLabel = (mappedVal != null && mappedVal !== lvl) ? mappedVal : lvl;
                       const showOriginal = mappedVal != null && mappedVal !== lvl;
                       return (
-                        <button
+                        <DropdownMenuCheckboxItem
                           key={lvl}
-                          onClick={() => { setThinkingDropdownOpen(false); if (!isActive) onThinkingLevelChange(lvl); }}
-                          style={{
-                            display: "flex", alignItems: "center", gap: 8,
-                            width: "100%", padding: "7px 12px",
-                            background: isActive ? "var(--bg-selected)" : "none",
-                            border: "none",
-                            color: isActive ? "var(--text)" : "var(--text-muted)",
-                            cursor: "pointer", fontSize: 12, textAlign: "left",
-                            fontWeight: isActive ? 600 : 400,
-                            whiteSpace: "nowrap",
+                          checked={isActive}
+                          onCheckedChange={(checked) => {
+                            if (checked && !isActive) onThinkingLevelChange(lvl);
+                            setThinkingDropdownOpen(false);
                           }}
-                          onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.background = "var(--bg-hover)"; }}
-                          onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.background = "none"; }}
+                          style={{
+                            gap: 8,
+                            alignItems: "flex-start",
+                            minHeight: 42,
+                            padding: "6px 28px 6px 8px",
+                            background: "transparent",
+                            color: "var(--text)",
+                            cursor: "pointer", fontSize: 13,
+                            fontWeight: isActive ? 600 : 400,
+                          }}
+                          onMouseEnter={(event) => { event.currentTarget.style.background = "var(--bg-hover)"; }}
+                          onMouseLeave={(event) => { event.currentTarget.style.background = "transparent"; }}
                         >
-                          {isActive
-                            ? <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><polyline points="1.5 5 4 7.5 8.5 2.5" /></svg>
-                            : <span style={{ width: 10, flexShrink: 0 }} />}
-                          <span style={{ flex: 1 }}>
-                            {displayLabel}
-                            {showOriginal && <span style={{ fontSize: 10, color: "var(--text-dim)", fontFamily: "var(--font-mono)", marginLeft: 5 }}>({lvl})</span>}
+                          <span style={{ display: "flex", minWidth: 0, flex: 1, flexDirection: "column", alignItems: "flex-start", gap: 2 }}>
+                            <span style={{ color: "var(--text)", lineHeight: 1.2 }}>
+                              {displayLabel}
+                              {showOriginal && <span style={{ fontSize: 10, color: "var(--text-dim)", fontFamily: "var(--font-mono)", marginLeft: 5 }}>({lvl})</span>}
+                            </span>
+                            <span style={{ color: commandDescriptionColor, fontSize: 11, fontWeight: 400, lineHeight: 1.2, whiteSpace: "normal" }}>{desc}</span>
                           </span>
-                          <span style={{ fontSize: 11, color: "var(--text-dim)", marginLeft: 8 }}>{desc}</span>
-                        </button>
+                        </DropdownMenuCheckboxItem>
                       );
                     })}
-                  </div>
-                )}
-              </div>
+                  </DropdownMenuGroup>
+                </DropdownMenuContent>
+              </DropdownMenu>
             )}
             {!isStreaming && onToolPresetChange && (
-              <div ref={toolDropdownRef} style={{ position: "relative" }}>
+              <DropdownMenu open={toolDropdownOpen} onOpenChange={setToolDropdownOpen}>
+                <DropdownMenuTrigger
+                  render={
                 <button
-                  onClick={() => !isStreaming && setToolDropdownOpen((v) => !v)}
+                  type="button"
                   disabled={isStreaming}
                    title={t("chat.changeToolPreset") + `: ${toolPresetLabel}`}
                    aria-label={t("chat.changeToolPreset")}
@@ -2427,16 +2532,26 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                   </svg>
                   {(!isMobile || controlsMenuOpen) && <span style={{ whiteSpace: "nowrap" }}>{toolPresetLabel}</span>}
                 </button>
-                {toolDropdownOpen && (
-                  <div style={{
-                    position: "absolute",
-                    bottom: "calc(100% + 6px)",
-                    right: isMobile ? undefined : 0,
-                    left: isMobile ? 0 : undefined,
-                    zIndex: 100, background: "var(--bg)", border: "1px solid var(--border)",
-                    borderRadius: 8, boxShadow: "0 -4px 16px rgba(0,0,0,0.10)",
-                    overflow: "hidden", minWidth: 120,
-                  }}>
+                  }
+                />
+                <DropdownMenuContent
+                  align={isMobile ? "start" : "end"}
+                  side="top"
+                  sideOffset={6}
+                  style={{
+                    minWidth: 180,
+                    padding: 4,
+                    background: "var(--bg-panel)",
+                    color: "var(--text)",
+                    border: "1px solid var(--border)",
+                    borderRadius: "var(--radius-card)",
+                    boxShadow: "var(--shadow-soft)",
+                  }}
+                >
+                  <DropdownMenuGroup>
+                    <DropdownMenuLabel style={{ color: "var(--text-dim)", fontSize: 13 }}>
+                      {t("chat.changeToolPreset")}
+                    </DropdownMenuLabel>
                     {TOOL_PRESETS.map((lvl) => {
                       const preset = TOOL_PRESET_MAP[lvl];
                       const isActive = (toolPreset ?? "default") === preset;
@@ -2446,33 +2561,36 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                       else if (lvl === "default") desc = t("chat.builtInTools", { count: 4 });
                       else desc = t("chat.allBuiltInTools");
                       return (
-                        <button
+                        <DropdownMenuCheckboxItem
                           key={lvl}
-                          onClick={() => { setToolDropdownOpen(false); if (!isActive) onToolPresetChange(preset); }}
-                          style={{
-                            display: "flex", alignItems: "center", gap: 8,
-                            width: "100%", padding: "7px 12px",
-                            background: isActive ? "var(--bg-selected)" : "none",
-                            border: "none",
-                            color: isActive ? "var(--text)" : "var(--text-muted)",
-                            cursor: "pointer", fontSize: 12, textAlign: "left",
-                            fontWeight: isActive ? 600 : 400,
-                            whiteSpace: "nowrap",
+                          checked={isActive}
+                          onCheckedChange={(checked) => {
+                            if (checked && !isActive) onToolPresetChange(preset);
+                            setToolDropdownOpen(false);
                           }}
-                          onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.background = "var(--bg-hover)"; }}
-                          onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.background = "none"; }}
+                          style={{
+                            gap: 8,
+                            alignItems: "flex-start",
+                            minHeight: 42,
+                            padding: "6px 28px 6px 8px",
+                            background: "transparent",
+                            color: "var(--text)",
+                            cursor: "pointer", fontSize: 13,
+                            fontWeight: isActive ? 600 : 400,
+                          }}
+                          onMouseEnter={(event) => { event.currentTarget.style.background = "var(--bg-hover)"; }}
+                          onMouseLeave={(event) => { event.currentTarget.style.background = "transparent"; }}
                         >
-                          {isActive
-                            ? <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><polyline points="1.5 5 4 7.5 8.5 2.5" /></svg>
-                            : <span style={{ width: 10, flexShrink: 0 }} />}
-                          <span style={{ flex: 1 }}>{lvl}</span>
-                          <span style={{ fontSize: 11, color: "var(--text-dim)", marginLeft: 8 }}>{desc}</span>
-                        </button>
+                          <span style={{ display: "flex", minWidth: 0, flex: 1, flexDirection: "column", alignItems: "flex-start", gap: 2 }}>
+                            <span style={{ color: "var(--text)", lineHeight: 1.2 }}>{lvl}</span>
+                            <span style={{ color: commandDescriptionColor, fontSize: 11, fontWeight: 400, lineHeight: 1.2, whiteSpace: "normal" }}>{desc}</span>
+                          </span>
+                        </DropdownMenuCheckboxItem>
                       );
                     })}
-                  </div>
-                )}
-              </div>
+                  </DropdownMenuGroup>
+                </DropdownMenuContent>
+              </DropdownMenu>
             )}
 
             {!isStreaming && onCompact && (

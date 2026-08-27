@@ -1527,7 +1527,7 @@ function OAuthDetail({ provider, onRefresh }: { provider: OAuthProvider; onRefre
             <p style={{ margin: 0, fontSize: 12, color: "var(--text-muted)", lineHeight: 1.5 }}>
               Open the verification page and enter this code:
             </p>
-            <div style={{ padding: "8px 10px", background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 5, color: "var(--text)", fontSize: 16, fontWeight: 700, fontFamily: "var(--font-mono)", letterSpacing: 0 }}>
+            <div style={{ padding: "8px 10px", background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 5, color: "var(--text)", fontSize: 16, fontWeight: 600, fontFamily: "var(--font-mono)", letterSpacing: 0 }}>
               {loginState.userCode}
             </div>
             <p style={{ margin: 0, fontSize: 11, color: "var(--text-dim)", lineHeight: 1.5 }}>
@@ -1739,7 +1739,7 @@ function ProviderIcon({ id, size }: { id: string; size: number }) {
           justifyContent: "center",
           flexShrink: 0,
           fontSize: Math.max(8, Math.floor(size * 0.42)),
-          fontWeight: 700,
+          fontWeight: 600,
           lineHeight: 1,
         }}
       >
@@ -2104,7 +2104,7 @@ export function ModelsConfig({ onClose }: { onClose: () => void }) {
         {/* Header */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 18px", borderBottom: "1px solid var(--border)", flexShrink: 0 }}>
           <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
-             <span style={{ fontSize: 15, fontWeight: 700, color: "var(--text)" }}>{t("common.models")}</span>
+             <span style={{ fontSize: 15, fontWeight: 600, color: "var(--text)" }}>{t("common.models")}</span>
             <code style={{ fontSize: 11, color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>~/.pi/agent/models.json</code>
           </div>
           <button onClick={onClose} style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer", fontSize: 20, lineHeight: 1, padding: "2px 6px" }}>×</button>

@@ -56,15 +56,41 @@ test("offers the downstream context-menu hook only on a normal session row", () 
   );
 });
 
-test("manual and lifecycle refreshes bypass the server session-list cache", () => {
+test("lifecycle refreshes bypass the server session-list cache without a manual refresh control", () => {
   assert.match(source, /force \? "\/api\/sessions\?force=1" : "\/api\/sessions"/);
   assert.match(source, /cache: "no-store"/);
   assert.match(source, /loadSessions\(isFirst, !isFirst\)/);
-  assert.match(source, /onClick=\{\(\) => loadSessions\(false, true\)\}/);
+  assert.doesNotMatch(source, /onClick=\{\(\) => loadSessions\(false, true\)\}/);
   assert.match(source, /loadSessions\(false, true\);[\s\S]*?onBackgroundTaskDone/);
+});
+
+test("offers an in-memory task search and sidebar hide callback", () => {
+  assert.match(source, /onRequestHide\?: \(\) => void/);
+  assert.match(source, /onClick=\{\(\) => onRequestHide\?\.\(\)\}/);
+  assert.match(source, /const projectSessions = selectedProject/);
+  assert.match(source, /const title = session\.name \|\| firstMessage \|\| session\.id/);
+  assert.match(source, /title\.toLocaleLowerCase\(\)\.includes\(normalizedSessionSearch\)/);
+  assert.match(source, /onKeyDown=\{\(e\) => \{ if \(e\.key === "Escape"\)/);
+  assert.match(source, /sidebar\.noMatchingTasks/);
+});
+
+test("uses official dropdown menus for the project and worktree selectors", () => {
+  assert.match(source, /<DropdownMenu open=\{dropdownOpen\} onOpenChange=\{handleProjectMenuOpenChange\}>/);
+  assert.match(source, /<DropdownMenuContent\s+align="start"\s+side="bottom"/);
+  assert.match(source, /<DropdownMenu open=\{wtDropdownOpen\} onOpenChange=\{handleWorktreeMenuOpenChange\}>/);
+  assert.match(source, /<DropdownMenuContent\s+align="end"\s+side="bottom"/);
+  assert.match(source, /const handleProjectMenuOpenChange = useCallback/);
+  assert.match(source, /const handleWorktreeMenuOpenChange = useCallback/);
+  assert.doesNotMatch(source, /AnimatedDropdown/);
+  assert.doesNotMatch(source, /dropdownRef/);
+  assert.doesNotMatch(source, /wtDropdownRef/);
 });
 
 test("does not expose disk-backed actions for transient sessions", () => {
   assert.match(sessionItemSource, /if \(session\.transient\) return;/);
-  assert.match(sessionItemSource, /\{hovered && !session\.transient && \(/);
+  assert.match(sessionItemSource, /\{!session\.transient && \(/);
+  assert.match(sessionItemSource, /pointerEvents: metaHovered \|\| actionMenuOpen \? "auto" : "none"/);
+  assert.match(sessionItemSource, /<DropdownMenuTrigger/);
+  assert.match(sessionItemSource, /data-session-menu-trigger/);
+  assert.match(sessionItemSource, /closest\("\[data-session-menu-trigger\]"\)/);
 });

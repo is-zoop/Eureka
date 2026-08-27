@@ -940,7 +940,7 @@ export function SkillsConfig({
         >
           <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
             <span
-              style={{ fontSize: 15, fontWeight: 700, color: "var(--text)" }}
+              style={{ fontSize: 15, fontWeight: 600, color: "var(--text)" }}
             >
                {t("common.skills")}
             </span>

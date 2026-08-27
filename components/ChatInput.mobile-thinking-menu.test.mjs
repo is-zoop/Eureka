@@ -4,9 +4,10 @@ import test from "node:test";
 
 const source = await readFile(new URL("./ChatInput.tsx", import.meta.url), "utf8");
 
-test("anchors the mobile reasoning menu to its left edge", () => {
+test("uses the shared dropdown menu for the upward reasoning selector", () => {
   assert.match(
     source,
-    /thinkingDropdownOpen[\s\S]*?bottom: "calc\(100% \+ 6px\)"[\s\S]*?isMobile \? \{ left: 0 \} : \{ right: 0 \}/,
+    /<DropdownMenu open=\{thinkingDropdownOpen\} onOpenChange=\{setThinkingDropdownOpen\}>[\s\S]*?<DropdownMenuContent[\s\S]*?align=\{isMobile \? "start" : "end"\}[\s\S]*?side="top"/,
   );
+  assert.match(source, /<DropdownMenuCheckboxItem[\s\S]*?onCheckedChange/);
 });

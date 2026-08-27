@@ -9,6 +9,12 @@
   --color-text: var(--text);
   --color-text-muted: var(--text-muted);
   --color-text-dim: var(--text-dim);
+  --color-foreground: var(--text);
+  --color-muted-foreground: var(--text-muted);
+  --color-popover: var(--bg-panel);
+  --color-popover-foreground: var(--text);
+  --color-accent-foreground: #ffffff;
+  --color-destructive: #ef4444;
   --color-accent: var(--accent);
   --color-accent-hover: var(--accent-hover);
   --color-user-bg: var(--user-bg);
@@ -19,37 +25,75 @@
 }
 
 :root {
-  --bg: #ffffff;
-  --bg-panel: #f5f5f5;
-  --bg-hover: #eeeeee;
-  --bg-selected: #e8e8e8;
-  --border: #e0e0e0;
-  --text: #1a1a1a;
-  --text-muted: #6b7280;
-  --text-dim: #9ca3af;
+  --bg: #f7f7f5;
+  --bg-panel: #ffffff;
+  --bg-hover: var(--bg-selected);
+  --bg-selected: #f5f5f4;
+  --border: #e5e5de;
+  --text: #30302e;
+  --text-muted: #74746e;
+  /* --text-dim: #a1a19a; */
+  --text-dim: #0d0d0d;
   --accent: #2563eb;
   --accent-hover: #1d4ed8;
-  --user-bg: #eff6ff;
+  --danger: #fa0c1c;
+  --danger-hover: rgba(250, 12, 28, 0.08);
+  --user-bg: #f0f4ff;
   --assistant-bg: #ffffff;
-  --tool-bg: #f9fafb;
-  --bg-subtle: rgba(0,0,0,0.03);
+  --tool-bg: #fafaf8;
+  --bg-subtle: rgba(48,48,46,0.035);
+  --sidebar-bg: #F5F5F5;
+  --chat-bg: #FFFFFF;
+  --input-bg: #FFFFFF;
+  --minimap-node: #bab8b8;
+  --minimap-node-active: #22c55e;
+  --radius-control: 8px;
+  --radius-card: 12px;
+  --radius-popover: 8px;
+  --shadow-soft: 0 10px 30px rgba(45, 45, 40, 0.08);
+  --shadow-floating: 0 18px 48px rgba(45, 45, 40, 0.12);
+  --transition-ui: 150ms ease;
 }
 
 html.dark {
   --bg: #1a1a1a;
   --bg-panel: #242424;
-  --bg-hover: #2e2e2e;
-  --bg-selected: #383838;
+  --bg-hover: var(--bg-selected);
+  --bg-selected: #2e2e2e;
   --border: #3a3a3a;
   --text: #e8e8e8;
   --text-muted: #9ca3af;
-  --text-dim: #6b7280;
+  --text-dim: #dadada;
   --accent: #60a5fa;
   --accent-hover: #93c5fd;
+  --danger: #ff6b78;
+  --danger-hover: rgba(255, 107, 120, 0.16);
   --user-bg: #1e293b;
   --assistant-bg: #1a1a1a;
   --tool-bg: #1f2937;
   --bg-subtle: rgba(255,255,255,0.04);
+  --sidebar-bg: #242424;
+  --chat-bg: #1a1a1a;
+  --input-bg: #242424;
+  --minimap-node: #ffffff;
+  --minimap-node-active: #22c55e;
+  --radius-control: 8px;
+  --radius-card: 12px;
+  --radius-popover: 8px;
+  --shadow-soft: 0 10px 30px rgba(0, 0, 0, 0.2);
+  --shadow-floating: 0 18px 48px rgba(0, 0, 0, 0.3);
+  --transition-ui: 150ms ease;
+}
+
+@keyframes minimap-breathe {
+  0%, 100% {
+    opacity: 1;
+    box-shadow: 0 0 5px 1.5px rgba(34, 197, 94, 0.75);
+  }
+  50% {
+    opacity: 0.4;
+    box-shadow: 0 0 1px 0 rgba(34, 197, 94, 0.25);
+  }
 }
 
 .catppuccin-file-icon {
@@ -105,8 +149,12 @@ html, body {
   overflow: hidden;
   background: var(--bg);
   color: var(--text);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  font-size: 14px;
+  font-family: var(--font-ui);
+  font-size: 15px;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-rendering: optimizeLegibility;
+  font-synthesis: none;
   overscroll-behavior: none;
 }
 
@@ -332,11 +380,30 @@ button.extension-widget-trigger:focus-visible {
 }
 
 :root {
-  --font-mono: var(--font-noto-mono), 'JetBrains Mono', 'Fira Code', 'Consolas', ui-monospace, 'PingFang SC', 'Microsoft YaHei', monospace;
+  /* --font-ui: 'PingFang SC', var(--font-noto-sans-sc, 'Noto Sans SC'), 'Noto Sans SC', 'Microsoft YaHei', var(--font-inter, 'Inter'), 'Inter', sans-serif; */
+  --font-ui: "Inter", "HarmonyOS Sans SC", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-mono: var(--font-noto-mono, 'JetBrains Mono'), 'JetBrains Mono', 'Fira Code', 'Consolas', ui-monospace, 'PingFang SC', 'Microsoft YaHei', monospace;
 }
 
 pre, code {
   font-family: var(--font-mono);
+  letter-spacing: 0;
+}
+
+button,
+input,
+textarea,
+select {
+  letter-spacing: inherit;
+}
+
+button,
+input,
+textarea,
+select,
+a {
+  transition-duration: 150ms;
+  transition-timing-function: ease;
 }
 
 /* react-markdown output styles */
@@ -353,11 +420,11 @@ pre, code {
 .markdown-body p:last-child { margin-bottom: 0; }
 .markdown-body h1, .markdown-body h2, .markdown-body h3,
 .markdown-body h4, .markdown-body h5, .markdown-body h6 {
-  font-weight: 600;
+  font-weight: 550;
   margin: 10px 0 5px;
   color: var(--text);
   line-height: 1.35;
-  letter-spacing: 0;
+  letter-spacing: -0.01em;
 }
 .markdown-body h1 { font-size: 1.16em; }
 .markdown-body h2 { font-size: 1.08em; }
@@ -377,7 +444,7 @@ pre, code {
 }
 .markdown-body strong {
   color: color-mix(in srgb, var(--text) 88%, var(--accent));
-  font-weight: 700;
+  font-weight: 600;
 }
 .markdown-body em { color: var(--text-muted); }
 .markdown-body a {
@@ -397,7 +464,7 @@ pre, code {
 }
 .markdown-body .markdown-inline-code {
   background: var(--bg-subtle);
-  border-radius: 5px;
+  border-radius: var(--radius-control);
   padding: 1px 5px;
   color: var(--text);
   font-family: var(--font-mono);
@@ -445,7 +512,7 @@ pre, code {
 }
 .markdown-body blockquote {
   border-left: 3px solid color-mix(in srgb, var(--border) 75%, var(--text-muted));
-  border-radius: 0 6px 6px 0;
+  border-radius: 0 var(--radius-control) var(--radius-control) 0;
   margin: 6px 0;
   padding: 6px 11px;
   background: var(--bg-subtle);
@@ -457,7 +524,7 @@ pre, code {
   overflow-x: auto;
   overflow-y: hidden;
   border: 1px solid var(--border);
-  border-radius: 7px;
+  border-radius: var(--radius-card);
 }
 .markdown-body table {
   border-collapse: separate;
@@ -596,10 +663,10 @@ pre, code {
   max-width: 100%;
   margin: 6px 0;
   border: 1px solid var(--border);
-  border-radius: 7px;
+  border-radius: var(--radius-card);
   overflow: hidden;
   background: var(--bg);
-  box-shadow: 0 1px 0 color-mix(in srgb, var(--border) 42%, transparent);
+  box-shadow: var(--shadow-soft);
 }
 .markdown-code-header {
   padding: 5px 10px;

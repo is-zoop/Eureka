@@ -6,8 +6,8 @@ import {
   createElement as renderSyntaxNode,
   type SyntaxHighlighterProps,
 } from "react-syntax-highlighter";
-import { vs } from "react-syntax-highlighter/dist/cjs/styles/prism";
-import { vscDarkPlus } from "react-syntax-highlighter/dist/cjs/styles/prism";
+import { vs } from "react-syntax-highlighter/dist/esm/styles/prism";
+import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
 import ReactMarkdown from "react-markdown";
 import { useTheme } from "@/hooks/useTheme";
 import {

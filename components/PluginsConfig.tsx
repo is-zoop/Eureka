@@ -107,7 +107,7 @@ function ResourceList({ pkg }: { pkg: PluginPackageInfo }) {
           <div
             style={{
               fontSize: 10,
-              fontWeight: 700,
+              fontWeight: 600,
               color: "var(--text-dim)",
               textTransform: "uppercase",
               marginBottom: 6,
@@ -318,7 +318,7 @@ function AddPluginPanel({
     <div style={{ display: "flex", flexDirection: "column", gap: 18, maxWidth: 660, minHeight: "100%" }}>
       <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-          <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text)" }}>
+          <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text)" }}>
             {t("i18n.addPlugin")}
           </div>
           <a
@@ -592,7 +592,7 @@ function PackageDetail({
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text)" }}>
+        <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text)" }}>
           {t("i18n.resolvedResources")}
         </div>
         <ResourceList pkg={pkg} />
@@ -793,7 +793,7 @@ export function PluginsConfig({
           }}
         >
           <div style={{ display: "flex", alignItems: "baseline", gap: 10, minWidth: 0 }}>
-            <span style={{ fontSize: 15, fontWeight: 700, color: "var(--text)" }}>
+            <span style={{ fontSize: 15, fontWeight: 600, color: "var(--text)" }}>
               {t("common.plugins")}
             </span>
             <code

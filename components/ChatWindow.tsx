@@ -591,7 +591,7 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
   return (
     <div
       className="relative flex h-full min-w-0 flex-col overflow-hidden"
-      style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+      style={{ paddingBottom: "env(safe-area-inset-bottom)", background: "var(--chat-bg)" }}
       onDragEnter={handleDragEnter}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
@@ -659,8 +659,8 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
               }}
             >
               <div style={{ display: "flex", alignItems: "baseline", gap: isMobile ? 7 : 10, minWidth: 0, flex: 1, lineHeight: 1.4, overflow: "hidden" }}>
-                <span style={{ fontSize: 28, fontWeight: 700, letterSpacing: 0, color: "var(--text)", flexShrink: 0, whiteSpace: "nowrap" }}>π</span>
-                <span style={{ fontSize: 22, color: "var(--text)", fontWeight: 700, letterSpacing: 0, flexShrink: 0, whiteSpace: "nowrap" }}>Pi Web</span>
+                <span style={{ fontSize: 28, fontWeight: 600, letterSpacing: "-0.02em", color: "var(--text)", flexShrink: 0, whiteSpace: "nowrap" }}>π</span>
+                <span style={{ fontSize: 22, color: "var(--text)", fontWeight: 600, letterSpacing: "-0.02em", flexShrink: 0, whiteSpace: "nowrap" }}>Eureka</span>
                 <NewSessionUpdateLink label={(version) => t("appUpdate.releaseNotes", { version })} />
               </div>
               <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2, flexShrink: 0 }}>
@@ -1051,20 +1051,20 @@ function ExtensionDialog({
         style={{
           width: "min(560px, 100%)",
           border: "1px solid var(--border)",
-          borderRadius: 8,
-          background: "var(--bg)",
-          boxShadow: "0 20px 60px rgba(0,0,0,0.28)",
+          borderRadius: "var(--radius-popover)",
+          background: "var(--bg-panel)",
+          boxShadow: "var(--shadow-floating)",
           overflow: "hidden",
         }}
       >
         <div style={{ padding: "12px 14px", borderBottom: "1px solid var(--border)" }}>
-          <div style={{ color: "var(--text)", fontSize: 14, fontWeight: 650 }}>{request.title}</div>
+          <div style={{ color: "var(--text)", fontSize: 15, fontWeight: 550, letterSpacing: "-0.01em" }}>{request.title}</div>
           <div style={{ marginTop: 3, color: "var(--text-dim)", fontSize: 11, fontFamily: "var(--font-mono)" }}>{t("chat.extensionRequest")}</div>
         </div>
 
         <div style={{ padding: 14 }}>
           {request.method === "confirm" && (
-            <div style={{ color: "var(--text-muted)", fontSize: 13, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{request.message}</div>
+            <div style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{request.message}</div>
           )}
           {request.method === "select" && (
             <div style={{ display: "grid", gap: 8 }}>
@@ -1075,13 +1075,13 @@ function ExtensionDialog({
                   style={{
                     width: "100%",
                     padding: "9px 10px",
-                    borderRadius: 7,
+                    borderRadius: "var(--radius-control)",
                     border: "1px solid var(--border)",
                     background: "var(--bg-panel)",
                     color: "var(--text)",
                     cursor: "pointer",
                     textAlign: "left",
-                    fontSize: 13,
+                    fontSize: 14,
                   }}
                 >
                   {option}
@@ -1102,12 +1102,12 @@ function ExtensionDialog({
               style={{
                 width: "100%",
                 padding: "9px 10px",
-                borderRadius: 7,
+                borderRadius: "var(--radius-control)",
                 border: "1px solid var(--border)",
                 background: "var(--bg-panel)",
                 color: "var(--text)",
                 outline: "none",
-                fontSize: 13,
+                fontSize: 14,
               }}
             />
           )}
@@ -1124,13 +1124,13 @@ function ExtensionDialog({
                 width: "100%",
                 minHeight: 220,
                 padding: 10,
-                borderRadius: 7,
+                borderRadius: "var(--radius-control)",
                 border: "1px solid var(--border)",
                 background: "var(--bg-panel)",
                 color: "var(--text)",
                 outline: "none",
                 resize: "vertical",
-                fontSize: 13,
+                fontSize: 14,
                 lineHeight: 1.55,
                 fontFamily: "var(--font-mono)",
               }}
@@ -1143,7 +1143,7 @@ function ExtensionDialog({
             onClick={() => onRespond(request, { cancelled: true })}
             style={{
               padding: "6px 10px",
-              borderRadius: 6,
+              borderRadius: "var(--radius-control)",
               border: "1px solid var(--border)",
               background: "var(--bg)",
               color: "var(--text-muted)",
@@ -1157,7 +1157,7 @@ function ExtensionDialog({
               onClick={submitValue}
               style={{
                 padding: "6px 10px",
-                borderRadius: 6,
+                borderRadius: "var(--radius-control)",
                 border: "1px solid var(--accent)",
                 background: "var(--accent)",
                 color: "#fff",
@@ -1171,7 +1171,7 @@ function ExtensionDialog({
               onClick={submitValue}
               style={{
                 padding: "6px 10px",
-                borderRadius: 6,
+                borderRadius: "var(--radius-control)",
                 border: "1px solid var(--accent)",
                 background: "var(--accent)",
                 color: "#fff",

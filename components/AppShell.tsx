@@ -881,7 +881,10 @@ export function AppShell() {
 
   const activeFileTab = fileTabs.find((tab) => tab.id === activeFileTabId) ?? null;
   const activeCwdName = activeCwd ? getFileName(activeCwd) || activeCwd : null;
-  const windowTitle = activeCwdName ? `${activeCwdName} - Pi Web` : "Pi Web";
+  const appTitle = "Eureka";
+  const windowTitle = activeCwdName && activeCwdName !== appTitle
+    ? `${activeCwdName} - ${appTitle}`
+    : appTitle;
 
   useEffect(() => {
     const syncWindowTitle = () => {
@@ -914,6 +917,7 @@ export function AppShell() {
         onAtMentions={handleAtMentions}
         onBackgroundTaskDone={handleBackgroundTaskDone}
         onRunningSessionIdsChange={handleRunningSessionIdsChange}
+        onRequestHide={() => setSidebarOpen(false)}
       />
       <div style={{ padding: "8px", flexShrink: 0, display: "flex", justifyContent: "space-between", gap: 4 }}>
         {([
@@ -1406,8 +1410,9 @@ export function AppShell() {
         style={{
           marginLeft: mobile ? 0 : "auto",
           display: "flex", alignItems: "center", justifyContent: "flex-end",
-          flex: mobile ? 1 : undefined,
-          minWidth: 0,
+          flex: mobile ? 1 : "0 0 400px",
+          width: mobile ? undefined : 400,
+          minWidth: mobile ? 0 : 400,
           gap: mobile ? 7 : 10,
           paddingLeft: mobile ? 6 : 12,
           paddingRight: mobile ? 6 : 12,
@@ -1415,19 +1420,21 @@ export function AppShell() {
           overflow: "hidden",
           visibility: covered ? "hidden" : "visible",
           pointerEvents: covered ? "none" : "auto",
-          background: activeTopPanel === "session" ? "var(--bg-selected)" : "none",
+          background: "transparent",
           border: "none",
-          borderTop: activeTopPanel === "session" ? "2px solid var(--accent)" : "2px solid transparent",
           fontSize: 11, color: "var(--text-muted)",
           whiteSpace: "nowrap", cursor: showChat ? "pointer" : "default",
           fontVariantNumeric: "tabular-nums",
           transition: "color 0.1s, background 0.1s",
         }}
         onMouseEnter={(event) => {
-          if (showChat && !covered) event.currentTarget.style.color = "var(--text)";
+          if (showChat && !covered) {
+            event.currentTarget.style.color = "var(--text)";
+          }
         }}
         onMouseLeave={(event) => {
           event.currentTarget.style.color = activeTopPanel === "session" ? "var(--text)" : "var(--text-muted)";
+          event.currentTarget.style.background = "transparent";
         }}
       >
         {mobile ? (
@@ -1547,64 +1554,9 @@ export function AppShell() {
   return (
     <>
     <style>{`
-      @keyframes session-info-pop {
-        0% {
-          opacity: 0;
-          transform: translateY(-24px);
-          filter: blur(6px);
-          box-shadow: 0 2px 8px rgba(0,0,0,0);
-        }
-        55% {
-          opacity: 1;
-          transform: translateY(0);
-          filter: blur(0);
-          background: color-mix(in srgb, var(--accent) 8%, var(--bg-panel));
-          box-shadow: 0 18px 44px rgba(37,99,235,0.16);
-        }
-        100% {
-          opacity: 1;
-          transform: translateY(0);
-          filter: blur(0);
-          background: var(--bg-panel);
-          box-shadow: 0 10px 28px rgba(0,0,0,0.10);
-        }
-      }
-      @keyframes session-info-light-wash {
-        0% {
-          opacity: 0;
-          transform: translateX(-110%) skewX(-16deg);
-        }
-        24% {
-          opacity: 0.42;
-        }
-        100% {
-          opacity: 0;
-          transform: translateX(115%) skewX(-16deg);
-        }
-      }
       .session-info-popover {
         position: relative;
         overflow: hidden;
-        transform-origin: top right;
-        animation: session-info-pop 360ms ease-out both;
-        will-change: transform, opacity, filter, background, box-shadow;
-      }
-      .session-info-popover::after {
-        content: "";
-        position: absolute;
-        top: 0;
-        bottom: 0;
-        left: 0;
-        width: 44%;
-        pointer-events: none;
-        background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--accent) 24%, transparent), transparent);
-        animation: session-info-light-wash 620ms ease-out both;
-      }
-      @media (prefers-reduced-motion: reduce) {
-        .session-info-popover,
-        .session-info-popover::after {
-          animation: none;
-        }
       }
       .mobile-session-stats {
         container-type: inline-size;
@@ -1661,7 +1613,7 @@ export function AppShell() {
         className={`sidebar-container${sidebarOpen ? " sidebar-open" : " sidebar-closed"}${mobileSidebarReady ? "" : " sidebar-mobile-pending"}${sidebarResizer.isResizing ? " sidebar-resizing" : ""}`}
         style={{
           "--sidebar-width": `${sidebarResizer.width}px`,
-          background: "var(--bg-panel)",
+          background: "var(--sidebar-bg)",
           borderRight: "1px solid var(--border)",
           display: "flex",
           flexDirection: "column",
@@ -1684,11 +1636,11 @@ export function AppShell() {
       )}
 
       {/* Center: chat */}
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0 }}>
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0, background: "var(--chat-bg)" }}>
         {/* Top bar with sidebar toggle */}
-        <div ref={topBarRef} style={{ flexShrink: 0, background: "var(--bg-panel)" }}>
+        <div ref={topBarRef} style={{ flexShrink: 0, background: "var(--bg)" }}>
         <div style={{ display: "flex", alignItems: "center", position: "relative", borderBottom: "1px solid var(--border)", height: "calc(36px + env(safe-area-inset-top))", paddingTop: "env(safe-area-inset-top)" }}>
-          <button
+          {!sidebarOpen && <button
             onClick={handleSidebarToggle}
              title={sidebarOpen ? translate("sidebar.hide") : translate("sidebar.show")}
              aria-label={sidebarOpen ? translate("sidebar.hide") : translate("sidebar.show")}
@@ -1710,7 +1662,7 @@ export function AppShell() {
                 <line x1="3" y1="6" x2="21" y2="6" /><line x1="3" y1="12" x2="21" y2="12" /><line x1="3" y1="18" x2="21" y2="18" />
               </svg>
             )}
-          </button>
+          </button>}
           {isMobile && (
             <div
               ref={mobileToolbarRef}
@@ -1809,9 +1761,11 @@ export function AppShell() {
             <div style={{
               position: "fixed",
               top: topPanelPos.top,
-              left: topPanelPos.left,
-              width: topPanelPos.width,
-              maxHeight: `calc(100dvh - ${topPanelPos.top}px)`,
+              left: activeTopPanel === "session" && !isMobile ? undefined : topPanelPos.left,
+              right: activeTopPanel === "session" && !isMobile ? 0 : undefined,
+              bottom: activeTopPanel === "session" && !isMobile ? 0 : undefined,
+              width: activeTopPanel === "session" && !isMobile ? 400 : topPanelPos.width,
+              maxHeight: activeTopPanel === "session" && !isMobile ? undefined : `calc(100dvh - ${topPanelPos.top}px)`,
               overflowY: "auto",
               zIndex: 500,
             }}>
@@ -1890,8 +1844,10 @@ export function AppShell() {
               {activeTopPanel === "session" && (
                 <div className="session-info-popover" style={{
                   background: "var(--bg-panel)",
-                  borderBottom: "1px solid var(--border)",
-                  boxShadow: "0 10px 28px rgba(0,0,0,0.10)",
+                  minHeight: !isMobile ? "100%" : undefined,
+                  borderLeft: !isMobile ? "1px solid var(--border)" : undefined,
+                  borderBottom: isMobile ? "1px solid var(--border)" : undefined,
+                  boxShadow: !isMobile ? "-10px 0 28px rgba(0,0,0,0.06)" : "0 10px 28px rgba(0,0,0,0.10)",
                   padding: "12px 16px",
                 }}>
                   {sessionStats ? (() => {
@@ -1943,7 +1899,7 @@ export function AppShell() {
                       compact = false,
                     ) => (
                         <div style={{ minWidth: 0 }}>
-                          <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text)", marginBottom: 6 }}>{title}</div>
+                          <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text)", marginBottom: 8 }}>{title}</div>
                           <div style={{
                             display: "grid",
                             gridTemplateColumns: compact ? "max-content max-content" : "auto minmax(0, 1fr)",
@@ -2015,7 +1971,7 @@ export function AppShell() {
                     };
                     const sessionInfoSection = (
                       <div style={{ minWidth: 0 }}>
-                         <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text)", marginBottom: 6 }}>{translate("session.infoSection")}</div>
+                         <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text)", marginBottom: 8 }}>{translate("session.infoSection")}</div>
                         <div style={{ display: "grid", gridTemplateColumns: "auto minmax(0, 1fr) auto", columnGap: 12, rowGap: 8, alignItems: "start" }}>
                           {sessionRows.map((row) => (
                             <div key={`session-info:${row.label}`} style={{ display: "contents" }}>
@@ -2036,18 +1992,16 @@ export function AppShell() {
 
                     return (
                       <div style={{
-                        display: "grid",
-                        gridTemplateColumns: isMobile
-                          ? "1fr"
-                          : "minmax(360px, 1.7fr) minmax(140px, 0.55fr) minmax(190px, 0.75fr)",
-                        gap: isMobile ? 16 : 24,
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 0,
                         fontSize: 12,
                         lineHeight: 1.5,
                         fontFamily: "var(--font-mono)",
                       }}>
-                        {sessionInfoSection}
-                         {section(translate("session.messages"), messageRows)}
-                         {section(translate("session.tokens"), [...tokenRows, ...extraTokenRows], "right", true)}
+                        <div style={{ paddingBottom: 16 }}>{sessionInfoSection}</div>
+                        <div style={{ borderTop: "1px solid var(--border)", padding: "16px 0" }}>{section(translate("session.messages"), messageRows)}</div>
+                        <div style={{ borderTop: "1px solid var(--border)", paddingTop: 16 }}>{section(translate("session.tokens"), [...tokenRows, ...extraTokenRows], "right", true)}</div>
                       </div>
                     );
                   })() : (
@@ -2160,7 +2114,7 @@ export function AppShell() {
           display: "flex",
           flexDirection: "column",
           borderLeft: "1px solid var(--border)",
-          background: "var(--bg)",
+          background: "var(--sidebar-bg)",
         } as React.CSSProperties}
       >
         {/* Right panel tab bar */}
@@ -2170,7 +2124,7 @@ export function AppShell() {
           flexShrink: 0,
           height: "calc(36px + env(safe-area-inset-top))",
           paddingTop: "env(safe-area-inset-top)",
-          background: "var(--bg-panel)",
+          background: "var(--sidebar-bg)",
           borderBottom: "1px solid var(--border)",
         }}>
           <div style={{ flex: 1, overflow: "hidden" }}>
