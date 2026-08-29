@@ -11,6 +11,7 @@ import { openFileTab, saveFileViewerState } from "./file-tab-state";
 import { ModelsConfig } from "./ModelsConfig";
 import { SkillsConfig } from "./SkillsConfig";
 import { PluginsConfig } from "./PluginsConfig";
+import { SidebarUserMenu, type SidebarUser } from "./SidebarUserMenu";
 import { ProjectTrustDialog } from "./ProjectTrustDialog";
 import { BranchNavigator } from "./BranchNavigator";
 import { useTheme } from "@/hooks/useTheme";
@@ -105,6 +106,26 @@ export function AppShell() {
   const [rightPanelOpen, setRightPanelOpen] = useState(false);
   const [mobileToolbarMoreOpen, setMobileToolbarMoreOpen] = useState(false);
   const [mobileSidebarReady, setMobileSidebarReady] = useState(false);
+  const [authenticatedUser, setAuthenticatedUser] = useState<SidebarUser | null>(null);
+  const authProfileRequestedRef = useRef(false);
+  useEffect(() => {
+    // React Strict Mode replays effects during development. Keep this to one
+    // profile refresh so Haze refresh-token rotation is never raced locally.
+    if (authProfileRequestedRef.current) return;
+    authProfileRequestedRef.current = true;
+    void fetch("/api/marketplace-auth/session", { cache: "no-store" })
+      .then(async (response) => ({ response, body: await response.json().catch(() => null) as { user?: SidebarUser } | null }))
+      .then(({ response, body }) => {
+        if (response.status === 401) {
+          window.location.replace("/login?returnTo=/");
+          return;
+        }
+        if (response.ok && body?.user?.name) setAuthenticatedUser(body.user);
+      })
+      .catch(() => {
+        window.location.replace("/login?returnTo=/");
+      });
+  }, []);
   const sidebarWidthRef = useRef(SIDEBAR_DEFAULT_WIDTH);
   const rightPanelWidthRef = useRef(RIGHT_PANEL_FALLBACK_WIDTH);
   const getResponsiveRightPanelWidth = useCallback(
@@ -981,6 +1002,7 @@ export function AppShell() {
           </button>
         ))}
       </div>
+      <SidebarUserMenu user={authenticatedUser} />
     </>
   );
 
