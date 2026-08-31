@@ -96,28 +96,12 @@ html.dark {
   }
 }
 
-.catppuccin-file-icon {
+.material-file-icon {
   display: block;
   flex-shrink: 0;
-  background: center / contain no-repeat var(--catppuccin-icon-light);
-}
-html.dark .catppuccin-file-icon {
-  background-image: var(--catppuccin-icon-dark);
-}
-
-/* Use the SVG alpha channel as a mask so file icons follow the app's
-   restrained text palette instead of Catppuccin's language-specific colors. */
-@supports (mask-image: url("mask.svg")) or (-webkit-mask-image: url("mask.svg")) {
-  .catppuccin-file-icon {
-    background: var(--text-dim);
-    mask: center / contain no-repeat var(--catppuccin-icon-light);
-    -webkit-mask: center / contain no-repeat var(--catppuccin-icon-light);
-  }
-  html.dark .catppuccin-file-icon {
-    background: var(--text-dim);
-    mask-image: var(--catppuccin-icon-dark);
-    -webkit-mask-image: var(--catppuccin-icon-dark);
-  }
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: contain;
 }
 
 /* Theme toggle: circular wipe via View Transitions API.
@@ -153,6 +137,8 @@ html, body {
   font-size: 15px;
   font-weight: 400;
   letter-spacing: 0;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
   font-synthesis: none;
   overscroll-behavior: none;
@@ -1293,16 +1279,16 @@ span.linenumber {
   position: absolute;
   top: 0;
   bottom: 0;
-  left: 5px;
-  width: 2px;
+  left: calc(50% - 0.5px);
+  width: 1px;
   pointer-events: none;
   background: transparent;
-  transition: background 0.12s ease;
+  transition: background-color 0.12s ease;
 }
 .panel-resize-handle:hover::after,
 .panel-resize-handle:focus-visible::after,
 .panel-resize-handle.is-resizing::after {
-  background: color-mix(in srgb, var(--text-muted) 70%, var(--border));
+  background: var(--text-muted);
 }
 .right-panel-overlay-backdrop {
   display: none;

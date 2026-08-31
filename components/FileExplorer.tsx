@@ -1,6 +1,6 @@
 "use client";
 
-import { forwardRef, useState, useCallback, useEffect, useImperativeHandle, useMemo, useRef } from "react";
+import { forwardRef, useState, useCallback, useEffect, useImperativeHandle, useMemo, useRef, type ReactElement } from "react";
 import { getFileIcon, FolderIcon } from "./FileIcons";
 import {
   encodeFilePathForApi,
@@ -12,7 +12,17 @@ import {
 } from "@/lib/file-paths";
 import type { GitFileStatus, GitFileStatusKind, GitStatusResponse } from "@/lib/git-types";
 import { useI18n } from "@/hooks/useI18n";
+import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 type Translate = ReturnType<typeof useI18n>["t"];
+
+function FileTooltip({ content, children }: { content: string; children: ReactElement }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger render={children} />
+      <TooltipContent side="right">{content}</TooltipContent>
+    </Tooltip>
+  );
+}
 
 interface FileEntry {
   name: string;
@@ -124,25 +134,27 @@ const GIT_STATUS_COLORS: Record<GitFileStatusKind, string> = {
 };
 
 function GitStatusBadge({ status, t }: { status: GitFileStatus; t: Translate }) {
+  const label = t(GIT_STATUS_KEYS[status.status]);
   return (
-    <span
-      title={t(GIT_STATUS_KEYS[status.status])}
-      aria-label={t(GIT_STATUS_KEYS[status.status])}
-      style={{
-        width: 14,
-        height: 14,
-        flexShrink: 0,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        color: GIT_STATUS_COLORS[status.status],
-        fontFamily: "var(--font-mono)",
-        fontSize: 11,
-        fontWeight: 600,
-      }}
-    >
-      {status.code}
-    </span>
+    <FileTooltip content={label}>
+      <span
+        aria-label={label}
+        style={{
+          width: 14,
+          height: 14,
+          flexShrink: 0,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          color: GIT_STATUS_COLORS[status.status],
+          fontFamily: "var(--font-mono)",
+          fontSize: 11,
+          fontWeight: 600,
+        }}
+      >
+        {status.code}
+      </span>
+    </FileTooltip>
   );
 }
 
@@ -192,20 +204,21 @@ function MentionIcon({ size = 11 }: { size?: number }) {
 
 function DismissButton({ onClick, title }: { onClick: () => void; title: string }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      title={title}
-      aria-label={title}
-      style={{ width: 24, height: 24, padding: 0, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, border: "none", borderRadius: 4, background: "none", color: "var(--text-dim)", cursor: "pointer" }}
-      onMouseEnter={(event) => { event.currentTarget.style.color = "var(--text-muted)"; event.currentTarget.style.background = "var(--bg-hover)"; }}
-      onMouseLeave={(event) => { event.currentTarget.style.color = "var(--text-dim)"; event.currentTarget.style.background = "none"; }}
-    >
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true">
-        <path d="m6 6 12 12" />
-        <path d="m18 6-12 12" />
-      </svg>
-    </button>
+    <FileTooltip content={title}>
+      <button
+        type="button"
+        onClick={onClick}
+        aria-label={title}
+        style={{ width: 24, height: 24, padding: 0, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, border: "none", borderRadius: 4, background: "none", color: "var(--text-dim)", cursor: "pointer" }}
+        onMouseEnter={(event) => { event.currentTarget.style.color = "var(--text-muted)"; event.currentTarget.style.background = "var(--bg-hover)"; }}
+        onMouseLeave={(event) => { event.currentTarget.style.color = "var(--text-dim)"; event.currentTarget.style.background = "none"; }}
+      >
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true">
+          <path d="m6 6 12 12" />
+          <path d="m18 6-12 12" />
+        </svg>
+      </button>
+    </FileTooltip>
   );
 }
 
@@ -313,46 +326,49 @@ function TreeNode({
         <span style={{ flexShrink: 0, display: "flex", alignItems: "center" }}>
           {node.isDir ? <FolderIcon size={14} open={open} /> : getFileIcon(node.name, 14)}
         </span>
-        <span
-          style={{
-            fontSize: 12,
-            color: "var(--text)",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
-            flex: 1,
-          }}
-          title={node.fullPath}
-        >
-          {node.name}
-        </span>
-        {highlighted && (
+        <FileTooltip content={node.fullPath}>
           <span
-            title={t("files.newlyUploaded")}
-            aria-label={t("files.newlyUploaded")}
-            style={{ width: 14, height: 14, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}
+            style={{
+              fontSize: 12,
+              color: "var(--text)",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+              flex: 1,
+            }}
           >
-            <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#3b82f6" }} />
+            {node.name}
           </span>
+        </FileTooltip>
+        {highlighted && (
+          <FileTooltip content={t("files.newlyUploaded")}>
+            <span
+              aria-label={t("files.newlyUploaded")}
+              style={{ width: 14, height: 14, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}
+            >
+              <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#3b82f6" }} />
+            </span>
+          </FileTooltip>
         )}
         {!hovered && !node.isDir && gitStatus && (
           <GitStatusBadge status={gitStatus} t={t} />
         )}
         {!hovered && containsGitChanges && (
-          <span
-            title={t("files.containsChangedFiles")}
-            aria-label={t("files.containsChangedFiles")}
-            style={{
-              width: 14,
-              height: 14,
-              flexShrink: 0,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#d6a84b" }} />
-          </span>
+          <FileTooltip content={t("files.containsChangedFiles")}>
+            <span
+              aria-label={t("files.containsChangedFiles")}
+              style={{
+                width: 14,
+                height: 14,
+                flexShrink: 0,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#d6a84b" }} />
+            </span>
+          </FileTooltip>
         )}
         {loading && (
           <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="var(--text-dim)" strokeWidth="2" strokeLinecap="round">
@@ -360,43 +376,47 @@ function TreeNode({
           </svg>
         )}
         {onAtMention && hovered && (
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onAtMention(getRelativeFilePath(node.fullPath, cwd), node.isDir);
-            }}
-            title={t("files.insertPath")}
-            style={{
-              position: "absolute",
-              right: !node.isDir ? 28 : 4,
-              top: "50%",
-              transform: "translateY(-50%)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: 4,
-              padding: "0 8px",
-              height: 20,
-              background: "var(--bg-panel)",
-              border: "1px solid var(--border)",
-              borderRadius: 4,
-              color: "var(--accent)",
-              cursor: "pointer",
-              fontSize: 11,
-              fontWeight: 600,
-              whiteSpace: "nowrap",
-            }}
-          >
-            <MentionIcon />
-            {t("files.mention")}
-          </button>
+          <FileTooltip content={t("files.insertPath")}>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onAtMention(getRelativeFilePath(node.fullPath, cwd), node.isDir);
+              }}
+              aria-label={t("files.insertPath")}
+              style={{
+                position: "absolute",
+                right: !node.isDir ? 28 : 4,
+                top: "50%",
+                transform: "translateY(-50%)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 4,
+                padding: "0 8px",
+                height: 20,
+                background: "var(--bg-panel)",
+                border: "1px solid var(--border)",
+                borderRadius: 4,
+                color: "var(--accent)",
+                cursor: "pointer",
+                fontSize: 11,
+                fontWeight: 600,
+                whiteSpace: "nowrap",
+              }}
+            >
+              <MentionIcon />
+              {t("files.mention")}
+            </button>
+          </FileTooltip>
         )}
         {hovered && !node.isDir && (
+          <FileTooltip content={t("files.download")}>
           <a
             href={`/api/files/${encodeFilePathForApi(node.fullPath)}?type=download`}
             download
             onClick={(e) => e.stopPropagation()}
-            title={t("files.download")}
+            aria-label={t("files.download")}
             style={{
               position: "absolute",
               right: 4,
@@ -425,6 +445,7 @@ function TreeNode({
               <line x1="12" y1="15" x2="12" y2="3" />
             </svg>
           </a>
+          </FileTooltip>
         )}
       </div>
       {node.isDir && open && (

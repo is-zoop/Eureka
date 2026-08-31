@@ -22,7 +22,7 @@ function LogoutIcon() {
   return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path d="m16 17 5-5-5-5" /><path d="M21 12H9" /></svg>;
 }
 
-export function SidebarUserMenu({ user }: { user: SidebarUser | null }) {
+export function SidebarUserMenu({ user, onOpenSettings }: { user: SidebarUser | null; onOpenSettings?: () => void }) {
   const { t } = useI18n();
   const name = user?.name || t("account.loading");
   const email = user?.email || t("account.emailUnavailable");
@@ -39,7 +39,7 @@ export function SidebarUserMenu({ user }: { user: SidebarUser | null }) {
       <SidebarMenu>
         <SidebarMenuItem>
           <DropdownMenu>
-            <DropdownMenuTrigger render={<SidebarMenuButton type="button" title={name}>
+            <DropdownMenuTrigger render={<SidebarMenuButton type="button" aria-label={name}>
               <span className="flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[var(--bg-hover)] text-[var(--text-muted)]">
                 {user?.avatarUrl ? <img src={user.avatarUrl} alt="" className="size-full object-cover" /> : <DefaultUserIcon />}
               </span>
@@ -58,7 +58,7 @@ export function SidebarUserMenu({ user }: { user: SidebarUser | null }) {
               </div>
               <DropdownMenuSeparator />
               <DropdownMenuGroup>
-                <DropdownMenuItem onClick={() => undefined}><SettingsIcon />{t("account.settings")}</DropdownMenuItem>
+                <DropdownMenuItem onClick={onOpenSettings}><SettingsIcon />{t("account.settings")}</DropdownMenuItem>
               </DropdownMenuGroup>
               <DropdownMenuSeparator />
               <DropdownMenuItem variant="destructive" onClick={() => void handleLogout()}><LogoutIcon />{t("account.logout")}</DropdownMenuItem>

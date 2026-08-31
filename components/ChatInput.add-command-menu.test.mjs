@@ -36,7 +36,12 @@ test("keeps command descriptions on one truncated line with a tooltip", () => {
 test("uses the same compact command-list treatment for slash commands", () => {
   assert.match(source, /slashMenuOpen && slashQuery !== null && !addMenuOpen/);
   assert.match(source, /height: isMobile \? 280 : 320/);
-  assert.match(source, /value=\{slashQuery \?\? ""\}[\s\S]*?onValueChange=\{\(query\) =>/);
-  assert.match(source, /const nextValue = `\/\$\{query\}`/);
+  assert.doesNotMatch(source, /<CommandInput\s+value=\{slashQuery \?\? ""\}/);
   assert.match(source, /title=\{description \? `\/\$\{command\.name\} · \$\{description\}`/);
+});
+
+test("keeps @ file filtering in the composer instead of adding a second search field", () => {
+  assert.match(source, /const atQueryText = atQuery\?\.query \?\? null/);
+  assert.match(source, /atMenuOpen && atQuery !== null/);
+  assert.match(source, /background: commandPaletteBackground/);
 });

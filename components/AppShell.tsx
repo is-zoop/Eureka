@@ -8,9 +8,12 @@ import { ChatWindow } from "./ChatWindow";
 import { FileViewer } from "./FileViewer";
 import { TabBar, type Tab } from "./TabBar";
 import { openFileTab, saveFileViewerState } from "./file-tab-state";
-import { ModelsConfig } from "./ModelsConfig";
 import { SkillsConfig } from "./SkillsConfig";
 import { PluginsConfig } from "./PluginsConfig";
+import { ExtensionsCenter } from "./ExtensionsCenter";
+import { SettingsPage } from "./SettingsPage";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "./ui/dropdown-menu";
+import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 import { SidebarUserMenu, type SidebarUser } from "./SidebarUserMenu";
 import { ProjectTrustDialog } from "./ProjectTrustDialog";
 import { BranchNavigator } from "./BranchNavigator";
@@ -94,10 +97,11 @@ export function AppShell() {
   const [refreshKey, setRefreshKey] = useState(0);
   const [sessionKey, setSessionKey] = useState(0);
   const [explorerRefreshKey, setExplorerRefreshKey] = useState(0);
-  const [modelsConfigOpen, setModelsConfigOpen] = useState(false);
   const [modelsRefreshKey, setModelsRefreshKey] = useState(0);
   const [skillsConfigOpen, setSkillsConfigOpen] = useState(false);
   const [pluginsConfigOpen, setPluginsConfigOpen] = useState(false);
+  const [extensionsCenterOpen, setExtensionsCenterOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [projectTrust, setProjectTrust] = useState<ProjectTrustStatus | null>(null);
   const [projectTrustDialogOpen, setProjectTrustDialogOpen] = useState(false);
   const [projectTrustBusy, setProjectTrustBusy] = useState(false);
@@ -370,6 +374,18 @@ export function AppShell() {
     if (languageBtnRef.current) ro.observe(languageBtnRef.current);
     return () => ro.disconnect();
   }, [activeTopPanel, isMobile]);
+
+  useEffect(() => {
+    if (activeTopPanel !== "branches" && activeTopPanel !== "system") return;
+    const closeOnOutsidePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      if (topBarRef.current?.contains(target) || target.closest("[data-top-panel]")) return;
+      setActiveTopPanel(null);
+    };
+    document.addEventListener("pointerdown", closeOnOutsidePointerDown);
+    return () => document.removeEventListener("pointerdown", closeOnOutsidePointerDown);
+  }, [activeTopPanel]);
 
   // Right panel — file tabs only
   const [fileTabs, setFileTabs] = useState<Tab[]>([]);
@@ -939,70 +955,9 @@ export function AppShell() {
         onBackgroundTaskDone={handleBackgroundTaskDone}
         onRunningSessionIdsChange={handleRunningSessionIdsChange}
         onRequestHide={() => setSidebarOpen(false)}
+        onOpenExtensionsCenter={() => setExtensionsCenterOpen(true)}
       />
-      <div style={{ padding: "8px", flexShrink: 0, display: "flex", justifyContent: "space-between", gap: 4 }}>
-        {([
-          {
-             label: translate("common.models"),
-            onClick: () => setModelsConfigOpen(true),
-            disabled: false,
-            icon: (
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="4" y="4" width="16" height="16" rx="2" /><rect x="9" y="9" width="6" height="6" />
-                <line x1="9" y1="1" x2="9" y2="4" /><line x1="15" y1="1" x2="15" y2="4" />
-                <line x1="9" y1="20" x2="9" y2="23" /><line x1="15" y1="20" x2="15" y2="23" />
-                <line x1="20" y1="9" x2="23" y2="9" /><line x1="20" y1="14" x2="23" y2="14" />
-                <line x1="1" y1="9" x2="4" y2="9" /><line x1="1" y1="14" x2="4" y2="14" />
-              </svg>
-            ),
-          },
-          {
-             label: translate("common.skills"),
-            onClick: () => setSkillsConfigOpen(true),
-            disabled: !activeCwd && !selectedSession?.cwd && !newSessionCwd,
-            icon: (
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 2L2 7l10 5 10-5-10-5z" />
-                <path d="M2 17l10 5 10-5" />
-                <path d="M2 12l10 5 10-5" />
-              </svg>
-            ),
-          },
-          {
-             label: translate("common.plugins"),
-            onClick: () => setPluginsConfigOpen(true),
-            disabled: !activeCwd && !selectedSession?.cwd && !newSessionCwd,
-            icon: (
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M9 7V2" />
-                <path d="M15 7V2" />
-                <path d="M6 13V8a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v5a6 6 0 0 1-12 0Z" />
-                <path d="M12 19v3" />
-              </svg>
-            ),
-          },
-        ] as { label: string; onClick: () => void; disabled: boolean; icon: React.ReactNode }[]).map(({ label, onClick, disabled, icon }) => (
-          <button
-            key={label}
-            onClick={onClick}
-            disabled={disabled}
-            title={label}
-            style={{
-              flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-              height: 32, padding: 0, background: "none", border: "none",
-              borderRadius: 9, color: "var(--text-muted)", cursor: disabled ? "default" : "pointer",
-              fontSize: 12, opacity: disabled ? 0.35 : 1,
-              transition: "background 0.12s, color 0.12s",
-            }}
-            onMouseEnter={(e) => { if (!disabled) { e.currentTarget.style.background = "var(--bg-hover)"; e.currentTarget.style.color = "var(--text)"; } }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = "none"; e.currentTarget.style.color = "var(--text-muted)"; }}
-          >
-            {icon}
-            {label}
-          </button>
-        ))}
-      </div>
-      <SidebarUserMenu user={authenticatedUser} />
+      <SidebarUserMenu user={authenticatedUser} onOpenSettings={() => setSettingsOpen(true)} />
     </>
   );
 
@@ -1149,6 +1104,48 @@ export function AppShell() {
 
   const renderChatToolbarActions = (mobile: boolean) => {
     if (!mobile && !showChat) return null;
+    if (!mobile) {
+      const hasMessages = Boolean(
+        selectedSession
+        && ((sessionStats?.userMessages ?? 0) > 0 || selectedSession.messageCount > 0),
+      );
+      const canAutoName = Boolean(selectedSession && !selectedSession.transient && hasMessages && autoNameStatus.kind !== "naming");
+      const sessionTitle = selectedSession?.name || selectedSession?.firstMessage || translate("sidebar.new");
+
+      return (
+        <div style={{ display: "flex", alignItems: "center", minWidth: 0, height: "100%" }}>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0, height: "100%", padding: "0 14px", color: "var(--text)" }}>
+                  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}><path d="M2.992 16.342a2 2 0 0 1 .094 1.167l-1.065 3.29a1 1 0 0 0 1.236 1.168l3.413-.998a2 2 0 0 1 1.099.092 10 10 0 1 0-4.777-4.719" /><path d="M8 12h.01" /><path d="M12 12h.01" /><path d="M16 12h.01" /></svg>
+                  <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 15, fontWeight: 600, letterSpacing: "-0.01em" }}>{sessionTitle}</span>
+                </div>
+              }
+            />
+            <TooltipContent>{sessionTitle}</TooltipContent>
+          </Tooltip>
+          <DropdownMenu>
+            <Tooltip>
+              <DropdownMenuTrigger render={<TooltipTrigger render={<button type="button" aria-label={translate("chat.moreControls")} style={{ display: "grid", placeItems: "center", width: 34, height: 34, marginLeft: -4, padding: 0, border: "none", borderRadius: "var(--radius-control)", background: "transparent", color: "var(--text-muted)", cursor: "pointer" }} onMouseEnter={(event) => { event.currentTarget.style.background = "var(--bg-hover)"; event.currentTarget.style.color = "var(--text)"; }} onMouseLeave={(event) => { event.currentTarget.style.background = "transparent"; event.currentTarget.style.color = "var(--text-muted)"; }}><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.5" /><circle cx="12" cy="12" r="1.5" /><circle cx="19" cy="12" r="1.5" /></svg></button>} />} />
+              <TooltipContent>{translate("chat.moreControls")}</TooltipContent>
+            </Tooltip>
+            <DropdownMenuContent align="start" sideOffset={6} className="w-48 bg-[var(--bg-panel)] text-[var(--text)]">
+              <DropdownMenuGroup>
+                <DropdownMenuItem disabled={!selectedSession} onClick={handleViewFullHistory}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8" /><path d="M3 3v5h5" /><path d="M12 7v5l3 2" /></svg>{translate("history.label")}</DropdownMenuItem>
+                <DropdownMenuItem disabled={!canAutoName} onClick={() => void handleAutoName()}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 4 5 5L7 22l-5-5Z" /><path d="m14 5 5 5" /><path d="M6 4V2M5 3H3M19 19v3M17.5 20.5h3" /></svg>{autoNameStatus.kind === "naming" ? translate("title.generating") : translate("title.generate")}</DropdownMenuItem>
+              </DropdownMenuGroup>
+              <DropdownMenuSeparator />
+              <DropdownMenuGroup>
+                <DropdownMenuItem onClick={() => toggleTopPanel("branches")}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="6" y1="3" x2="6" y2="15" /><circle cx="18" cy="6" r="3" /><circle cx="6" cy="18" r="3" /><path d="M18 9a9 9 0 0 1-9 9" /></svg>{translate("i18n.branches")}</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleSystemPromptToggle()}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="8" y1="13" x2="16" y2="13" /><line x1="8" y1="17" x2="13" y2="17" /></svg>{translate("system.label")}</DropdownMenuItem>
+              </DropdownMenuGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <BranchNavigator tree={branchTree} activeLeafId={branchActiveLeafId} onLeafChange={handleBranchLeafChange} inline compact containerRef={topBarRef} open={activeTopPanel === "branches"} onToggle={() => toggleTopPanel("branches")} hasSession={showChat} hideInlineButton />
+        </div>
+      );
+    }
     return (
       <div style={{ display: "flex", alignItems: "stretch", height: "100%" }}>
         <button
@@ -1366,8 +1363,6 @@ export function AppShell() {
           </svg>
           {!mobile && <span>{translate("system.label")}</span>}
         </button>
-        {mobile && renderThemeButton(true)}
-        {mobile && renderLanguageButton(true)}
       </div>
     );
   };
@@ -1410,6 +1405,7 @@ export function AppShell() {
       tooltipParts.push(`context: ${percent !== null ? percent.toFixed(1) + "%" : "unknown"} of ${contextUsage.contextWindow.toLocaleString()} tokens`);
     }
     const tooltip = tooltipParts.join("  |  ");
+    const tooltipLines = tooltip ? tooltip.split(/\s+\|\s+/) : [translate("session.title")];
     const covered = mobile && mobileToolbarMoreOpen;
     const hasMobileValues = Boolean(
       (tokens && (tokens.input > 0 || tokens.output > 0))
@@ -1418,12 +1414,14 @@ export function AppShell() {
     );
 
     return (
-      <button
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <button
         type="button"
         onClick={() => toggleTopPanel("session")}
         disabled={!showChat || covered}
         tabIndex={covered ? -1 : undefined}
-        title={tooltip || translate("session.title")}
         aria-label={translate("session.title")}
         aria-pressed={activeTopPanel === "session"}
         aria-hidden={covered ? true : undefined}
@@ -1534,7 +1532,15 @@ export function AppShell() {
             )}
           </>
         )}
-      </button>
+            </button>
+          }
+        />
+        <TooltipContent className="min-w-40">
+          <div style={{ display: "grid", gap: 2 }}>
+            {tooltipLines.map((line) => <div key={line}>{line}</div>)}
+          </div>
+        </TooltipContent>
+      </Tooltip>
     );
   };
 
@@ -1648,20 +1654,26 @@ export function AppShell() {
         {sidebarContent}
       </div>
       {sidebarOpen && (
-        <div
-          {...sidebarResizer.separatorProps}
-          aria-controls="session-sidebar"
-          className={`panel-resize-handle sidebar-resize-handle${sidebarResizer.isResizing ? " is-resizing" : ""}`}
-          data-resize-handle="sidebar"
-          title={`${translate("layout.resizeSidebar")}: ${translate("layout.resizeHint")}`}
-        />
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <div
+                {...sidebarResizer.separatorProps}
+                aria-controls="session-sidebar"
+                className={`panel-resize-handle sidebar-resize-handle${sidebarResizer.isResizing ? " is-resizing" : ""}`}
+                data-resize-handle="sidebar"
+              />
+            }
+          />
+          <TooltipContent side="right">{`${translate("layout.resizeSidebar")}: ${translate("layout.resizeHint")}`}</TooltipContent>
+        </Tooltip>
       )}
 
       {/* Center: chat */}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0, background: "var(--chat-bg)" }}>
         {/* Top bar with sidebar toggle */}
-        <div ref={topBarRef} style={{ flexShrink: 0, background: "var(--bg)" }}>
-        <div style={{ display: "flex", alignItems: "center", position: "relative", borderBottom: "1px solid var(--border)", height: "calc(36px + env(safe-area-inset-top))", paddingTop: "env(safe-area-inset-top)" }}>
+        <div ref={topBarRef} style={{ flexShrink: 0, background: "var(--chat-bg)" }}>
+        <div style={{ display: "flex", alignItems: "center", position: "relative", background: "var(--chat-bg)", borderBottom: "1px solid var(--border)", height: `calc(${isMobile ? 48 : 42}px + env(safe-area-inset-top))`, paddingTop: "env(safe-area-inset-top)" }}>
           {!sidebarOpen && <button
             onClick={handleSidebarToggle}
              title={sidebarOpen ? translate("sidebar.hide") : translate("sidebar.show")}
@@ -1756,8 +1768,6 @@ export function AppShell() {
           )}
           {!isMobile && (
             <>
-              {renderThemeButton(false)}
-              {renderLanguageButton(false)}
               {renderProjectTrustWarning(false)}
               {renderChatToolbarActions(false)}
               {renderSessionStatsButton(false)}
@@ -1780,7 +1790,7 @@ export function AppShell() {
           )}
           {/* Top panel dropdown — shared, only one active at a time */}
           {activeTopPanel && topPanelPos && (
-            <div style={{
+            <div data-top-panel style={{
               position: "fixed",
               top: topPanelPos.top,
               left: activeTopPanel === "session" && !isMobile ? undefined : topPanelPos.left,
@@ -2117,13 +2127,19 @@ export function AppShell() {
         onClick={() => setRightPanelOpen(false)}
       />
       {rightPanelOpen && (
-        <div
-          {...rightPanelResizer.separatorProps}
-          aria-controls="file-panel"
-          className={`panel-resize-handle right-panel-resize-handle${rightPanelResizer.isResizing ? " is-resizing" : ""}`}
-          data-resize-handle="right-panel"
-          title={`${translate("layout.resizeFilePanel")}: ${translate("layout.resizeHint")}`}
-        />
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <div
+                {...rightPanelResizer.separatorProps}
+                aria-controls="file-panel"
+                className={`panel-resize-handle right-panel-resize-handle${rightPanelResizer.isResizing ? " is-resizing" : ""}`}
+                data-resize-handle="right-panel"
+              />
+            }
+          />
+          <TooltipContent side="left">{`${translate("layout.resizeFilePanel")}: ${translate("layout.resizeHint")}`}</TooltipContent>
+        </Tooltip>
       )}
 
       {/* Right panel: file viewer — always mounted, width animated via CSS */}
@@ -2212,7 +2228,6 @@ export function AppShell() {
         </div>
       </div>
     </div>
-    {modelsConfigOpen && <ModelsConfig onClose={() => { setModelsConfigOpen(false); setModelsRefreshKey((k) => k + 1); }} />}
     {projectTrustDialogOpen && projectTrustCwd && (
       <ProjectTrustDialog
         cwd={projectTrustCwd}
@@ -2234,6 +2249,18 @@ export function AppShell() {
         onClose={() => setPluginsConfigOpen(false)}
         onReloaded={() => setSessionKey((k) => k + 1)}
       />
+    )}
+    {extensionsCenterOpen && projectTrustCwd && (
+      <ExtensionsCenter
+        onClose={() => setExtensionsCenterOpen(false)}
+        onOpenSkills={() => setSkillsConfigOpen(true)}
+        onOpenPlugins={() => setPluginsConfigOpen(true)}
+      />
+    )}
+    {settingsOpen && (
+      <div style={{ position: "fixed", inset: 0, zIndex: 300, background: "var(--chat-bg)" }}>
+        <SettingsPage onBack={() => setSettingsOpen(false)} />
+      </div>
     )}
     </>
   );

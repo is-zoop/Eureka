@@ -490,7 +490,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   const lastCompositionEndAtRef = useRef(0);
   const slashCommandsRequestedRef = useRef(false);
   const slashMenuRef = useRef<HTMLDivElement>(null);
-  const atItemRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const atItemRefs = useRef<Array<HTMLElement | null>>([]);
   const historyItemRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const fileIndexMetaRef = useRef<{ cwd: string; fetchedAt: number } | null>(null);
   const fileIndexFetchingRef = useRef<string | null>(null);
@@ -1802,23 +1802,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
               }}
             >
               <Command shouldFilter={false} className="rounded-none bg-transparent text-[color:var(--text)]">
-                <CommandInput
-                  value={slashQuery ?? ""}
-                  onValueChange={(query) => {
-                    const nextValue = `/${query}`;
-                    valueRef.current = nextValue;
-                    setValue(nextValue);
-                    setSlashActiveIndex(0);
-                  }}
-                  placeholder={t("chat.searchAddCommands")}
-                  onKeyDown={(event) => {
-                    if (event.key !== "Escape") return;
-                    event.preventDefault();
-                    setSlashMenuOpen(false);
-                    requestAnimationFrame(() => textareaRef.current?.focus());
-                  }}
-                />
-                <CommandList className="max-h-none flex-1 px-1.5 pb-1.5" style={{ maxHeight: isMobile ? 224 : 264 }}>
+                <CommandList className="max-h-none flex-1 px-1.5 py-1.5" style={{ maxHeight: isMobile ? 280 : 320 }}>
                   {!slashCommandsLoading && filteredSlashCommands.length === 0 && <CommandEmpty>{t("chat.noCommands")}</CommandEmpty>}
                   {groupedSlashCommands.map((group) => (
                     <CommandGroup key={group.source} heading={t(SLASH_SOURCE_GROUP_LABEL_KEYS[group.source])}>
@@ -1867,84 +1851,53 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                   right: 0,
                   bottom: "calc(100% + 8px)",
                   zIndex: 120,
-                  background: "var(--bg)",
+                  background: commandPaletteBackground,
                   border: "1px solid var(--border)",
-                  borderRadius: 8,
-                  boxShadow: "0 -6px 20px rgba(0,0,0,0.12)",
+                  borderRadius: commandPaletteRadius,
+                  boxShadow: "var(--shadow-overlay)",
                   overflow: "hidden",
                   maxHeight: "min(48vh, 400px)",
+                  boxSizing: "border-box",
+                  display: "flex",
+                  flexDirection: "column",
                 }}
               >
-                <div
-                  style={{
-                    padding: "8px 10px",
-                    borderBottom: "1px solid var(--border)",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: 8,
-                    fontSize: 11,
-                    color: "var(--text-dim)",
-                  }}
-                >
-                  <span>
-                    {indexLoading
-                       ? t("chat.loadingFiles")
-                       : t("chat.files", { label: matchCountLabel, hint: truncatedHint })}
-                  </span>
-                   <span style={{ fontFamily: "var(--font-mono)" }}>{t("chat.tabEnter")}</span>
-                </div>
-                <div style={{ maxHeight: "calc(min(48vh, 400px) - 34px)", overflowY: "auto", padding: 4 }}>
-                  {!indexLoading && atMatches.length === 0 ? (
-                    <div style={{ padding: "6px 8px", fontSize: 12, color: "var(--text-dim)" }}>
-                       {needsServerSearch && !serverResultInUse ? t("chat.searching") : t("chat.noMatchingFiles")}
-                    </div>
-                  ) : (
-                    atMatches.map((entry, index) => {
-                      const active = index === atActiveIndex;
-                      const name = entry.path.split("/").pop() ?? entry.path;
-                      const dirPrefix = entry.path.slice(0, entry.path.length - name.length);
-                      return (
-                        <button
-                          key={`${entry.isDir ? "d" : "f"}:${entry.path}`}
-                          ref={(node) => {
-                            atItemRefs.current[index] = node;
-                          }}
-                          type="button"
-                          onMouseDown={(e) => {
-                            e.preventDefault();
-                            applyAtCompletion(entry);
-                          }}
-                          onMouseEnter={() => setAtActiveIndex(index)}
-                          style={{
-                            width: "100%",
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 8,
-                            padding: "6px 8px",
-                            border: "none",
-                            borderRadius: 6,
-                            background: active ? "var(--bg-selected)" : "none",
-                            color: "var(--text)",
-                            cursor: "pointer",
-                            textAlign: "left",
-                            fontSize: 12.5,
-                            fontFamily: "var(--font-mono)",
-                          }}
-                        >
-                          <span style={{ flexShrink: 0, display: "flex", alignItems: "center" }}>
-                            {entry.isDir ? <FolderIcon size={14} /> : getFileIcon(name, 14)}
-                          </span>
-                          <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                            {dirPrefix && <span style={{ color: "var(--text-dim)" }}>{dirPrefix}</span>}
-                            {name}
-                            {entry.isDir && <span style={{ color: "var(--text-dim)" }}>/</span>}
-                          </span>
-                        </button>
-                      );
-                    })
-                  )}
-                </div>
+                <Command shouldFilter={false} className="rounded-none bg-transparent text-[color:var(--text)]">
+                  <CommandList className="max-h-none flex-1 px-1.5 py-1.5" style={{ maxHeight: "min(48vh, 400px)" }}>
+                    <CommandGroup heading={indexLoading ? t("chat.loadingFiles") : t("chat.files", { label: matchCountLabel, hint: truncatedHint })}>
+                      {!indexLoading && atMatches.length === 0 ? (
+                        <CommandEmpty>{needsServerSearch && !serverResultInUse ? t("chat.searching") : t("chat.noMatchingFiles")}</CommandEmpty>
+                      ) : (
+                        atMatches.map((entry, index) => {
+                          const active = index === atActiveIndex;
+                          const name = entry.path.split("/").pop() ?? entry.path;
+                          const dirPrefix = entry.path.slice(0, entry.path.length - name.length);
+                          return (
+                            <CommandItem
+                              key={`${entry.isDir ? "d" : "f"}:${entry.path}`}
+                              ref={(node) => {
+                                atItemRefs.current[index] = node;
+                              }}
+                              value={entry.path}
+                              onSelect={() => applyAtCompletion(entry)}
+                              onMouseEnter={() => setAtActiveIndex(index)}
+                              className="cursor-pointer py-1.5 text-[color:var(--text)] data-[selected=true]:bg-[var(--bg-hover)]"
+                              style={{ background: active ? "var(--bg-hover)" : undefined }}
+                            >
+                              <span className="flex size-5 shrink-0 items-center justify-center">
+                                {entry.isDir ? <FolderIcon size={14} /> : getFileIcon(name, 14)}
+                              </span>
+                              <span className="flex min-w-0 flex-1 items-baseline gap-2 overflow-hidden whitespace-nowrap">
+                                <span className="shrink-0 text-[13px]">{name}{entry.isDir && "/"}</span>
+                                {dirPrefix && <span className="truncate text-[11px] text-[color:var(--text-muted)]">{dirPrefix}</span>}
+                              </span>
+                            </CommandItem>
+                          );
+                        })
+                      )}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
               </div>
             );
           })()}

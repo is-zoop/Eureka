@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef, useCallback, useMemo, type CSSProperties, type MouseEvent } from "react";
+import { useEffect, useState, useRef, useCallback, useMemo, type CSSProperties, type MouseEvent, type ReactElement } from "react";
 import {
   Prism as SyntaxHighlighter,
   createElement as renderSyntaxNode,
@@ -26,6 +26,16 @@ import { FrontmatterCard } from "./FrontmatterCard";
 import { parseUnifiedPatch } from "@/lib/patch";
 import type { GitFileDiffResponse } from "@/lib/git-types";
 import { useI18n } from "@/hooks/useI18n";
+import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
+
+function FileViewerTooltip({ content, children }: { content: string; children: ReactElement }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger render={children} />
+      <TooltipContent>{content}</TooltipContent>
+    </Tooltip>
+  );
+}
 import {
   resolveInitialFileDisplayMode,
   type FileViewerDisplayMode as DisplayMode,
@@ -222,19 +232,25 @@ function getFileApiUrl(
 function DownloadLink({ filePath, sourceSessionId }: { filePath: string; sourceSessionId?: string | null }) {
   const { t } = useI18n();
   return (
-    <a
-      href={getFileApiUrl(filePath, "download", sourceSessionId)}
-      download={getFileName(filePath)}
-      title={t("i18n.downloadFile")}
-      aria-label={t("i18n.downloadFile")}
-      className="file-viewer-icon-button"
-    >
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-        <polyline points="7 10 12 15 17 10" />
-        <line x1="12" y1="15" x2="12" y2="3" />
-      </svg>
-    </a>
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <a
+            href={getFileApiUrl(filePath, "download", sourceSessionId)}
+            download={getFileName(filePath)}
+            aria-label={t("i18n.downloadFile")}
+            className="file-viewer-icon-button"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="7 10 12 15 17 10" />
+              <line x1="12" y1="15" x2="12" y2="3" />
+            </svg>
+          </a>
+        }
+      />
+      <TooltipContent>{t("i18n.downloadFile")}</TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -522,16 +538,14 @@ function ImageViewer({ filePath, cwd, sourceSessionId, watchEnabled = true }: Pr
           flexShrink: 0,
         }}
       >
-        <span style={{ fontFamily: "var(--font-mono)" }} title={filePath}>
-          {getRelativeFilePath(filePath, cwd)}
-        </span>
+        <FileViewerTooltip content={filePath}>
+          <span style={{ fontFamily: "var(--font-mono)" }}>{getRelativeFilePath(filePath, cwd)}</span>
+        </FileViewerTooltip>
         <span style={{ marginLeft: "auto" }}>{ext || "image"}</span>
         {naturalSize && <span>{naturalSize.w} × {naturalSize.h}</span>}
         {formatSizeStr && <span>{formatSizeStr}</span>}
-        <span
-          title={watching ? t("i18n.liveSync") : t("i18n.notWatching")}
-          style={{ display: "flex", alignItems: "center", gap: 4, color: watching ? "#4ade80" : "var(--text-dim)" }}
-        >
+        <FileViewerTooltip content={watching ? t("i18n.liveSync") : t("i18n.notWatching")}>
+        <span style={{ display: "flex", alignItems: "center", gap: 4, color: watching ? "#4ade80" : "var(--text-dim)" }}>
           <span
             style={{
               width: 7,
@@ -544,6 +558,7 @@ function ImageViewer({ filePath, cwd, sourceSessionId, watchEnabled = true }: Pr
           />
           {watching ? "live" : "static"}
         </span>
+        </FileViewerTooltip>
         <DownloadLink filePath={filePath} sourceSessionId={sourceSessionId} />
       </div>
       <div
@@ -692,16 +707,14 @@ function AudioViewer({ filePath, cwd, sourceSessionId, watchEnabled = true }: Pr
           flexShrink: 0,
         }}
       >
-        <span style={{ fontFamily: "var(--font-mono)" }} title={filePath}>
-          {getRelativeFilePath(filePath, cwd)}
-        </span>
+        <FileViewerTooltip content={filePath}>
+          <span style={{ fontFamily: "var(--font-mono)" }}>{getRelativeFilePath(filePath, cwd)}</span>
+        </FileViewerTooltip>
         <span style={{ marginLeft: "auto" }}>{ext || "audio"}</span>
         {duration != null && <span>{formatDuration(duration)}</span>}
         {size != null && <span>{formatSize(size)}</span>}
-        <span
-          title={watching ? t("i18n.liveSync") : t("i18n.notWatching")}
-          style={{ display: "flex", alignItems: "center", gap: 4, color: watching ? "#4ade80" : "var(--text-dim)" }}
-        >
+        <FileViewerTooltip content={watching ? t("i18n.liveSync") : t("i18n.notWatching")}>
+        <span style={{ display: "flex", alignItems: "center", gap: 4, color: watching ? "#4ade80" : "var(--text-dim)" }}>
           <span
             style={{
               width: 7,
@@ -714,6 +727,7 @@ function AudioViewer({ filePath, cwd, sourceSessionId, watchEnabled = true }: Pr
           />
           {watching ? "live" : "static"}
         </span>
+        </FileViewerTooltip>
         <DownloadLink filePath={filePath} sourceSessionId={sourceSessionId} />
       </div>
       <div
@@ -877,16 +891,16 @@ function DocumentViewer({ filePath, cwd, sourceSessionId, watchEnabled = true }:
           flexShrink: 0,
         }}
       >
-        <span style={{ fontFamily: "var(--font-mono)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={filePath}>
-          {getRelativeFilePath(filePath, cwd)}
-        </span>
+        <FileViewerTooltip content={filePath}>
+          <span style={{ fontFamily: "var(--font-mono)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {getRelativeFilePath(filePath, cwd)}
+          </span>
+        </FileViewerTooltip>
         <span style={{ marginLeft: "auto" }}>{ext === "docx" ? "docx preview" : "pdf"}</span>
         {size != null && <span>{formatSize(size)}</span>}
         <DownloadLink filePath={filePath} sourceSessionId={sourceSessionId} />
-        <span
-          title={watching ? t("i18n.liveSync") : t("i18n.notWatching")}
-          style={{ display: "flex", alignItems: "center", gap: 4, color: watching ? "#4ade80" : "var(--text-dim)", flexShrink: 0 }}
-        >
+        <FileViewerTooltip content={watching ? t("i18n.liveSync") : t("i18n.notWatching")}>
+        <span style={{ display: "flex", alignItems: "center", gap: 4, color: watching ? "#4ade80" : "var(--text-dim)", flexShrink: 0 }}>
           <span
             style={{
               width: 7,
@@ -899,6 +913,7 @@ function DocumentViewer({ filePath, cwd, sourceSessionId, watchEnabled = true }:
           />
           {watching ? "live" : "static"}
         </span>
+        </FileViewerTooltip>
       </div>
       <div style={{ flex: 1, minHeight: 0, background: "var(--bg-panel)" }}>
         {error ? (
@@ -1318,21 +1333,24 @@ function TextFileViewer({
           flexShrink: 0,
         }}
       >
-        <span className="file-viewer-path" style={{ fontFamily: "var(--font-mono)" }} title={filePath}>
-          {getRelativeFilePath(filePath, cwd)}
-        </span>
+        <FileViewerTooltip content={filePath}>
+          <span className="file-viewer-path" style={{ fontFamily: "var(--font-mono)" }}>{getRelativeFilePath(filePath, cwd)}</span>
+        </FileViewerTooltip>
 
-        <span className="file-viewer-meta" title={metadata}>{metadata}</span>
+        <FileViewerTooltip content={metadata}>
+          <span className="file-viewer-meta">{metadata}</span>
+        </FileViewerTooltip>
         {!isDeletedDiff && (
-          <span
-            title={watching ? t("i18n.liveSync") : t("i18n.notWatching")}
-            aria-label={watching ? t("i18n.liveSync") : t("i18n.notWatching")}
-            className="file-viewer-live-indicator"
-            style={{
-              background: watching ? "#4ade80" : "var(--border)",
-              boxShadow: watching ? "0 0 4px #4ade80" : "none",
-            }}
-          />
+          <FileViewerTooltip content={watching ? t("i18n.liveSync") : t("i18n.notWatching")}>
+            <span
+              aria-label={watching ? t("i18n.liveSync") : t("i18n.notWatching")}
+              className="file-viewer-live-indicator"
+              style={{
+                background: watching ? "#4ade80" : "var(--border)",
+                boxShadow: watching ? "0 0 4px #4ade80" : "none",
+              }}
+            />
+          </FileViewerTooltip>
         )}
 
         <div className="file-viewer-controls">
