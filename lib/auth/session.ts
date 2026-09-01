@@ -4,6 +4,7 @@ import { cookies } from "next/headers";
 import { AUTH_SESSION_COOKIE, AUTH_TRANSACTION_COOKIE, getAuthConfig, MARKETPLACE_PERMISSION } from "@/lib/auth/config";
 import { seal, unseal } from "@/lib/auth/crypto";
 import { readAuthSessionValue } from "@/lib/auth/session-value";
+import { rememberHazeAccessSession } from "@/lib/auth/access-token-cache";
 import type { AuthSession, AuthTransaction } from "@/lib/auth/types";
 
 const YEAR = 60 * 60 * 24 * 365;
@@ -58,6 +59,7 @@ export function writeAuthSession(store: CookieWriter, session: AuthSession) {
         : [],
     },
   };
+  rememberHazeAccessSession(session);
   store.set(AUTH_SESSION_COOKIE, seal(persistedSession, config.sessionSecret), authCookieOptions(YEAR));
 }
 

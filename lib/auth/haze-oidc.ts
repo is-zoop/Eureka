@@ -32,7 +32,7 @@ export const hazeOidcProvider: IdentityProvider = {
     const url = new URL(`${config.issuer}/oauth/authorize`);
     // Eureka deliberately requires an explicit Haze credential check for each
     // new Eureka login instead of silently reusing the Haze SSO browser cookie.
-    url.search = new URLSearchParams({ response_type: "code", client_id: config.clientId, redirect_uri: config.redirectUri, scope: "openid profile", state, code_challenge: codeChallenge, code_challenge_method: "S256", prompt: "login" }).toString();
+    url.search = new URLSearchParams({ response_type: "code", client_id: config.clientId, redirect_uri: config.redirectUri, scope: "openid profile marketplace.read", state, code_challenge: codeChallenge, code_challenge_method: "S256", prompt: "login" }).toString();
     return url.toString();
   },
   exchangeCode({ code, verifier }) {

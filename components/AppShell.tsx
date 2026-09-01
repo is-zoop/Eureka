@@ -8,9 +8,8 @@ import { ChatWindow } from "./ChatWindow";
 import { FileViewer } from "./FileViewer";
 import { TabBar, type Tab } from "./TabBar";
 import { openFileTab, saveFileViewerState } from "./file-tab-state";
-import { SkillsConfig } from "./SkillsConfig";
-import { PluginsConfig } from "./PluginsConfig";
 import { ExtensionsCenter } from "./ExtensionsCenter";
+import { OrganizationExtensionDetails, type OrganizationExtensionDetailItem } from "./OrganizationExtensionDetails";
 import { SettingsPage } from "./SettingsPage";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "./ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
@@ -98,9 +97,7 @@ export function AppShell() {
   const [sessionKey, setSessionKey] = useState(0);
   const [explorerRefreshKey, setExplorerRefreshKey] = useState(0);
   const [modelsRefreshKey, setModelsRefreshKey] = useState(0);
-  const [skillsConfigOpen, setSkillsConfigOpen] = useState(false);
-  const [pluginsConfigOpen, setPluginsConfigOpen] = useState(false);
-  const [extensionsCenterOpen, setExtensionsCenterOpen] = useState(false);
+  const [mainView, setMainView] = useState<"chat" | "extensions">("chat");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [projectTrust, setProjectTrust] = useState<ProjectTrustStatus | null>(null);
   const [projectTrustDialogOpen, setProjectTrustDialogOpen] = useState(false);
@@ -316,14 +313,23 @@ export function AppShell() {
     setMobileToolbarMoreOpen((open) => !open);
   }, []);
 
+  const [rightPanelMode, setRightPanelMode] = useState<"files" | "extension">("files");
+  const [extensionDetails, setExtensionDetails] = useState<{ item: OrganizationExtensionDetailItem; onFavoriteChange: (id: string, isFavorite: boolean) => void } | null>(null);
+
   const handleRightPanelToggle = useCallback(() => {
     if (isMobile) {
       setSidebarOpen(false);
       setActiveTopPanel(null);
       setMobileToolbarMoreOpen(false);
     }
+    if (rightPanelMode === "extension") {
+      setExtensionDetails(null);
+      setRightPanelMode("files");
+      if (!rightPanelOpen) setRightPanelOpen(true);
+      return;
+    }
     setRightPanelOpen((open) => !open);
-  }, [isMobile]);
+  }, [isMobile, rightPanelMode, rightPanelOpen]);
 
   useEffect(() => {
     if (!mobileToolbarMoreOpen) return;
@@ -580,6 +586,7 @@ export function AppShell() {
 
   const handleSelectSession = useCallback((session: SessionInfo, isRestore = false) => {
     invalidateWorkspaceRestore();
+    setMainView("chat");
     activeNewSessionDraftKeyRef.current = null;
     // Re-clicking the already-open session must not remount the chat and
     // re-run the full load/positioning cycle. Only skip when the effective
@@ -616,6 +623,7 @@ export function AppShell() {
 
   const handleNewSession = useCallback((sessionId: string, cwd: string) => {
     invalidateWorkspaceRestore();
+    setMainView("chat");
     const draftKey = `new:${sessionId}:${cwd}`;
     activeNewSessionDraftKeyRef.current = draftKey;
     setNewSessionDraftId(sessionId);
@@ -791,6 +799,7 @@ export function AppShell() {
 
   const handleSessionDeleted = useCallback((sessionId: string) => {
     invalidateWorkspaceRestore();
+    setMainView("chat");
     setRefreshKey((k) => k + 1);
     if (selectedSession?.id === sessionId) {
       const cwd = selectedSession.cwd;
@@ -827,10 +836,25 @@ export function AppShell() {
       tabId,
     }));
     setActiveFileTabId(tabId);
+    setRightPanelMode("files");
+    setExtensionDetails(null);
     setRightPanelOpen(true);
     // On mobile the file panel is full-screen; close the drawer so it shows.
     if (isMobile) setSidebarOpen(false);
   }, [isMobile]);
+
+  const handleOpenExtensionDetails = useCallback((item: OrganizationExtensionDetailItem, onFavoriteChange: (id: string, isFavorite: boolean) => void) => {
+    setExtensionDetails({ item, onFavoriteChange });
+    setRightPanelMode("extension");
+    setRightPanelOpen(true);
+    if (isMobile) setSidebarOpen(false);
+  }, [isMobile]);
+
+  const handleExtensionFavoriteChange = useCallback((id: string, isFavorite: boolean) => {
+    if (!extensionDetails) return;
+    extensionDetails.onFavoriteChange(id, isFavorite);
+    if (extensionDetails.item.id === id) setExtensionDetails({ ...extensionDetails, item: { ...extensionDetails.item, isFavorite } });
+  }, [extensionDetails]);
 
   const handleOpenLinkedFile = useCallback((filePath: string) => {
     handleOpenFile(filePath, getFileName(filePath), { sourceSessionId: selectedSession?.id ?? null });
@@ -955,7 +979,10 @@ export function AppShell() {
         onBackgroundTaskDone={handleBackgroundTaskDone}
         onRunningSessionIdsChange={handleRunningSessionIdsChange}
         onRequestHide={() => setSidebarOpen(false)}
-        onOpenExtensionsCenter={() => setExtensionsCenterOpen(true)}
+        onOpenExtensionsCenter={() => {
+          setActiveTopPanel(null);
+          setMainView("extensions");
+        }}
       />
       <SidebarUserMenu user={authenticatedUser} onOpenSettings={() => setSettingsOpen(true)} />
     </>
@@ -1672,7 +1699,7 @@ export function AppShell() {
       {/* Center: chat */}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0, background: "var(--chat-bg)" }}>
         {/* Top bar with sidebar toggle */}
-        <div ref={topBarRef} style={{ flexShrink: 0, background: "var(--chat-bg)" }}>
+        <div ref={topBarRef} style={{ display: mainView === "extensions" ? "none" : undefined, flexShrink: 0, background: "var(--chat-bg)" }}>
         <div style={{ display: "flex", alignItems: "center", position: "relative", background: "var(--chat-bg)", borderBottom: "1px solid var(--border)", height: `calc(${isMobile ? 48 : 42}px + env(safe-area-inset-top))`, paddingTop: "env(safe-area-inset-top)" }}>
           {!sidebarOpen && <button
             onClick={handleSidebarToggle}
@@ -1697,7 +1724,7 @@ export function AppShell() {
               </svg>
             )}
           </button>}
-          {isMobile && (
+          {isMobile && mainView === "chat" && (
             <div
               ref={mobileToolbarRef}
               data-mobile-toolbar="true"
@@ -1766,15 +1793,15 @@ export function AppShell() {
               )}
             </div>
           )}
-          {!isMobile && (
+          {!isMobile && mainView === "chat" && (
             <>
               {renderProjectTrustWarning(false)}
               {renderChatToolbarActions(false)}
               {renderSessionStatsButton(false)}
             </>
           )}
-          {!isMobile && renderMainFileToggle(false)}
-          {isMobile && (
+          {!isMobile && mainView === "chat" && renderMainFileToggle(false)}
+          {isMobile && mainView === "chat" && (
             <BranchNavigator
               tree={branchTree}
               activeLeafId={branchActiveLeafId}
@@ -2052,7 +2079,14 @@ export function AppShell() {
 
         {/* Chat content */}
         <div style={{ flex: 1, overflow: "hidden", position: "relative" }}>
-          {showChat ? (
+          {mainView === "extensions" && projectTrustCwd ? (
+            <ExtensionsCenter
+              cwd={projectTrustCwd}
+              sessionId={selectedSession?.id ?? null}
+              onReloaded={() => setSessionKey((key) => key + 1)}
+              onOpenExtensionDetails={handleOpenExtensionDetails}
+            />
+          ) : showChat ? (
             <ChatWindow
               key={sessionKey}
               session={selectedSession}
@@ -2155,6 +2189,13 @@ export function AppShell() {
           background: "var(--sidebar-bg)",
         } as React.CSSProperties}
       >
+        {rightPanelMode === "extension" && extensionDetails ? (
+          <OrganizationExtensionDetails
+            item={extensionDetails.item}
+            onClose={() => { setExtensionDetails(null); setRightPanelOpen(false); }}
+            onFavoriteChange={handleExtensionFavoriteChange}
+          />
+        ) : <>
         {/* Right panel tab bar */}
         <div style={{
           display: "flex",
@@ -2226,6 +2267,7 @@ export function AppShell() {
             </div>
           )}
         </div>
+        </>}
       </div>
     </div>
     {projectTrustDialogOpen && projectTrustCwd && (
@@ -2237,24 +2279,6 @@ export function AppShell() {
           if (!projectTrustBusy) setProjectTrustDialogOpen(false);
         }}
         onConfirm={() => void handleTrustProject()}
-      />
-    )}
-    {skillsConfigOpen && projectTrustCwd && (
-      <SkillsConfig cwd={projectTrustCwd} onClose={() => setSkillsConfigOpen(false)} />
-    )}
-    {pluginsConfigOpen && projectTrustCwd && (
-      <PluginsConfig
-        cwd={projectTrustCwd}
-        sessionId={selectedSession?.id ?? null}
-        onClose={() => setPluginsConfigOpen(false)}
-        onReloaded={() => setSessionKey((k) => k + 1)}
-      />
-    )}
-    {extensionsCenterOpen && projectTrustCwd && (
-      <ExtensionsCenter
-        onClose={() => setExtensionsCenterOpen(false)}
-        onOpenSkills={() => setSkillsConfigOpen(true)}
-        onOpenPlugins={() => setPluginsConfigOpen(true)}
       />
     )}
     {settingsOpen && (

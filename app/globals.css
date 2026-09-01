@@ -55,6 +55,16 @@
   --transition-ui: 150ms ease;
 }
 
+.organization-extension-card {
+  border-color: var(--border);
+}
+
+.organization-extension-card:hover,
+.organization-extension-card:focus-within {
+  border-color: var(--border);
+  box-shadow: var(--shadow-soft);
+}
+
 html.dark {
   --bg: #1a1a1a;
   --bg-panel: #242424;

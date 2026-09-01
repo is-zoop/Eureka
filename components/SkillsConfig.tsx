@@ -922,7 +922,7 @@ export function SkillsConfig({
           maxWidth: embedded ? "none" : "calc(100vw - 16px)",
           height: embedded ? "100%" : isMobile ? "calc(100dvh - 16px)" : "78vh",
           maxHeight: embedded ? "none" : "calc(100dvh - 16px)",
-          background: "var(--bg)",
+          background: embedded ? "var(--chat-bg)" : "var(--bg)",
           border: embedded ? "none" : "1px solid var(--border)",
           borderRadius: embedded ? 0 : 10,
           display: "flex",
@@ -937,12 +937,14 @@ export function SkillsConfig({
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
-            padding: "12px 18px",
+            padding: embedded ? "8px 18px" : "12px 18px",
+            height: embedded ? 42 : undefined,
+            boxSizing: "border-box",
             borderBottom: "1px solid var(--border)",
             flexShrink: 0,
           }}
         >
-          <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 10, flex: 1, minWidth: 0 }}>
             <span
               style={{ fontSize: 15, fontWeight: 600, color: "var(--text)" }}
             >
@@ -1272,7 +1274,7 @@ export function SkillsConfig({
           </div>
 
           {/* Right: detail or add panel */}
-          <div style={{ flex: 1, overflowY: "auto", padding: 20 }}>
+          <div style={{ flex: 1, overflowY: "auto", padding: 20, background: "var(--chat-bg)" }}>
             {addMode ? (
               <AddSkillPanel
                 cwd={cwd}
@@ -1334,7 +1336,7 @@ export function SkillsConfig({
         </div>
 
         {/* Footer */}
-        <div
+        {!embedded && <div
           style={{
             display: "flex",
             alignItems: "center",
@@ -1397,7 +1399,7 @@ export function SkillsConfig({
           >
              {t("i18n.close")}
           </button>}
-        </div>
+        </div>}
       </div>
     </div>
   );

@@ -777,7 +777,7 @@ export function PluginsConfig({
           maxWidth: embedded ? "none" : "calc(100vw - 16px)",
           height: embedded ? "100%" : isMobile ? "calc(100dvh - 16px)" : "76vh",
           maxHeight: embedded ? "none" : "calc(100dvh - 16px)",
-          background: "var(--bg)",
+          background: embedded ? "var(--chat-bg)" : "var(--bg)",
           border: embedded ? "none" : "1px solid var(--border)",
           borderRadius: embedded ? 0 : 8,
           display: "flex",
@@ -791,12 +791,14 @@ export function PluginsConfig({
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
-            padding: "12px 18px",
+            padding: embedded ? "8px 18px" : "12px 18px",
+            height: embedded ? 42 : undefined,
+            boxSizing: "border-box",
             borderBottom: "1px solid var(--border)",
             flexShrink: 0,
           }}
         >
-          <div style={{ display: "flex", alignItems: "baseline", gap: 10, minWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 10, minWidth: 0, flex: 1 }}>
             <span style={{ fontSize: 15, fontWeight: 600, color: "var(--text)" }}>
               {t("common.plugins")}
             </span>
@@ -813,20 +815,30 @@ export function PluginsConfig({
               {shortenPath(cwd)}
             </code>
           </div>
-          {!embedded && <button
-            onClick={onClose}
-            style={{
-              background: "none",
-              border: "none",
-              color: "var(--text-muted)",
-              cursor: "pointer",
-              fontSize: 20,
-              lineHeight: 1,
-              padding: "2px 6px",
-            }}
-          >
-            ×
-          </button>}
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+            {embedded && data && (
+              <span style={{ fontSize: 11, color: "var(--text-dim)", whiteSpace: "nowrap" }}>
+                {`${data.totals.extensions} ext · ${data.totals.skills} skills · ${data.totals.prompts} prompts · ${data.totals.themes} themes`}
+              </span>
+            )}
+            {embedded && <button onClick={() => void loadPlugins()} disabled={loading || busyKey !== null} style={buttonStyle(loading || busyKey !== null)}>
+              {t("i18n.refresh")}
+            </button>}
+            {!embedded && <button
+              onClick={onClose}
+              style={{
+                background: "none",
+                border: "none",
+                color: "var(--text-muted)",
+                cursor: "pointer",
+                fontSize: 20,
+                lineHeight: 1,
+                padding: "2px 6px",
+              }}
+            >
+              ×
+            </button>}
+          </div>
         </div>
 
         {!projectResourcesLoaded && (
@@ -1015,7 +1027,7 @@ export function PluginsConfig({
             </div>
           </div>
 
-          <div style={{ flex: 1, overflowY: "auto", padding: 20 }}>
+          <div style={{ flex: 1, overflowY: "auto", padding: 20, background: "var(--chat-bg)" }}>
             {addMode ? (
               <AddPluginPanel
                 cwd={cwd}
@@ -1057,7 +1069,7 @@ export function PluginsConfig({
           </div>
         </div>
 
-        <div
+        {!embedded && <div
           style={{
             display: "flex",
             alignItems: "center",
@@ -1088,7 +1100,7 @@ export function PluginsConfig({
           {!embedded && <button onClick={onClose} style={buttonStyle(false)}>
              {t("i18n.close")}
           </button>}
-        </div>
+        </div>}
       </div>
     </div>
   );
