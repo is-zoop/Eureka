@@ -1,6 +1,7 @@
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import { createAgentSessionFromServices, createAgentSessionServices, getAgentDir, initTheme, SessionManager, Theme } from "@earendil-works/pi-coding-agent";
 import { KeybindingsManager as TuiKeybindingsManager, TUI_KEYBINDINGS } from "@earendil-works/pi-tui";
+import { Type } from "typebox";
 import { randomUUID } from "crypto";
 import { existsSync, realpathSync, writeFileSync } from "fs";
 import { resolve } from "path";
@@ -10,13 +11,30 @@ import { resolveVisibleModels, selectInitialModelScope } from "./model-scope";
 import { cacheSessionPath, invalidateSessionListCache } from "./session-reader";
 import { getProjectTrustStatus, projectTrustReloadOptions } from "./project-trust";
 import { persistExplicitStartupPreferences } from "./startup-preferences";
-import type { SlashCommandInfo } from "@earendil-works/pi-coding-agent";
+import {
+  EMPTY_PLAN_STATE,
+  getPendingPlanQuestion,
+  isReviewablePlan,
+  markPlanTodosDone,
+  parsePlanTodos,
+  planSnapshot,
+  PLAN_EXECUTION_SYSTEM_PROMPT,
+  PLAN_MODE_QUESTION_TOOL,
+  PLAN_MODE_READ_TOOLS,
+  PLAN_MODE_SYSTEM_PROMPT,
+  readPlanState,
+  type EurekaPlanAnnotation,
+  type EurekaPlanPhase,
+  type EurekaPlanState,
+} from "./plan-mode";
+import type { InlineExtension, SlashCommandInfo } from "@earendil-works/pi-coding-agent";
 import type { AgentSessionLike, ExtensionUiContextLike, ToolInfo } from "./pi-types";
 import type {
   ExtensionUiRequest,
   ExtensionUiResponse,
   ExtensionWidgetItem,
   SessionInfo,
+  SessionEntry,
   SessionMessageEntry,
 } from "./types";
 import { createHeadlessCustomUiTui, DEFAULT_CUSTOM_UI_COLUMNS, type HeadlessCustomUiTui } from "./custom-ui-terminal";
@@ -139,6 +157,103 @@ class PlainTextTheme extends Theme {
 const PLAIN_TEXT_THEME = new PlainTextTheme();
 const CUSTOM_UI_KEYBINDINGS = new TuiKeybindingsManager(TUI_KEYBINDINGS);
 
+function planReviewContext(state: EurekaPlanState): string {
+  const notes = state.annotations
+    .map((annotation) => `- 对“${annotation.quote.replace(/\s+/g, " ").slice(0, 180)}”的批注：${annotation.note}`)
+    .join("\n");
+  if (!state.generalNote && !notes) return "";
+  return `\n\n## 已批准的评审反馈\n${state.generalNote ? `总体说明：${state.generalNote}\n` : ""}${notes}`;
+}
+
+/**
+ * Plan mode needs a turn-local framing message, rather than only a mutable
+ * system-prompt field. This mirrors Pi/Plannotator's lifecycle: extensions
+ * can add their own prompt text after startup, while this message is appended
+ * immediately before every planning turn and remains visible to the model.
+ */
+const EUREKA_NATIVE_PLAN_EXTENSION: InlineExtension = {
+  name: "eureka-native-plan-mode",
+  hidden: true,
+  factory: (pi) => {
+    pi.registerTool({
+      name: PLAN_MODE_QUESTION_TOOL,
+      label: "Request user input",
+      description: "Ask exactly one material planning question with 2 to 4 mutually exclusive choices. The user answers it inside Eureka before planning continues.",
+      promptSnippet: "Ask one planning clarification question with selectable choices",
+      promptGuidelines: [
+        "Use request_user_input only when information that materially changes the plan is missing.",
+        "Ask exactly one question at a time, with 2 to 4 mutually exclusive choices. Do not ask it in ordinary text.",
+        "After calling request_user_input, stop and wait for the user's response.",
+      ],
+      parameters: Type.Object({
+        title: Type.String({ description: "Short question title" }),
+        question: Type.String({ description: "One planning question" }),
+        options: Type.Array(Type.Object({
+          id: Type.String({ description: "Stable short option id" }),
+          label: Type.String({ description: "Option label" }),
+          description: Type.String({ description: "Short impact or trade-off" }),
+        }), { minItems: 2, maxItems: 4 }),
+      }),
+      execute: async (toolCallId, params, _signal, _onUpdate, ctx) => {
+        const state = readPlanState(ctx.sessionManager.getEntries() as SessionEntry[]);
+        if (state.phase !== "planning") {
+          return { content: [{ type: "text" as const, text: "This interaction tool is available only in Eureka planning mode." }], details: { accepted: false } };
+        }
+        if (getPendingPlanQuestion(state)) {
+          return { content: [{ type: "text" as const, text: "A planning question is already awaiting the user's answer. Stop and wait." }], details: { accepted: false } };
+        }
+        const title = params.title.trim();
+        const question = params.question.trim();
+        const options = params.options.map((option) => ({ id: option.id.trim(), label: option.label.trim(), description: option.description.trim() }));
+        const valid = title.length > 0 && question.length > 0
+          && options.length >= 2 && options.length <= 4
+          && options.every((option) => option.id && option.label && option.description)
+          && new Set(options.map((option) => option.id)).size === options.length;
+        if (!valid) {
+          return { content: [{ type: "text" as const, text: "Provide one non-empty question and 2 to 4 choices with unique ids, labels, and descriptions." }], details: { accepted: false } };
+        }
+        const now = new Date().toISOString();
+        const next = {
+          ...state,
+          questions: [...state.questions, {
+            id: randomUUID(), toolCallId, title, question, options, status: "pending" as const, askedAt: now,
+          }],
+          updatedAt: now,
+        };
+        pi.appendEntry("eureka_plan", next);
+        invalidateSessionListCache();
+        return {
+          content: [{ type: "text" as const, text: "The question is now displayed in Eureka. Stop this turn and wait for the user's answer." }],
+          details: { accepted: true },
+        };
+      },
+    });
+
+    pi.on("before_agent_start", async (_event, ctx) => {
+      const state = readPlanState(ctx.sessionManager.getEntries() as SessionEntry[]);
+      if (state.phase === "planning") {
+        return {
+          message: {
+            customType: "eureka-plan-framing",
+            display: false,
+            content: `[EUREKA NATIVE PLAN MODE — MANDATORY]\nYou are planning, not implementing. Do not output source code, scripts, patches, commands, or a completed solution. Do not create or modify files. Use read-only investigation only. If a requirement that materially changes the plan is missing, call request_user_input with exactly one question and 2–4 selectable choices. Never write clarifying questions as ordinary text. Calling that tool ends the turn: do not add a prose answer after it. Otherwise, reply only with a Markdown plan containing these headings: Goal, Affected areas, Implementation steps, Risks, Verification. Every implementation step must be an unchecked checklist item (- [ ]). End after the plan and wait for the user to submit it for review.`,
+          },
+        };
+      }
+      if (state.phase === "executing") {
+        return {
+          message: {
+            customType: "eureka-plan-execution-framing",
+            display: false,
+            content: `[EUREKA NATIVE PLAN EXECUTION]\nThe following session plan has been approved. It is not a file. Do not search for PLAN.md or use Plannotator plan commands. Execute only this plan and mark completed checklist items with [DONE:n]. Apply the approved review feedback below as part of the plan.\n\n${state.content}${planReviewContext(state)}`,
+          },
+        };
+      }
+      return undefined;
+    });
+  },
+};
+
 function withExtensionTools(session: AgentSessionLike, toolNames: string[]): string[] {
   if (toolNames.length === 0) return [];
 
@@ -146,7 +261,7 @@ function withExtensionTools(session: AgentSessionLike, toolNames: string[]): str
   const extensionToolNames = session
     .getAllTools()
     .map((t) => t.name)
-    .filter((name) => !codingToolNames.has(name));
+    .filter((name) => !codingToolNames.has(name) && name !== PLAN_MODE_QUESTION_TOOL);
 
   return [...new Set([...toolNames, ...extensionToolNames])];
 }
@@ -177,8 +292,17 @@ export class AgentSessionWrapper {
   private onDestroyCallback: (() => void) | null = null;
   private shutdownPromise: Promise<void> | null = null;
   private _alive = true;
+  private planModeState: EurekaPlanState;
+  private baseSystemPrompt: string | null = null;
 
-  constructor(public readonly inner: AgentSessionLike) {}
+  constructor(public readonly inner: AgentSessionLike) {
+    this.planModeState = readPlanState(this.inner.sessionManager.getEntries() as SessionEntry[]);
+    if (this.planModeState.phase === "idle") {
+      const activeTools = this.inner.getActiveToolNames().filter((name) => name !== PLAN_MODE_QUESTION_TOOL);
+      this.inner.setActiveToolsByName(activeTools);
+    }
+    this.applyPlanModeRuntime();
+  }
 
   get sessionId(): string {
     return this.inner.sessionId;
@@ -224,6 +348,49 @@ export class AgentSessionWrapper {
   setForceEmptySystemPrompt(force: boolean): void {
     this.forceEmptySystemPrompt = force;
     this.applyForcedEmptySystemPrompt();
+  }
+
+  private persistPlanModeState(): void {
+    this.planModeState = { ...this.planModeState, updatedAt: new Date().toISOString() };
+    this.inner.sessionManager.appendCustomEntry("eureka_plan", this.planModeState);
+    invalidateSessionListCache();
+  }
+
+  private refreshPlanModeState(): EurekaPlanState {
+    this.planModeState = readPlanState(this.inner.sessionManager.getEntries() as SessionEntry[]);
+    return this.planModeState;
+  }
+
+  private applyPlanModeRuntime(): void {
+    const state = this.planModeState;
+    if (!state.planModeActive) {
+      if (state.originalToolNames.length > 0) {
+        this.inner.setActiveToolsByName(state.originalToolNames.filter((name) => name !== PLAN_MODE_QUESTION_TOOL));
+      }
+      if (this.baseSystemPrompt !== null && this.inner.agent.state) {
+        this.inner.agent.state.systemPrompt = this.baseSystemPrompt;
+      }
+      return;
+    }
+    if (this.baseSystemPrompt === null) {
+      this.baseSystemPrompt = this.inner.agent.state?.systemPrompt ?? "";
+    }
+    if (state.phase === "planning" || state.phase === "reviewing") {
+      this.inner.setActiveToolsByName(state.phase === "planning"
+        ? [...PLAN_MODE_READ_TOOLS, PLAN_MODE_QUESTION_TOOL]
+        : [...PLAN_MODE_READ_TOOLS]);
+      if (this.inner.agent.state) {
+        this.inner.agent.state.systemPrompt = `${this.baseSystemPrompt}\n\n${PLAN_MODE_SYSTEM_PROMPT}`;
+      }
+      return;
+    }
+  }
+
+  private setPlanPhase(phase: EurekaPlanPhase, patch: Partial<EurekaPlanState> = {}): EurekaPlanState {
+    this.planModeState = { ...this.planModeState, ...patch, phase };
+    this.applyPlanModeRuntime();
+    this.persistPlanModeState();
+    return this.planModeState;
   }
 
   beginExtensionBinding(options: ExtensionBindingOptions = {}): void {
@@ -279,6 +446,9 @@ export class AgentSessionWrapper {
       }
       this.extensionsBound = true;
       this.applyForcedEmptySystemPrompt();
+      // Extensions may register or re-enable tools during session_start. Reapply
+      // the native plan-mode allow-list afterwards so an extension cannot bypass it.
+      this.applyPlanModeRuntime();
       console.log(`[pi-web] session_start dispatched to extensions for session ${this.inner.sessionId}`);
     })().catch((err) => {
       this.extensionBindingError = err;
@@ -405,6 +575,13 @@ export class AgentSessionWrapper {
 
     switch (type) {
       case "prompt": {
+        this.refreshPlanModeState();
+        if (this.planModeState.planModeActive && this.planModeState.phase === "reviewing") {
+          throw new Error("The plan is under review. Approve it or return it for revision before sending another task.");
+        }
+        if (getPendingPlanQuestion(this.planModeState)) {
+          throw new Error("Please answer the current planning question before sending another message.");
+        }
         // Serialize only admission. Once the preceding prompt has either
         // passed or failed preflight, the SDK can atomically decide whether
         // this submission starts a run or joins its streaming queue.
@@ -498,6 +675,7 @@ export class AgentSessionWrapper {
         return null;
 
       case "get_state": {
+        this.refreshPlanModeState();
         const model = this.inner.model;
         const contextUsage = this.inner.getContextUsage();
         return {
@@ -523,7 +701,122 @@ export class AgentSessionWrapper {
           thinkingLevel: this.inner.agent.state?.thinkingLevel ?? "off",
           extensionStatuses: this.getExtensionStatuses(),
           extensionWidgets: this.getExtensionWidgets(),
+          planMode: this.planModeState,
         };
+      }
+
+      case "get_plan_mode":
+        this.refreshPlanModeState();
+        return this.planModeState;
+
+      case "set_plan_mode": {
+        this.refreshPlanModeState();
+        if (this.isRunning()) throw new Error("Wait for the current agent run to finish before changing plan mode");
+        const requested = command.phase as EurekaPlanPhase;
+        if (requested === "planning") {
+          if (this.planModeState.planModeActive) return this.planModeState;
+          const previous = this.planModeState;
+          const originalToolNames = previous.phase === "idle"
+            ? this.inner.getActiveToolNames().filter((name) => name !== PLAN_MODE_QUESTION_TOOL)
+            : previous.originalToolNames.length > 0
+              ? previous.originalToolNames
+              : this.inner.getActiveToolNames().filter((name) => name !== PLAN_MODE_QUESTION_TOOL);
+          const originalToolPreset = typeof command.originalToolPreset === "string"
+            ? command.originalToolPreset
+            : previous.originalToolPreset;
+          const plans = previous.phase === "idle" || !previous.activePlanId
+            ? previous.plans
+            : [...previous.plans, planSnapshot(previous)];
+          this.planModeState = {
+            ...EMPTY_PLAN_STATE,
+            phase: "planning",
+            planModeActive: true,
+            activePlanId: `plan_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
+            plans,
+            originalToolNames,
+            originalToolPreset,
+          };
+          this.applyPlanModeRuntime();
+          this.persistPlanModeState();
+          return this.planModeState;
+        }
+        if (requested === "idle") {
+          if (!this.planModeState.planModeActive) return this.planModeState;
+          this.planModeState = { ...this.planModeState, planModeActive: false };
+          this.applyPlanModeRuntime();
+          this.persistPlanModeState();
+          return this.planModeState;
+        }
+        throw new Error("Plan mode can only be entered manually from the composer");
+      }
+
+      case "submit_plan": {
+        this.refreshPlanModeState();
+        if (!this.planModeState.planModeActive || this.planModeState.phase !== "planning") throw new Error("Plans can only be submitted while planning");
+        const content = typeof command.content === "string" ? command.content.trim() : "";
+        if (!content) throw new Error("计划内容不能为空。");
+        if (!isReviewablePlan(content)) {
+          throw new Error("当前回复是需求澄清或普通说明，尚不能提交评审。请先回答 Agent 的问题；待它输出包含“目标、实施步骤、未勾选清单、验证”的计划后，再点击“提交评审”。");
+        }
+        return this.setPlanPhase("reviewing", {
+          content,
+          revision: this.planModeState.content === content ? this.planModeState.revision : this.planModeState.revision + 1,
+          annotations: [],
+          generalNote: "",
+          todos: parsePlanTodos(content),
+          approvedAt: null,
+          sourceEntryId: typeof command.sourceEntryId === "string" ? command.sourceEntryId : null,
+        });
+      }
+
+      case "update_plan_review": {
+        this.refreshPlanModeState();
+        if (this.planModeState.phase === "executing") return this.planModeState;
+        if (this.planModeState.phase !== "reviewing") throw new Error("The plan is not currently under review");
+        const annotations = Array.isArray(command.annotations) ? command.annotations as EurekaPlanAnnotation[] : [];
+        const generalNote = typeof command.generalNote === "string" ? command.generalNote : "";
+        return this.setPlanPhase("reviewing", { annotations, generalNote });
+      }
+
+      case "return_plan_for_revision": {
+        if (this.planModeState.phase !== "reviewing") throw new Error("The plan is not currently under review");
+        return this.setPlanPhase("planning");
+      }
+
+      case "approve_plan": {
+        if (this.planModeState.phase !== "reviewing") throw new Error("Only a reviewed plan can be approved");
+        return this.setPlanPhase("executing", { approvedAt: new Date().toISOString(), planModeActive: false });
+      }
+
+      case "sync_plan_progress": {
+        this.refreshPlanModeState();
+        if (this.planModeState.phase !== "executing") return this.planModeState;
+        const assistantText = typeof command.assistantText === "string" ? command.assistantText : "";
+        const todos = markPlanTodosDone(this.planModeState.todos, assistantText);
+        if (todos.every((todo, index) => todo.done === this.planModeState.todos[index]?.done)) return this.planModeState;
+        return this.setPlanPhase("executing", { todos });
+      }
+
+      case "answer_plan_question": {
+        this.refreshPlanModeState();
+        if (!this.planModeState.planModeActive || this.planModeState.phase !== "planning") throw new Error("Planning questions can only be answered while planning");
+        const questionId = typeof command.questionId === "string" ? command.questionId : "";
+        const question = this.planModeState.questions.find((item) => item.id === questionId);
+        if (!question || question.status !== "pending") throw new Error("This planning question is no longer waiting for an answer");
+        const optionId = typeof command.optionId === "string" ? command.optionId : undefined;
+        const customAnswer = typeof command.customAnswer === "string" ? command.customAnswer.trim() : "";
+        const option = optionId ? question.options.find((item) => item.id === optionId) : undefined;
+        if (!option && !customAnswer) throw new Error("Choose an option or provide a custom answer");
+        if (optionId && !option) throw new Error("The selected option is not available for this question");
+        const now = new Date().toISOString();
+        return this.setPlanPhase("planning", {
+          questions: this.planModeState.questions.map((item) => item.id === questionId ? {
+            ...item,
+            status: "answered" as const,
+            answer: { optionId: option?.id, text: option?.label ?? customAnswer, custom: !option },
+            answeredAt: now,
+          } : item),
+        });
       }
 
       case "set_model": {
@@ -690,6 +983,9 @@ export class AgentSessionWrapper {
       }
 
       case "set_tools": {
+        if (this.planModeState.planModeActive) {
+          throw new Error("Tool permissions are fixed while planning");
+        }
         const toolNames = command.toolNames as string[];
         this.setForceEmptySystemPrompt(toolNames.length === 0);
         this.inner.setActiveToolsByName(withExtensionTools(this.inner, toolNames));
@@ -708,6 +1004,7 @@ export class AgentSessionWrapper {
         }
         this.applyForcedEmptySystemPrompt();
         invalidateModelsCache();
+        this.applyPlanModeRuntime();
         return { success: true };
       }
 
@@ -1603,6 +1900,7 @@ export async function startRpcSession(
     const services = await createAgentSessionServices({
       cwd: sessionCwd,
       agentDir,
+      resourceLoaderOptions: { extensionFactories: [EUREKA_NATIVE_PLAN_EXTENSION] },
       ...(trustReloadOptions ? { resourceLoaderReloadOptions: trustReloadOptions } : {}),
     });
     const scope = await resolveVisibleModels(

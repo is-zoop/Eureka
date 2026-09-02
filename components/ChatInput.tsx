@@ -27,6 +27,7 @@ import { useTheme } from "@/hooks/useTheme";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { useI18n } from "@/hooks/useI18n";
 import type { ToolPreset } from "@/lib/tool-presets";
+import type { EurekaPlanState } from "@/lib/plan-mode";
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -63,6 +64,7 @@ interface Props {
   onFollowUp?: (message: string, images?: AttachedImage[]) => void;
   onPromptWithStreamingBehavior?: (message: string, behavior: "steer" | "followUp", images?: AttachedImage[]) => void;
   isStreaming: boolean;
+  inputLocked?: boolean;
   model?: { provider: string; modelId: string } | null;
   isAutoModelSelection?: boolean;
   modelNames?: Record<string, string>;
@@ -79,6 +81,9 @@ interface Props {
   compactResult?: CompactResultInfo | null;
   toolPreset?: ToolPreset;
   onToolPresetChange?: (preset: ToolPreset) => void;
+  planMode?: EurekaPlanState;
+  onPlanModeChange?: (planning: boolean) => void;
+  onOpenPlanReview?: () => void;
   thinkingLevel?: "auto" | "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
   onThinkingLevelChange?: (level: "auto" | "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max") => void;
   availableThinkingLevels?: string[] | null;
@@ -430,8 +435,9 @@ export function ModelScopeWarningBanner({ warnings }: { warnings?: string[] }) {
 }
 
 export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
-  onSend, onAbort, onSteer, onFollowUp, isStreaming, model, isAutoModelSelection, modelNames, modelList, modelError, modelScopeWarnings, onModelChange, modelSwitching,
+  onSend, onAbort, onSteer, onFollowUp, isStreaming, inputLocked = false, model, isAutoModelSelection, modelNames, modelList, modelError, modelScopeWarnings, onModelChange, modelSwitching,
   onCompact, onAbortCompaction, isCompacting, compactError, compactResult, toolPreset, onToolPresetChange,
+  planMode, onPlanModeChange, onOpenPlanReview,
   thinkingLevel, onThinkingLevelChange, availableThinkingLevels, thinkingLevelMap,
   retryInfo, queuedMessages, inputHistory = [], onRecallQueue,
   slashCommands, slashCommandsLoading, onLoadSlashCommands,
@@ -802,7 +808,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   const handleSend = useCallback(async () => {
     const msg = value.trim();
     if (!msg && !attachedImages.length) return;
-    if (isStreaming) return;
+    if (isStreaming || inputLocked) return;
     onAudioUnlock?.();
     if (!attachedImages.length && msg.startsWith("/") && onBuiltinCommand) {
       const result = await onBuiltinCommand(msg);
@@ -813,7 +819,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     }
     clearInput();
     onSend(msg, attachedImages.length ? attachedImages : undefined);
-  }, [value, attachedImages, isStreaming, onBuiltinCommand, onSend, clearInput, onAudioUnlock]);
+  }, [value, attachedImages, isStreaming, inputLocked, onBuiltinCommand, onSend, clearInput, onAudioUnlock]);
 
   const slashQuery = value.startsWith("/") && !/\s/.test(value.slice(1))
     ? value.slice(1).toLowerCase()
@@ -852,7 +858,8 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     t("chat.addImage"),
     t("chat.addImageDescription"),
   ].join(" ").toLowerCase().includes(addMenuQuery.trim().toLowerCase());
-  const addMenuHasResults = addImageMatches || filteredAddMenuCommands.length > 0;
+  const planModeMatches = Boolean(onPlanModeChange) && !planMode?.planModeActive && (!addMenuQuery.trim() || "计划模式 开启计划模式 规划".includes(addMenuQuery.trim().toLowerCase()));
+  const addMenuHasResults = addImageMatches || planModeMatches || filteredAddMenuCommands.length > 0;
   const commandDescriptionColor = "var(--text-muted)";
   const commandPaletteBackground = isDark ? "var(--bg-panel)" : "#ffffff";
   const commandPaletteRadius = 8;
@@ -1644,9 +1651,9 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                 />
                 <CommandList className="max-h-none flex-1 px-1.5 pb-1.5" style={{ maxHeight: isMobile ? 224 : 264 }}>
                   {!addMenuHasResults && <CommandEmpty>{t("chat.noMatchingCommands")}</CommandEmpty>}
-                  {addImageMatches && (
+                  {(addImageMatches || planModeMatches) && (
                     <CommandGroup heading={t("chat.add")}>
-                      <CommandItem
+                      {addImageMatches && <CommandItem
                         value="add-image"
                         title={`${t("chat.addImage")} · ${t("chat.addImageDescription")}`}
                         onSelect={() => {
@@ -1661,7 +1668,13 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                           <span className="shrink-0 text-[13px] font-medium">{t("chat.addImage")}</span>
                           <span className="truncate text-[11px]" style={{ color: commandDescriptionColor }}>{t("chat.addImageDescription")}</span>
                         </span>
-                      </CommandItem>
+                      </CommandItem>}
+                      {planModeMatches && <CommandItem value="plan-mode" title="计划模式 · 开启只读规划与评审流程" onSelect={() => {
+                        setAddMenuOpen(false); setAddMenuQuery(""); onPlanModeChange?.(true);
+                      }} className="cursor-pointer py-1.5 text-[color:var(--text)] data-[selected=true]:bg-[var(--bg-hover)]">
+                        <span className="flex size-5 shrink-0 items-center justify-center text-[color:var(--text-muted)]">☼</span>
+                        <span className="flex min-w-0 items-baseline gap-2"><span className="shrink-0 text-[13px] font-medium">计划模式</span><span className="truncate text-[11px]" style={{ color: commandDescriptionColor }}>开启只读规划与评审流程</span></span>
+                      </CommandItem>}
                     </CommandGroup>
                   )}
                   {slashCommandsLoading && (
@@ -1920,6 +1933,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
           <textarea
             ref={textareaRef}
             value={value}
+            disabled={inputLocked}
             onChange={(e) => {
               valueRef.current = e.target.value;
               setValue(e.target.value);
@@ -1943,7 +1957,8 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
             onInput={handleInput}
             onPaste={handlePaste}
             placeholder={
-              isStreaming && (onSteer || onFollowUp)
+              inputLocked ? "请先回答当前规划澄清问题"
+                : isStreaming && (onSteer || onFollowUp)
                 ? t("chat.steerPlaceholder")
                 : isStreaming ? t("chat.agentPlaceholder")
                 : t("chat.messagePlaceholder")
@@ -1958,6 +1973,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
               outline: "none",
               resize: "none",
               color: "var(--text)",
+              opacity: inputLocked ? 0.55 : 1,
               fontSize: 15,
               lineHeight: 1.6,
               fontFamily: "inherit",
@@ -2020,7 +2036,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
           ) : (
             <button
               onClick={handleSend}
-              disabled={!value.trim() && !attachedImages.length}
+              disabled={inputLocked || (!value.trim() && !attachedImages.length)}
               style={{
                 flexShrink: 0,
                 alignSelf: "flex-end",
@@ -2255,6 +2271,12 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                   })()}
                 </div>
             )}
+            {planMode?.planModeActive && (
+              <button type="button" onClick={() => onPlanModeChange?.(false)} disabled={isStreaming || planMode.phase === "reviewing"}
+                title={planMode.phase === "reviewing" ? "请先完成计划评审" : "退出计划模式"}
+                style={{ height: 28, padding: "0 9px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg-hover)", color: "var(--text)", fontSize: 12, cursor: isStreaming || planMode.phase === "reviewing" ? "default" : "pointer", opacity: isStreaming || planMode.phase === "reviewing" ? 0.55 : 1 }}
+              >☼ 计划模式 ×</button>
+            )}
           </div>
 
           {/* spacer */}
@@ -2440,7 +2462,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                 </DropdownMenuContent>
               </DropdownMenu>
             )}
-            {!isStreaming && onToolPresetChange && (
+            {!isStreaming && onToolPresetChange && planMode?.phase !== "planning" && planMode?.phase !== "reviewing" && (
               <DropdownMenu open={toolDropdownOpen} onOpenChange={setToolDropdownOpen}>
                 <DropdownMenuTrigger
                   render={

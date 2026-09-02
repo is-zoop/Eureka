@@ -5,11 +5,14 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useGlobalKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { SessionSidebar } from "./SessionSidebar";
 import { ChatWindow } from "./ChatWindow";
+import type { PlanReviewControls } from "./ChatWindow";
 import { FileViewer } from "./FileViewer";
 import { TabBar, type Tab } from "./TabBar";
 import { openFileTab, saveFileViewerState } from "./file-tab-state";
 import { ExtensionsCenter } from "./ExtensionsCenter";
 import { OrganizationExtensionDetails, type OrganizationExtensionDetailItem } from "./OrganizationExtensionDetails";
+import { PlanReviewPanel } from "./PlanReviewPanel";
+import type { EurekaPlanState } from "@/lib/plan-mode";
 import { SettingsPage } from "./SettingsPage";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "./ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
@@ -313,8 +316,9 @@ export function AppShell() {
     setMobileToolbarMoreOpen((open) => !open);
   }, []);
 
-  const [rightPanelMode, setRightPanelMode] = useState<"files" | "extension">("files");
+  const [rightPanelMode, setRightPanelMode] = useState<"files" | "extension" | "plan">("files");
   const [extensionDetails, setExtensionDetails] = useState<{ item: OrganizationExtensionDetailItem; onFavoriteChange: (id: string, isFavorite: boolean) => void } | null>(null);
+  const [planReview, setPlanReview] = useState<{ plan: EurekaPlanState; controls: PlanReviewControls; readOnly: boolean } | null>(null);
 
   const handleRightPanelToggle = useCallback(() => {
     if (isMobile) {
@@ -324,6 +328,11 @@ export function AppShell() {
     }
     if (rightPanelMode === "extension") {
       setExtensionDetails(null);
+      setRightPanelMode("files");
+      if (!rightPanelOpen) setRightPanelOpen(true);
+      return;
+    }
+    if (rightPanelMode === "plan") {
       setRightPanelMode("files");
       if (!rightPanelOpen) setRightPanelOpen(true);
       return;
@@ -846,6 +855,25 @@ export function AppShell() {
   const handleOpenExtensionDetails = useCallback((item: OrganizationExtensionDetailItem, onFavoriteChange: (id: string, isFavorite: boolean) => void) => {
     setExtensionDetails({ item, onFavoriteChange });
     setRightPanelMode("extension");
+    setRightPanelOpen(true);
+    if (isMobile) setSidebarOpen(false);
+  }, [isMobile]);
+
+  const handlePlanStateChange = useCallback((plan: EurekaPlanState, controls: PlanReviewControls) => {
+    // Keep a manually opened historical plan visible while the latest plan
+    // continues to receive progress updates in the background.
+    if (planReview && (planReview.plan.activePlanId !== plan.activePlanId || planReview.plan.sourceEntryId !== plan.sourceEntryId)) return;
+    if (plan.phase === "idle") {
+      setPlanReview(null);
+      if (rightPanelMode === "plan") setRightPanelMode("files");
+      return;
+    }
+    setPlanReview({ plan, controls, readOnly: false });
+  }, [rightPanelMode, planReview]);
+
+  const handleOpenPlanReview = useCallback((plan: EurekaPlanState, controls: PlanReviewControls, readOnly = false) => {
+    setPlanReview({ plan, controls, readOnly });
+    setRightPanelMode("plan");
     setRightPanelOpen(true);
     if (isMobile) setSidebarOpen(false);
   }, [isMobile]);
@@ -2110,6 +2138,8 @@ export function AppShell() {
               onSoundToggle={onSoundToggle}
               playDoneSound={playDoneSound}
               unlockAudio={unlockAudio}
+              onPlanStateChange={handlePlanStateChange}
+              onOpenPlanReview={handleOpenPlanReview}
             />
           ) : initialCwdStatus === "validating" ? (
             <div
@@ -2189,7 +2219,16 @@ export function AppShell() {
           background: "var(--sidebar-bg)",
         } as React.CSSProperties}
       >
-        {rightPanelMode === "extension" && extensionDetails ? (
+        {rightPanelMode === "plan" && planReview ? (
+          <PlanReviewPanel
+            plan={planReview.plan}
+            onClose={() => { setRightPanelOpen(false); }}
+            onUpdate={planReview.controls.update}
+            onReturnForRevision={planReview.controls.returnForRevision}
+            onApprove={planReview.controls.approve}
+            readOnly={planReview.readOnly}
+          />
+        ) : rightPanelMode === "extension" && extensionDetails ? (
           <OrganizationExtensionDetails
             item={extensionDetails.item}
             onClose={() => { setExtensionDetails(null); setRightPanelOpen(false); }}

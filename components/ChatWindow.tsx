@@ -7,6 +7,7 @@ import { asBracketedPaste, toTerminalKeyData } from "@/lib/terminal-input";
 import { countToolCallBlocks, getAssistantErrorMessage, getDisplayableAssistantBlocks, splitFinalAssistantBlocks } from "@/lib/message-display";
 import { extractTurnWrittenFiles, type WrittenFile } from "@/lib/turn-written-files";
 import { MessageView } from "./MessageView";
+import { PlanQuestionCard } from "./PlanQuestionCard";
 import { ChatInput, type ChatInputHandle } from "./ChatInput";
 import { ChatMinimap, useMessageRefs } from "./ChatMinimap";
 import { ExtensionStatusBar } from "./ExtensionStatusBar";
@@ -15,6 +16,7 @@ import { useAgentSession, type AgentPhase, type NoticeItem } from "@/hooks/useAg
 import { useDragDrop } from "@/hooks/useDragDrop";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import type { SessionStatsInfo } from "@/lib/pi-types";
+import { getSessionPlans, type EurekaPlanAnnotation, type EurekaPlanQuestion, type EurekaPlanState } from "@/lib/plan-mode";
 import type { AppUpdateResponse } from "@/lib/api-types";
 import {
   captureScrollDistance,
@@ -49,6 +51,14 @@ interface Props {
   onSoundToggle?: () => void;
   playDoneSound?: () => void;
   unlockAudio?: () => void;
+  onPlanStateChange?: (plan: EurekaPlanState, controls: PlanReviewControls) => void;
+  onOpenPlanReview?: (plan: EurekaPlanState, controls: PlanReviewControls, readOnly?: boolean) => void;
+}
+
+export interface PlanReviewControls {
+  update: (annotations: EurekaPlanAnnotation[], generalNote: string) => Promise<unknown>;
+  returnForRevision: () => Promise<unknown>;
+  approve: () => Promise<unknown>;
 }
 
 function phaseLabel(phase: AgentPhase, t: (key: string, params?: Record<string, string | number>) => string): string | null {
@@ -140,6 +150,14 @@ function hasFinalAssistantAnswer(message: AgentMessage): boolean {
   ));
 }
 
+function getAssistantText(message: AssistantMessage): string {
+  return message.content
+    .filter((block) => block.type === "text")
+    .map((block) => block.text)
+    .join("\n")
+    .trim();
+}
+
 function findFinalAssistantIndex(messages: AgentMessage[], userIdx: number, endIdx: number): number {
   for (let candidateIdx = endIdx - 1; candidateIdx > userIdx; candidateIdx--) {
     if (hasFinalAssistantAnswer(messages[candidateIdx])) return candidateIdx;
@@ -172,6 +190,17 @@ function countToolCalls(messages: AgentMessage[], indices: number[]): number {
     count += countToolCallBlocks(getDisplayableAssistantBlocks(msg as AssistantMessage));
   }
   return count;
+}
+
+function getPlanQuestionsForMessage(message: AgentMessage, questions: EurekaPlanQuestion[]): EurekaPlanQuestion[] {
+  if (message.role !== "assistant") return [];
+  const toolCallIds: string[] = [];
+  for (const block of (message as AssistantMessage).content) {
+    if (block.type === "toolCall" && block.toolName === "request_user_input") {
+      toolCallIds.push(block.toolCallId);
+    }
+  }
+  return toolCallIds.flatMap((toolCallId) => questions.filter((question) => question.toolCallId === toolCallId));
 }
 
 function hasDisplayableProcessMessage(message: AgentMessage): boolean {
@@ -247,7 +276,7 @@ function ProcessDetailsGroup({ messageCount, toolCallCount, defaultExpanded = fa
   );
 }
 
-export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionDraftKey, onAgentEnd, onAttentionNeeded, onSessionCreated, onSessionForked, modelsRefreshKey, chatInputRef, onBranchDataChange, onSystemPromptChange, onSystemPromptLoaderChange, onSessionStatsChange, onSessionStatsPanelOpen, onContextUsageChange, onOpenFile, soundEnabled = true, onSoundToggle, playDoneSound = () => {}, unlockAudio }: Props) {
+export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionDraftKey, onAgentEnd, onAttentionNeeded, onSessionCreated, onSessionForked, modelsRefreshKey, chatInputRef, onBranchDataChange, onSystemPromptChange, onSystemPromptLoaderChange, onSessionStatsChange, onSessionStatsPanelOpen, onContextUsageChange, onOpenFile, soundEnabled = true, onSoundToggle, playDoneSound = () => {}, unlockAudio, onPlanStateChange, onOpenPlanReview }: Props) {
   const { t } = useI18n();
   const isMobile = useIsMobile();
 
@@ -277,7 +306,7 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
     agentRunning, bashRunning, pendingBash, modelNames, modelList, modelError, modelScopeWarnings, modelThinkingLevels, modelThinkingLevelMaps, toolPreset, thinkingLevel,
     retryInfo, contextUsage, forkingEntryId,
     isCompacting, compactError, compactResult, displayModel: displayModelValue, modelSwitching, sessionStats,
-    slashCommands, slashCommandsLoading, queuedMessages,
+    slashCommands, slashCommandsLoading, queuedMessages, planMode,
     notices, extensionDialog, extensionCustomUi, extensionStatuses, extensionWidgets, respondToExtensionUi, sendExtensionCustomInput,
     isAutoModelSelection,
     agentPhase,
@@ -289,10 +318,21 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
     handleRecallQueue,
     handleBuiltinSlashCommand,
     handleToolPresetChange, handleThinkingLevelChange, loadSlashCommands, scrollUserMsgToTop,
+    handlePlanModeChange, handleSubmitPlan, handlePlanQuestionAnswer, handlePlanReviewUpdate, handleReturnPlanForRevision, handleApprovePlan,
   } = useAgentSession({
     session, sessionRunning, newSessionCwd, newSessionDraftKey, onAgentEnd: wrappedOnAgentEnd, onAttentionNeeded, onSessionCreated, onSessionForked,
     modelsRefreshKey, chatInputRef, onBranchDataChange, onSystemPromptChange, onSystemPromptLoaderChange, onSessionStatsPanelOpen,
   });
+
+  const planReviewControls = useMemo<PlanReviewControls>(() => ({
+    update: handlePlanReviewUpdate,
+    returnForRevision: handleReturnPlanForRevision,
+    approve: handleApprovePlan,
+  }), [handlePlanReviewUpdate, handleReturnPlanForRevision, handleApprovePlan]);
+
+  useEffect(() => {
+    onPlanStateChange?.(planMode, planReviewControls);
+  }, [onPlanStateChange, planMode, planReviewControls]);
   const sessionBusy = agentRunning || bashRunning;
 
   useEffect(() => {
@@ -388,6 +428,14 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
   const { isDragOver, handleDragEnter, handleDragOver, handleDragLeave, handleDrop } = useDragDrop(onDrop);
 
   const visibleMessages = messages.filter((m) => m.role === "user" || m.role === "assistant");
+  // Only the newest assistant response can belong to the currently active
+  // planning turn. Older replies are session history, never resubmittable plans.
+  const latestAssistantMessageIndex = useMemo(() => {
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      if (messages[index]?.role === "assistant") return index;
+    }
+    return -1;
+  }, [messages]);
   // Stable Map identity: `messages` doesn't change during streaming updates
   // (the streaming message lives in streamState), so memoized MessageViews
   // skip re-rendering on every message_update event. An inline `new Map()`
@@ -527,6 +575,15 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
   const currentThinkingLevelMap = displayModelValue
     ? (modelThinkingLevelMaps[`${displayModelValue.provider}:${displayModelValue.modelId}`] ?? null)
     : null;
+  const pendingPlanQuestion = planMode.questions.find((question) => question.status === "pending");
+
+  const planQuestionElement = pendingPlanQuestion ? (
+    <div style={{ flexShrink: 0, padding: "0 16px 1px", paddingRight: isMobile ? 16 : CHAT_INPUT_RIGHT_PADDING }}>
+      <div style={{ width: "100%", maxWidth: 820, margin: "0 auto" }}>
+        <PlanQuestionCard question={pendingPlanQuestion} onAnswer={handlePlanQuestionAnswer} fullWidth />
+      </div>
+    </div>
+  ) : null;
 
   const chatInputElement = (
     <ChatInput
@@ -537,6 +594,7 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
       onFollowUp={agentRunning ? handleFollowUp : undefined}
       onPromptWithStreamingBehavior={agentRunning ? handlePromptWithStreamingBehavior : undefined}
       isStreaming={sessionBusy}
+      inputLocked={planMode.questions.some((question) => question.status === "pending")}
       model={displayModelValue}
       isAutoModelSelection={isAutoModelSelection}
       modelNames={modelNames}
@@ -552,6 +610,8 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
       compactResult={compactResult}
       toolPreset={toolPreset}
       onToolPresetChange={session || isNew ? handleToolPresetChange : undefined}
+      planMode={planMode}
+      onPlanModeChange={session || isNew ? handlePlanModeChange : undefined}
       thinkingLevel={thinkingLevel}
       onThinkingLevelChange={session || isNew ? handleThinkingLevelChange : undefined}
       availableThinkingLevels={availableThinkingLevels}
@@ -673,6 +733,7 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
               </div>
             </div>
             <NoticeShelf notices={notices} align="right" />
+            {planQuestionElement}
             {chatInputElement}
             <ExtensionStatusBar statuses={extensionStatuses} widgets={extensionWidgets} />
           </div>
@@ -749,7 +810,7 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
                   }
                 }
                 if (options.showTimestamp !== undefined) showTimestamp = options.showTimestamp;
-                const view = (
+                const messageView = (
                   <MessageView
                     key={`${keyPrefix}-view-${idx}`}
                     message={msg}
@@ -769,6 +830,62 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
                     writtenFiles={options.writtenFiles}
                   />
                 );
+                const canSubmitPlan = planMode.planModeActive
+                  && planMode.phase === "planning"
+                  && msg.role === "assistant"
+                  && idx === latestAssistantMessageIndex
+                  && !sessionBusy
+                  && Boolean(onOpenPlanReview)
+                  && getAssistantText(msg as AssistantMessage).length > 0;
+                const sourcePlan = getSessionPlans(planMode).find((plan) => plan.sourceEntryId === entryIds[idx]);
+                // A plan is editable only when both its stable record id and
+                // source assistant message match the active plan. The source
+                // check also protects legacy snapshots that may share an id.
+                const sourcePlanIsCurrent = sourcePlan?.activePlanId === planMode.activePlanId
+                  && sourcePlan?.sourceEntryId === planMode.sourceEntryId;
+                const currentPlanAction = Boolean(sourcePlan && (sourcePlan.phase === "executing" || (sourcePlanIsCurrent && sourcePlan.phase === "reviewing")) && onOpenPlanReview);
+                const planQuestions = getPlanQuestionsForMessage(msg, planMode.questions)
+                  .filter((question) => question.status === "answered");
+                const content = canSubmitPlan ? (
+                  <div>
+                    {messageView}
+                    <div className="mt-2 flex justify-start">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const content = getAssistantText(msg as AssistantMessage);
+                          void handleSubmitPlan(content, entryIds[idx]).then((next) => {
+                            if (next) onOpenPlanReview?.(next, planReviewControls);
+                          });
+                        }}
+                        className="rounded-md border border-[var(--border)] bg-[var(--bg-panel)] px-2.5 py-1 text-xs font-medium text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text)]"
+                      >提交评审</button>
+                    </div>
+                  </div>
+                ) : currentPlanAction ? (
+                  <div>
+                    {messageView}
+                    <div className="mt-2 flex justify-start">
+                      <button
+                        type="button"
+                        onClick={() => sourcePlan && onOpenPlanReview?.(sourcePlan, planReviewControls, !sourcePlanIsCurrent)}
+                        className="rounded-md border border-[var(--border)] bg-[var(--bg-panel)] px-2.5 py-1 text-xs font-medium text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text)]"
+                      >{sourcePlanIsCurrent && sourcePlan?.phase === "reviewing" ? "计划评审" : "查看计划"}</button>
+                    </div>
+                  </div>
+                ) : messageView;
+                const view = planQuestions.length > 0 ? (
+                  <div>
+                    {content}
+                    {planQuestions.map((question) => (
+                      <PlanQuestionCard
+                        key={question.id}
+                        question={question}
+                        onAnswer={handlePlanQuestionAnswer}
+                      />
+                    ))}
+                  </div>
+                ) : content;
                 if (!isVisible || options.attachRef === false || currentRefIdx === undefined) return view;
                 return (
                   <div key={`${keyPrefix}-${idx}`} ref={attachVisibleRef(idx, currentRefIdx)}>
@@ -930,6 +1047,7 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
       </div>
 
       <div className="relative">
+        {planQuestionElement}
         {chatInputElement}
         <ExtensionStatusBar statuses={extensionStatuses} widgets={extensionWidgets} />
       </div>

@@ -17,6 +17,7 @@ import { isPromptRejectedError, sendAgentCommand } from "@/lib/agent-client";
 import { clearDraft, rekeyDraft, restoreDraftSubmission } from "@/lib/draft-store";
 import { getPreferredToolPreset, setPreferredToolPreset } from "@/lib/tool-preset-preference";
 import { getToolNamesForPreset, type ToolEntry, type ToolPreset } from "@/lib/tool-presets";
+import { EMPTY_PLAN_STATE, getPendingPlanQuestion, type EurekaPlanAnnotation, type EurekaPlanQuestion, type EurekaPlanState } from "@/lib/plan-mode";
 import type { SessionStatsInfo } from "@/lib/pi-types";
 import { userMessageKey } from "@/lib/prompt-recovery";
 import { AgentEventConnection } from "@/lib/agent-event-connection";
@@ -70,6 +71,7 @@ type AgentStateResponse = {
   extensionStatuses?: ExtensionStatusItem[];
   extensionWidgets?: ExtensionWidgetItem[];
   queuedMessages?: { steering?: string[]; followUp?: string[] } | null;
+  planMode?: EurekaPlanState;
 };
 
 export interface QueuedMessages {
@@ -309,6 +311,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const [extensionStatuses, setExtensionStatuses] = useState<ExtensionStatusItem[]>([]);
   const [extensionWidgets, setExtensionWidgets] = useState<ExtensionWidgetItem[]>([]);
   const [queuedMessages, setQueuedMessages] = useState<QueuedMessages>({ steering: [], followUp: [] });
+  const [planMode, setPlanMode] = useState<EurekaPlanState>(EMPTY_PLAN_STATE);
 
   const eventConnectionRef = useRef<AgentEventConnection | null>(null);
   const eventStreamGraceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -342,6 +345,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const modelSwitchPendingRef = useRef(false);
   const draftKeyAliasesRef = useRef(new Map<string, string>());
   const sessionHookMountedRef = useRef(true);
+  const planProgressSignatureRef = useRef("");
 
   sessionPropIdRef.current = session?.id ?? null;
   sessionRunningRef.current = Boolean(sessionRunning);
@@ -506,6 +510,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           if (liveState.extensionStatuses !== undefined) setExtensionStatuses(liveState.extensionStatuses ?? []);
           if (liveState.extensionWidgets !== undefined) setExtensionWidgets(liveState.extensionWidgets ?? []);
           if (liveState.queuedMessages !== undefined) setQueuedMessages(normalizeQueuedMessages(liveState.queuedMessages));
+          if (liveState.planMode !== undefined) setPlanMode(liveState.planMode);
         } else if (!agentState.running) {
           setQueuedMessages({ steering: [], followUp: [] });
         }
@@ -1056,6 +1061,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
               if (d.state?.systemPrompt !== undefined) setSystemPrompt(d.state.systemPrompt ?? null);
               if (d.state?.extensionStatuses !== undefined) setExtensionStatuses(d.state.extensionStatuses ?? []);
               if (d.state?.extensionWidgets !== undefined) setExtensionWidgets(d.state.extensionWidgets ?? []);
+              if (d.state?.planMode !== undefined) setPlanMode(d.state.planMode);
               // Aborted turns can leave messages queued in pi (delivered with the
               // next turn); dead wrapper (no state) means the queue is gone.
               setQueuedMessages(normalizeQueuedMessages(d.state?.queuedMessages));
@@ -1230,10 +1236,15 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   }, [addNotice, cancelEventStreamGrace, handleExtensionUiRequest, loadSession, notifyPromptStage, onAgentEnd, scheduleEventStreamClose, scrollToBottom, settleUiStage]);
   handleAgentEventRef.current = handleAgentEvent;
 
-  const handleSend = useCallback(async (message: string, images?: AttachedImage[]) => {
+  const handleSend = useCallback(async (message: string, images?: AttachedImage[], options?: { bypassPlanQuestionGuard?: boolean }) => {
     const trimmedMessage = message.trim();
     if (!trimmedMessage && !images?.length) return;
     if (agentRunningRef.current || bashRunningRef.current) {
+      restoreSubmission(message, images, composerDraftKey);
+      return;
+    }
+    if (!options?.bypassPlanQuestionGuard && getPendingPlanQuestion(planMode)) {
+      addNotice({ type: "warning", message: "请先回答当前规划澄清问题。" });
       restoreSubmission(message, images, composerDraftKey);
       return;
     }
@@ -1241,6 +1252,11 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
 
     const isBashCommand = !images?.length && trimmedMessage.startsWith("!");
     if (isBashCommand) {
+      if (planMode.planModeActive) {
+        addNotice({ type: "warning", message: "规划模式不允许执行本地命令。" });
+        restoreSubmission(message, images, composerDraftKey);
+        return;
+      }
       const isExcluded = trimmedMessage.startsWith("!!");
       const bashCmd = (isExcluded ? trimmedMessage.slice(2) : trimmedMessage.slice(1)).trim();
       if (!bashCmd) {
@@ -1347,7 +1363,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       setAgentPhase(null);
       dispatch({ type: "end" });
     }
-  }, [isNew, newSessionCwd, newSessionModel, session, ensureNewSession, ensureEventsConnected, promoteNewSession, waitForPromptSettlement, addNotice, cancelEventStreamGrace, closeEvents, composerDraftKey, reconcileAgentState, restoreSubmission]);
+  }, [isNew, newSessionCwd, newSessionModel, session, ensureNewSession, ensureEventsConnected, promoteNewSession, waitForPromptSettlement, addNotice, cancelEventStreamGrace, closeEvents, composerDraftKey, reconcileAgentState, restoreSubmission, planMode]);
 
   const executeBash = useCallback(async (command: string, excludeFromContext: boolean) => {
     if (agentRunningRef.current || bashRunningRef.current) return;
@@ -1706,6 +1722,10 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   }, [isNew]);
 
   const handleToolPresetChange = useCallback(async (preset: ToolPreset) => {
+    if (planMode.planModeActive) {
+      addNotice({ type: "warning", message: "规划模式下工具权限已固定为只读。" });
+      return;
+    }
     const toolNames = getToolNamesForPreset(preset);
     setPreferredToolPreset(preset);
     setToolPresetState(preset);
@@ -1716,7 +1736,109 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     } catch (e) {
       console.error("Failed to set tools:", e);
     }
-  }, [setToolPresetState]);
+  }, [setToolPresetState, planMode.planModeActive, addNotice]);
+
+  const handlePlanModeChange = useCallback(async (planning: boolean) => {
+    if (agentRunningRef.current || bashRunningRef.current) {
+      addNotice({ type: "warning", message: "请等待当前任务完成后再切换规划模式。" });
+      return;
+    }
+    if (planning === planMode.planModeActive) return;
+    if (!planning && planMode.phase === "reviewing") {
+      addNotice({ type: "warning", message: "当前计划正在评审。请先批准或退回修改。" });
+      return;
+    }
+    try {
+      const sid = sessionIdRef.current ?? await ensureNewSession();
+      if (!sid) throw new Error("无法初始化会话");
+      const next = await sendAgentCommand<EurekaPlanState>(sid, {
+        type: "set_plan_mode",
+        phase: planning ? "planning" : "idle",
+        originalToolPreset: toolPreset,
+      });
+      setPlanMode(next);
+    } catch (error) {
+      addNotice({ type: "error", message: error instanceof Error ? error.message : String(error) });
+    }
+  }, [addNotice, ensureNewSession, toolPreset, planMode.phase, planMode.planModeActive]);
+
+  const handleSubmitPlan = useCallback(async (content: string, sourceEntryId?: string) => {
+    const sid = sessionIdRef.current;
+    if (!sid) return null;
+    try {
+      const next = await sendAgentCommand<EurekaPlanState>(sid, { type: "submit_plan", content, sourceEntryId });
+      setPlanMode(next);
+      return next;
+    } catch (error) {
+      addNotice({ type: "error", message: error instanceof Error ? error.message : String(error) });
+      return null;
+    }
+  }, [addNotice]);
+
+  const handlePlanQuestionAnswer = useCallback(async (question: EurekaPlanQuestion, answer: { optionId?: string; customAnswer?: string }) => {
+    const sid = sessionIdRef.current;
+    if (!sid) return;
+    try {
+      const next = await sendAgentCommand<EurekaPlanState>(sid, {
+        type: "answer_plan_question",
+        questionId: question.id,
+        ...(answer.optionId ? { optionId: answer.optionId } : {}),
+        ...(answer.customAnswer ? { customAnswer: answer.customAnswer } : {}),
+      });
+      setPlanMode(next);
+      const selected = answer.optionId
+        ? question.options.find((option) => option.id === answer.optionId)?.label ?? answer.optionId
+        : answer.customAnswer ?? "";
+      await handleSend(`已回答规划澄清“${question.title}”：${selected}`, undefined, { bypassPlanQuestionGuard: true });
+    } catch (error) {
+      addNotice({ type: "error", message: error instanceof Error ? error.message : String(error) });
+    }
+  }, [addNotice, handleSend]);
+
+  const handlePlanReviewUpdate = useCallback(async (annotations: EurekaPlanAnnotation[], generalNote: string) => {
+    const sid = sessionIdRef.current;
+    if (!sid) return null;
+    try {
+      const next = await sendAgentCommand<EurekaPlanState>(sid, { type: "update_plan_review", annotations, generalNote });
+      setPlanMode(next);
+      return next;
+    } catch (error) {
+      addNotice({ type: "error", message: error instanceof Error ? error.message : String(error) });
+      return null;
+    }
+  }, [addNotice]);
+
+  const handleReturnPlanForRevision = useCallback(async () => {
+    const sid = sessionIdRef.current;
+    if (!sid) return;
+    try {
+      const next = await sendAgentCommand<EurekaPlanState>(sid, { type: "return_plan_for_revision" });
+      setPlanMode(next);
+      const comments = next.annotations.map((annotation, index) => `${index + 1}. “${annotation.quote}”：${annotation.note}`).join("\n");
+      const feedback = [
+        "请根据计划评审反馈修改并重新提交计划。不要开始实施。",
+        next.generalNote ? `总体说明：${next.generalNote}` : "",
+        comments ? `逐段批注：\n${comments}` : "",
+      ].filter(Boolean).join("\n\n");
+      await handleSend(feedback);
+    } catch (error) {
+      addNotice({ type: "error", message: error instanceof Error ? error.message : String(error) });
+    }
+  }, [addNotice, handleSend]);
+
+  const handleApprovePlan = useCallback(async () => {
+    const sid = sessionIdRef.current;
+    if (!sid) return;
+    try {
+      const next = await sendAgentCommand<EurekaPlanState>(sid, { type: "approve_plan" });
+      setPlanMode(next);
+      const annotations = next.annotations.map((annotation) => `- 对“${annotation.quote.replace(/\s+/g, " ").slice(0, 180)}”的批注：${annotation.note}`).join("\n");
+      const reviewContext = [next.generalNote ? `总体说明：${next.generalNote}` : "", annotations].filter(Boolean).join("\n");
+      await handleSend("这是 Eureka 原生计划执行，不要查找或创建 PLAN.md 等计划文件。请直接按当前会话中已批准的计划和评审反馈开始执行；每完成一个清单项，在回复中标记 [DONE:n]。\n\n已批准计划：\n" + next.content + (reviewContext ? `\n\n已批准的评审反馈：\n${reviewContext}` : ""));
+    } catch (error) {
+      addNotice({ type: "error", message: error instanceof Error ? error.message : String(error) });
+    }
+  }, [addNotice, handleSend]);
 
   const scrollUserMsgToTop = useCallback(() => {
     const container = scrollContainerRef.current;
@@ -1795,6 +1917,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           if (agentState.state.thinkingLevel !== undefined) setThinkingLevel((agentState.state.thinkingLevel as ThinkingLevelOption) ?? "auto");
           if (agentState.state.extensionStatuses !== undefined) setExtensionStatuses(agentState.state.extensionStatuses ?? []);
           if (agentState.state.extensionWidgets !== undefined) setExtensionWidgets(agentState.state.extensionWidgets ?? []);
+          if (agentState.state.planMode !== undefined) setPlanMode(agentState.state.planMode);
           if (agentState.state.queuedMessages !== undefined) setQueuedMessages(normalizeQueuedMessages(agentState.state.queuedMessages));
         }
       });
@@ -1899,13 +2022,33 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     setSessionStatsOverride(null);
   }, [messages.length, contextUsage?.tokens, contextUsage?.percent, contextUsage?.contextWindow]);
 
+  useEffect(() => {
+    if (planMode.phase !== "executing") {
+      planProgressSignatureRef.current = "";
+      return;
+    }
+    const lastAssistant = [...messages].reverse().find((message) => message.role === "assistant");
+    if (!lastAssistant || lastAssistant.role !== "assistant") return;
+    const text = lastAssistant.content
+      .filter((block) => block.type === "text")
+      .map((block) => block.text)
+      .join("\n");
+    if (!/\[DONE:\d+\]/.test(text) || text === planProgressSignatureRef.current) return;
+    const sid = sessionIdRef.current;
+    if (!sid) return;
+    planProgressSignatureRef.current = text;
+    void sendAgentCommand<EurekaPlanState>(sid, { type: "sync_plan_progress", assistantText: text })
+      .then(setPlanMode)
+      .catch(() => { /* progress sync is retried after the next agent response */ });
+  }, [messages, planMode.phase]);
+
   return {
     // State
     data, loading, error, activeLeafId, messages, entryIds, streamState,
     agentRunning, modelNames, modelList, modelError, modelScopeWarnings, modelThinkingLevels, modelThinkingLevelMaps, newSessionModel, toolPreset, thinkingLevel,
     retryInfo, contextUsage, systemPrompt, forkingEntryId,
     isCompacting, compactError, compactResult, currentModel, displayModel, modelSwitching, sessionStats,
-    slashCommands, slashCommandsLoading, queuedMessages,
+    slashCommands, slashCommandsLoading, queuedMessages, planMode,
     notices: noticeState.visible, extensionDialog, extensionCustomUi, extensionStatuses, extensionWidgets, respondToExtensionUi, sendExtensionCustomInput,
     isAutoModelSelection: isNew && newSessionModel === null,
     agentPhase,
@@ -1920,6 +2063,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     handleRecallQueue,
     handleBuiltinSlashCommand,
     handleToolPresetChange, handleThinkingLevelChange, loadTools, loadSlashCommands, setActiveLeafId, setData, setMessages,
+    handlePlanModeChange, handleSubmitPlan, handlePlanQuestionAnswer, handlePlanReviewUpdate, handleReturnPlanForRevision, handleApprovePlan,
     scrollToBottom, scrollUserMsgToTop,
     dispatch, setAgentRunning, setForkingEntryId,
     bashRunning, pendingBash,
