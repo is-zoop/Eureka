@@ -862,14 +862,19 @@ export function AppShell() {
   const handlePlanStateChange = useCallback((plan: EurekaPlanState, controls: PlanReviewControls) => {
     // Keep a manually opened historical plan visible while the latest plan
     // continues to receive progress updates in the background.
-    if (planReview && (planReview.plan.activePlanId !== plan.activePlanId || planReview.plan.sourceEntryId !== plan.sourceEntryId)) return;
     if (plan.phase === "idle") {
       setPlanReview(null);
-      if (rightPanelMode === "plan") setRightPanelMode("files");
+      setRightPanelMode((mode) => mode === "plan" ? "files" : mode);
       return;
     }
-    setPlanReview({ plan, controls, readOnly: false });
-  }, [rightPanelMode, planReview]);
+    setPlanReview((current) => {
+      if (current && (current.plan.activePlanId !== plan.activePlanId || current.plan.sourceEntryId !== plan.sourceEntryId)) {
+        return current;
+      }
+      if (current?.plan === plan && current.controls === controls && !current.readOnly) return current;
+      return { plan, controls, readOnly: false };
+    });
+  }, []);
 
   const handleOpenPlanReview = useCallback((plan: EurekaPlanState, controls: PlanReviewControls, readOnly = false) => {
     setPlanReview({ plan, controls, readOnly });

@@ -50,6 +50,7 @@
     "lucide-react": "^1.34.0",
     "material-file-icons": "^2.4.0",
     "next": "16.2.12",
+    "pi-mcp-adapter": "2.33.0",
     "proper-lockfile": "4.1.2",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",

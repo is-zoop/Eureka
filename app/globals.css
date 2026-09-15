@@ -70,6 +70,15 @@
   box-shadow: var(--shadow-soft);
 }
 
+.mcp-config-form input:focus,
+.mcp-config-form input:focus-visible,
+.mcp-config-form textarea:focus,
+.mcp-config-form textarea:focus-visible {
+  border-color: var(--border) !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+
 html.dark {
   --bg: #1a1a1a;
   --bg-panel: #242424;
@@ -532,27 +541,38 @@ a {
   overflow-y: hidden;
   border: 1px solid var(--border);
   border-radius: var(--radius-card);
+  background: var(--bg-panel);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--text) 8%, transparent);
 }
 .markdown-body table {
   border-collapse: separate;
   border-spacing: 0;
-  min-width: 100%;
+  min-width: max(100%, 480px);
   font-size: 13px;
+  line-height: 1.45;
 }
 .markdown-body th, .markdown-body td {
   border: 0;
   border-bottom: 1px solid var(--border);
-  padding: 6px 10px;
-  text-align: left;
+  padding: 7px 10px;
   vertical-align: top;
+}
+.markdown-body th:not(:last-child),
+.markdown-body td:not(:last-child) {
+  border-right: 1px solid var(--border);
 }
 .markdown-body tr:last-child td { border-bottom: 0; }
 .markdown-body th {
-  background: var(--bg-panel);
+  background: color-mix(in srgb, var(--bg-panel) 88%, var(--bg));
   color: color-mix(in srgb, var(--text) 88%, var(--text-muted));
-  font-weight: 650;
+  font-weight: 600;
 }
-.markdown-body tbody tr:nth-child(even) td { background: var(--bg-subtle); }
+.markdown-body tbody tr {
+  transition: background-color var(--transition-ui);
+}
+.markdown-body tbody tr:hover td {
+  background: color-mix(in srgb, var(--bg-hover) 72%, transparent);
+}
 .markdown-body hr {
   border: none;
   height: 1px;
@@ -687,6 +707,7 @@ a {
   align-items: center;
   gap: 8px;
 }
+
 .markdown-code-lang {
   color: var(--text-muted);
   font-family: var(--font-mono);

@@ -19,6 +19,7 @@ const nextConfig: NextConfig = {
     "@earendil-works/pi-agent-core",
     "@earendil-works/pi-ai",
     "@earendil-works/pi-tui",
+    "jiti",
   ],
   allowedDevOrigins: ["127.0.0.1", "192.168.*.*"],
   async headers() {

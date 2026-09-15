@@ -141,7 +141,9 @@ export function readPlanState(entries: SessionEntry[]): EurekaPlanState {
     const entry = entries[index];
     if (entry.type !== "custom" || entry.customType !== "eureka_plan") continue;
     if (isPlanState(entry.data)) {
-      const state: EurekaPlanState = {
+      const hasPersistedActivePlanId = typeof (entry.data as Partial<EurekaPlanState>).activePlanId === "string"
+        && Boolean((entry.data as Partial<EurekaPlanState>).activePlanId);
+      let state: EurekaPlanState = {
         ...EMPTY_PLAN_STATE,
         ...entry.data,
         questions: Array.isArray(entry.data.questions) ? entry.data.questions : [],
@@ -166,6 +168,15 @@ export function readPlanState(entries: SessionEntry[]): EurekaPlanState {
             break;
           }
         }
+      }
+      // Earlier cancel operations only cleared the boolean flag, leaving the
+      // phase as "planning". Normalize that stale combination so old sessions
+      // restore as ordinary chats while retaining the abandoned plan in history.
+      if (hasPersistedActivePlanId && !state.planModeActive && (state.phase === "planning" || state.phase === "reviewing")) {
+        state = {
+          ...EMPTY_PLAN_STATE,
+          plans: state.activePlanId ? [...state.plans, planSnapshot(state)] : state.plans,
+        };
       }
       return state;
     }

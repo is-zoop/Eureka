@@ -110,3 +110,45 @@ export interface PluginsResponse {
   diagnostics: PluginDiagnostic[];
   projectResourcesLoaded: boolean;
 }
+
+export type McpConfigScope = "project" | "global";
+export type McpLifecycle = "lazy" | "eager" | "keep-alive";
+export type McpTransportKind = "stdio" | "http";
+export type McpServerRuntimeState = "connected" | "cached" | "failed" | "needs-auth" | "not-connected" | "disabled" | "unknown";
+
+export interface McpServerInput {
+  name: string;
+  transport: McpTransportKind;
+  command?: string;
+  args?: string[];
+  cwd?: string;
+  env?: Record<string, string>;
+  url?: string;
+  headers?: Record<string, string>;
+  bearerTokenEnv?: string;
+  lifecycle?: McpLifecycle;
+  idleTimeout?: number;
+  /** Disabled servers stay configured but are not loaded into new sessions. */
+  disabled?: boolean;
+}
+
+export interface McpServerSummary extends McpServerInput {
+  scope: McpConfigScope;
+  state: McpServerRuntimeState;
+  toolCount: number;
+  error?: string;
+}
+
+export interface McpRuntimeStatus {
+  sessionId: string;
+  updatedAt: string;
+  servers: Array<{ name: string; state: McpServerRuntimeState; toolCount: number; disabled: boolean }>;
+  totalTools: number;
+}
+
+export interface McpServersResponse {
+  scope: McpConfigScope;
+  configPath: string;
+  servers: McpServerSummary[];
+  diagnostics: string[];
+}

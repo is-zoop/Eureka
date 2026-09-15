@@ -2462,7 +2462,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                 </DropdownMenuContent>
               </DropdownMenu>
             )}
-            {!isStreaming && onToolPresetChange && planMode?.phase !== "planning" && planMode?.phase !== "reviewing" && (
+            {!isStreaming && onToolPresetChange && !planMode?.planModeActive && (
               <DropdownMenu open={toolDropdownOpen} onOpenChange={setToolDropdownOpen}>
                 <DropdownMenuTrigger
                   render={

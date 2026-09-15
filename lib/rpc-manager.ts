@@ -2,6 +2,8 @@ import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import { createAgentSessionFromServices, createAgentSessionServices, getAgentDir, initTheme, SessionManager, Theme } from "@earendil-works/pi-coding-agent";
 import { KeybindingsManager as TuiKeybindingsManager, TUI_KEYBINDINGS } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
+import { installBuiltInMcpAdapter, MCP_STATUS_EVENT } from "./mcp-adapter";
+import { clearMcpRuntime, updateMcpRuntime } from "./mcp-runtime";
 import { randomUUID } from "crypto";
 import { existsSync, realpathSync, writeFileSync } from "fs";
 import { resolve } from "path";
@@ -113,6 +115,24 @@ const RUNNING_STATE_EVENT_TYPES = new Set([
   "compaction_start",
   "compaction_end",
 ]);
+
+const PLAN_MODE_EXIT_FRAMING = "[EUREKA NATIVE PLAN MODE OFF]\nPlanning mode has been exited. Any earlier Eureka planning-only instructions in this session are no longer active. Resume normal conversation and follow the user's current request.";
+
+function needsPlanModeExitFraming(entries: SessionEntry[], state: EurekaPlanState): boolean {
+  if (state.phase !== "idle") return false;
+  let lastPlanStateIndex = -1;
+  for (let index = entries.length - 1; index >= 0; index -= 1) {
+    const entry = entries[index];
+    if (entry.type === "custom" && entry.customType === "eureka_plan") {
+      lastPlanStateIndex = index;
+      break;
+    }
+  }
+  if (lastPlanStateIndex < 0) return false;
+  return !entries.slice(lastPlanStateIndex + 1).some((entry) => (
+    entry.type === "custom_message" && entry.customType === "eureka-plan-mode-exit"
+  ));
+}
 
 const IDLE_RESET_EVENT_TYPES = new Set([
   "agent_end",
@@ -230,13 +250,23 @@ const EUREKA_NATIVE_PLAN_EXTENSION: InlineExtension = {
     });
 
     pi.on("before_agent_start", async (_event, ctx) => {
-      const state = readPlanState(ctx.sessionManager.getEntries() as SessionEntry[]);
-      if (state.phase === "planning") {
+      const entries = ctx.sessionManager.getEntries() as SessionEntry[];
+      const state = readPlanState(entries);
+      if (state.planModeActive && state.phase === "planning") {
         return {
           message: {
             customType: "eureka-plan-framing",
             display: false,
             content: `[EUREKA NATIVE PLAN MODE — MANDATORY]\nYou are planning, not implementing. Do not output source code, scripts, patches, commands, or a completed solution. Do not create or modify files. Use read-only investigation only. If a requirement that materially changes the plan is missing, call request_user_input with exactly one question and 2–4 selectable choices. Never write clarifying questions as ordinary text. Calling that tool ends the turn: do not add a prose answer after it. Otherwise, reply only with a Markdown plan containing these headings: Goal, Affected areas, Implementation steps, Risks, Verification. Every implementation step must be an unchecked checklist item (- [ ]). End after the plan and wait for the user to submit it for review.`,
+          },
+        };
+      }
+      if (needsPlanModeExitFraming(entries, state)) {
+        return {
+          message: {
+            customType: "eureka-plan-mode-exit",
+            display: false,
+            content: PLAN_MODE_EXIT_FRAMING,
           },
         };
       }
@@ -250,6 +280,21 @@ const EUREKA_NATIVE_PLAN_EXTENSION: InlineExtension = {
         };
       }
       return undefined;
+    });
+  },
+};
+
+/** The adapter is a Eureka dependency, not a user-installed Pi package. */
+const EUREKA_MCP_EXTENSION: InlineExtension = {
+  name: "eureka-native-mcp-status",
+  hidden: true,
+  factory: (pi) => {
+    // The adapter publishes sanitized, read-only snapshots on Pi's shared event bus.
+    // The session id is available when the extension lifecycle begins.
+    pi.on("session_start", (_event, ctx) => {
+      const sessionId = (ctx.sessionManager as { getSessionId?: () => string }).getSessionId?.();
+      if (!sessionId) return;
+      (pi.events as { on?: (name: string, listener: (value: unknown) => void) => void }).on?.(MCP_STATUS_EVENT, (snapshot) => updateMcpRuntime(sessionId, snapshot as Parameters<typeof updateMcpRuntime>[1]));
     });
   },
 };
@@ -742,9 +787,18 @@ export class AgentSessionWrapper {
         }
         if (requested === "idle") {
           if (!this.planModeState.planModeActive) return this.planModeState;
-          this.planModeState = { ...this.planModeState, planModeActive: false };
+          const previous = this.planModeState;
+          this.planModeState = {
+            ...EMPTY_PLAN_STATE,
+            plans: previous.activePlanId ? [...previous.plans, planSnapshot(previous)] : previous.plans,
+            // applyPlanModeRuntime needs the captured tools to restore the
+            // composer before this transient state is persisted as idle.
+            originalToolNames: previous.originalToolNames,
+          };
           this.applyPlanModeRuntime();
+          this.planModeState = { ...this.planModeState, originalToolNames: [], originalToolPreset: null };
           this.persistPlanModeState();
+          this.inner.sessionManager.appendCustomMessageEntry("eureka-plan-mode-exit", PLAN_MODE_EXIT_FRAMING, false);
           return this.planModeState;
         }
         throw new Error("Plan mode can only be entered manually from the composer");
@@ -1062,6 +1116,7 @@ export class AgentSessionWrapper {
   destroy(): void {
     if (!this._alive) return;
     this._alive = false;
+    clearMcpRuntime(this.inner.sessionId);
     if (this.idleTimer) clearTimeout(this.idleTimer);
     if (this.inner.isBashRunning) this.inner.abortBash();
     this.unsubscribe?.();
@@ -1900,7 +1955,7 @@ export async function startRpcSession(
     const services = await createAgentSessionServices({
       cwd: sessionCwd,
       agentDir,
-      resourceLoaderOptions: { extensionFactories: [EUREKA_NATIVE_PLAN_EXTENSION] },
+      resourceLoaderOptions: { extensionFactories: [installBuiltInMcpAdapter, EUREKA_NATIVE_PLAN_EXTENSION, EUREKA_MCP_EXTENSION] },
       ...(trustReloadOptions ? { resourceLoaderReloadOptions: trustReloadOptions } : {}),
     });
     const scope = await resolveVisibleModels(

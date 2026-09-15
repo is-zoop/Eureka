@@ -859,7 +859,7 @@ export function PluginsConfig({
         <div style={{ flex: 1, display: "flex", flexDirection: isMobile ? "column" : "row", overflow: "hidden" }}>
           <div
             style={{
-              width: isMobile ? "100%" : 245,
+              width: isMobile ? "100%" : 210,
               maxHeight: isMobile ? "40vh" : undefined,
               borderRight: isMobile ? "none" : "1px solid var(--border)",
               borderBottom: isMobile ? "1px solid var(--border)" : "none",
