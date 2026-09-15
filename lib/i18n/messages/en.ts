@@ -378,6 +378,7 @@ export const enLocale: LocalePlugin = {
     "i18n.noActiveSession": "No active session",
     "i18n.noBranches": "This session has no branches",
     "i18n.source": "Source",
+    "i18n.code": "Code",
     "i18n.preview": "Preview",
     "i18n.diff": "Diff",
     "i18n.downloadFile": "Download file",

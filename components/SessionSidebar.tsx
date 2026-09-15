@@ -2428,8 +2428,8 @@ function SessionItem({
                       minWidth: 0,
                       flex: 1,
                       fontSize: 13,
-                      fontWeight: isSelected ? 700 : 400,
-                      lineHeight: 1.4,
+                      fontWeight: isSelected ? 600 : 400,
+                      lineHeight: 1.5,
                       color: "var(--text)",
                     }}
                   >

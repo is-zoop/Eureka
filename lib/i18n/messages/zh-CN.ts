@@ -378,6 +378,7 @@ export const zhCNLocale: LocalePlugin = {
     "i18n.noActiveSession": "没有活动会话",
     "i18n.noBranches": "此会话没有分支",
     "i18n.source": "源代码",
+    "i18n.code": "代码",
     "i18n.preview": "预览",
     "i18n.diff": "Diff",
     "i18n.downloadFile": "下载文件",

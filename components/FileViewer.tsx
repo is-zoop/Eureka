@@ -6,8 +6,7 @@ import {
   createElement as renderSyntaxNode,
   type SyntaxHighlighterProps,
 } from "react-syntax-highlighter";
-import { vs } from "react-syntax-highlighter/dist/esm/styles/prism";
-import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
+import { editorDarkTheme, editorLightTheme } from "@/lib/code-theme";
 import ReactMarkdown from "react-markdown";
 import { useTheme } from "@/hooks/useTheme";
 import {
@@ -72,7 +71,7 @@ const DISPLAY_MODE_LABELS: Record<DisplayMode, string> = {
 };
 
 const FILE_CODE_STYLE: CSSProperties = {
-  fontFamily: "var(--font-mono)",
+  fontFamily: "var(--font-code-mono)",
   fontSize: 13,
   lineHeight: 1.6,
 };
@@ -85,7 +84,7 @@ const FILE_LINE_NUMBER_STYLE: CSSProperties = {
   color: "var(--text-dim)",
   background: "var(--bg-panel)",
   borderRight: "1px solid var(--border)",
-  fontFamily: "var(--font-mono)",
+  fontFamily: "var(--font-code-mono)",
   fontSize: 11,
   fontStyle: "normal",
   fontVariantNumeric: "tabular-nums",
@@ -1523,7 +1522,7 @@ function TextFileViewer({
           <SyntaxHighlighter
             className={wrapLines ? "file-source-view is-wrapped" : "file-source-view"}
             language={language === "text" ? "plaintext" : language}
-            style={isDark ? vscDarkPlus : vs}
+            style={isDark ? editorDarkTheme : editorLightTheme}
             showLineNumbers
             lineNumberStyle={{
               ...FILE_LINE_NUMBER_STYLE,
@@ -1532,7 +1531,7 @@ function TextFileViewer({
               margin: 0,
               padding: 0,
               border: 0,
-              background: "var(--bg)",
+              background: "var(--bg-panel)",
               ...FILE_CODE_STYLE,
               width: wrapLines ? "100%" : "max-content",
               minWidth: "100%",
@@ -1541,7 +1540,7 @@ function TextFileViewer({
             }}
             codeTagProps={{
               style: {
-                fontFamily: "var(--font-mono)",
+                fontFamily: "var(--font-code-mono)",
                 overflowWrap: wrapLines ? "anywhere" : "normal",
               },
             }}

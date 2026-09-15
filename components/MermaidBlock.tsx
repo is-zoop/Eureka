@@ -2,11 +2,10 @@
 
 import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
-import { vs } from "react-syntax-highlighter/dist/esm/styles/prism";
-import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
 import { useTheme } from "@/hooks/useTheme";
 import { useI18n } from "@/hooks/useI18n";
 import { copyText } from "@/lib/clipboard";
+import { editorDarkTheme, editorLightTheme } from "@/lib/code-theme";
 
 interface MermaidBlockProps {
   code: string;
@@ -227,6 +226,133 @@ interface CodeBlockProps {
   isStreaming?: boolean;
 }
 
+type DiffKind = "context" | "add" | "delete";
+
+type DiffRow = {
+  kind: DiffKind;
+  oldLine: number | null;
+  newLine: number | null;
+  text: string;
+  changedRange?: readonly [number, number];
+};
+
+type ParsedDiff = { rows: DiffRow[]; added: number; removed: number };
+
+const DIFF_LANGUAGES = new Set(["diff", "patch"]);
+const HUNK_PATTERN = /^@@\s+-(\d+)(?:,\d+)?\s+\+(\d+)(?:,\d+)?\s+@@/;
+
+/** Parse the displayable portion of a unified diff without interpreting file contents. */
+export function parseUnifiedDiff(source: string): ParsedDiff | null {
+  const rows: DiffRow[] = [];
+  let oldLine = 0;
+  let newLine = 0;
+  let inHunk = false;
+
+  for (const line of source.split("\n")) {
+    const hunk = line.match(HUNK_PATTERN);
+    if (hunk) {
+      oldLine = Number(hunk[1]);
+      newLine = Number(hunk[2]);
+      inHunk = true;
+      continue;
+    }
+    if (!inHunk || line.startsWith("\\ No newline")) continue;
+    if (line.startsWith("+")) {
+      rows.push({ kind: "add", oldLine: null, newLine: newLine++, text: line.slice(1) });
+    } else if (line.startsWith("-")) {
+      rows.push({ kind: "delete", oldLine: oldLine++, newLine: null, text: line.slice(1) });
+    } else if (line.startsWith(" ")) {
+      rows.push({ kind: "context", oldLine: oldLine++, newLine: newLine++, text: line.slice(1) });
+    }
+  }
+
+  if (!rows.length) return null;
+  markInlineChanges(rows);
+  return {
+    rows,
+    added: rows.filter((row) => row.kind === "add").length,
+    removed: rows.filter((row) => row.kind === "delete").length,
+  };
+}
+
+function markInlineChanges(rows: DiffRow[]) {
+  for (let index = 0; index < rows.length - 1; index++) {
+    const deleted = rows[index];
+    const added = rows[index + 1];
+    if (deleted.kind !== "delete" || added.kind !== "add") continue;
+    const prefix = sharedPrefix(deleted.text, added.text);
+    const suffix = sharedSuffix(deleted.text.slice(prefix), added.text.slice(prefix));
+    if (prefix === deleted.text.length && prefix === added.text.length) continue;
+    deleted.changedRange = [prefix, Math.max(prefix, deleted.text.length - suffix)];
+    added.changedRange = [prefix, Math.max(prefix, added.text.length - suffix)];
+  }
+}
+
+function sharedPrefix(left: string, right: string) {
+  let index = 0;
+  while (index < left.length && index < right.length && left[index] === right[index]) index++;
+  return index;
+}
+
+function sharedSuffix(left: string, right: string) {
+  let index = 0;
+  while (index < left.length && index < right.length && left[left.length - 1 - index] === right[right.length - 1 - index]) index++;
+  return index;
+}
+
+function CodeIcon() {
+  return <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="m8 9-3 3 3 3M16 9l3 3-3 3M14 5l-4 14" /></svg>;
+}
+
+function CopyIcon({ copied }: { copied: boolean }) {
+  return copied
+    ? <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="m20 6-11 11-5-5" /></svg>
+    : <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="12" height="12" rx="2.5" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>;
+}
+
+function DiffText({ row }: { row: DiffRow }) {
+  if (!row.changedRange) return <>{row.text}</>;
+  const [start, end] = row.changedRange;
+  const changed = row.text.slice(start, end);
+  return <>{row.text.slice(0, start)}{changed && <mark className={`markdown-diff-inline markdown-diff-inline-${row.kind}`}>{changed}</mark>}{row.text.slice(end)}</>;
+}
+
+function DiffView({ diff }: { diff: ParsedDiff }) {
+  return <div className="markdown-diff-body" role="region" aria-label="Diff">
+    {diff.rows.map((row, index) => (
+      <div key={`${row.kind}-${row.oldLine}-${row.newLine}-${index}`} className={`markdown-diff-row is-${row.kind}`}>
+        <span className="markdown-diff-marker" aria-hidden="true">{row.kind === "add" ? "+" : row.kind === "delete" ? "−" : ""}</span>
+        <span className="markdown-diff-line-number">{row.oldLine ?? ""}</span>
+        <span className="markdown-diff-line-number">{row.newLine ?? ""}</span>
+        <code><DiffText row={row} /></code>
+      </div>
+    ))}
+  </div>;
+}
+
+function CodeBody({ code, lang, isDark, isStreaming }: { code: string; lang: string; isDark: boolean; isStreaming?: boolean }) {
+  const lines = code.split("\n");
+  return <div className="markdown-code-body">
+    <ol className="markdown-code-gutter" aria-hidden="true">
+      {lines.map((_, index) => <li key={index}>{index + 1}</li>)}
+    </ol>
+    <div className="markdown-code-scroll">
+      {isStreaming ? (
+        <pre className="markdown-code-pre"><code>{code}</code></pre>
+      ) : (
+        <SyntaxHighlighter
+          language={lang || "text"}
+          style={isDark ? editorDarkTheme : editorLightTheme}
+          customStyle={{ margin: 0, minWidth: "max-content", padding: 0, fontSize: 12.5, lineHeight: 1.62, borderRadius: 0, border: "none", background: "transparent", overflow: "visible" }}
+          codeTagProps={{ style: { fontFamily: "var(--font-code-mono)" } }}
+        >
+          {code}
+        </SyntaxHighlighter>
+      )}
+    </div>
+  </div>;
+}
+
 /**
  * Syntax-highlighted code block with copy button.
  * Used as the "source" view for mermaid blocks and for all non-mermaid code fences.
@@ -241,60 +367,44 @@ export const CodeBlock = memo(function CodeBlock({ code, lang, headerAction, isS
   const { isDark } = useTheme();
   const { t } = useI18n();
   const [copied, setCopied] = useState(false);
+  const parsedDiff = useMemo(() => DIFF_LANGUAGES.has(lang) ? parseUnifiedDiff(code) : null, [code, lang]);
+  const [view, setView] = useState<"code" | "diff">(parsedDiff ? "diff" : "code");
+
+  useEffect(() => {
+    setView(parsedDiff ? "diff" : "code");
+  }, [code, parsedDiff]);
 
   const copy = () => {
-    copyText(code).then(() => {
+    void copyText(code).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
-    });
+    }).catch(() => undefined);
   };
+
+  const showDiff = Boolean(parsedDiff && view === "diff");
 
   return (
     <div className="markdown-code-block">
       <div className="markdown-code-header">
-        <span className="markdown-code-lang">{lang || "text"}</span>
+        <span className="markdown-code-title"><CodeIcon /><span className="markdown-code-lang">{lang || "text"}</span></span>
         <div className="markdown-code-actions">
           {headerAction}
+          {parsedDiff && (
+            <span className="markdown-code-tabs" role="tablist" aria-label="Code view">
+              <button type="button" role="tab" aria-selected={view === "code"} className={view === "code" ? "is-active" : ""} onClick={() => setView("code")}>{t("i18n.code")}</button>
+              <button type="button" role="tab" aria-selected={view === "diff"} className={view === "diff" ? "is-active" : ""} onClick={() => setView("diff")}>{t("i18n.diff")}</button>
+            </span>
+          )}
+          {parsedDiff && view === "diff" && <span className="markdown-diff-stats"><span>+{parsedDiff.added}</span><span>−{parsedDiff.removed}</span></span>}
           <button
             onClick={copy}
             className="markdown-code-action"
           >
-            {copied ? t("i18n.copied") : t("i18n.copy")}
+            <CopyIcon copied={copied} />{copied ? t("i18n.copied") : t("i18n.copy")}
           </button>
         </div>
       </div>
-      {isStreaming ? (
-        <pre
-          style={{
-            margin: 0,
-            padding: "11px 13px",
-            fontSize: 12.5,
-            lineHeight: 1.62,
-            overflowX: "auto",
-            background: "color-mix(in srgb, var(--bg) 92%, var(--bg-panel))",
-          }}
-        >
-          <code style={{ fontFamily: "var(--font-mono)" }}>{code}</code>
-        </pre>
-      ) : (
-        <SyntaxHighlighter
-          language={lang || "text"}
-          style={isDark ? vscDarkPlus : vs}
-          showLineNumbers
-          lineNumberStyle={{ color: "var(--text-dim)", fontStyle: "normal" }}
-          customStyle={{
-            margin: 0,
-            padding: "11px 13px",
-            fontSize: 12.5,
-            lineHeight: 1.62,
-            borderRadius: 0,
-            background: "color-mix(in srgb, var(--bg) 92%, var(--bg-panel))",
-          }}
-          codeTagProps={{ style: { fontFamily: "var(--font-mono)" } }}
-        >
-          {code}
-        </SyntaxHighlighter>
-      )}
+      {showDiff ? <DiffView diff={parsedDiff!} /> : <CodeBody code={code} lang={lang} isDark={isDark} isStreaming={isStreaming} />}
     </div>
   );
 });
