@@ -39,6 +39,7 @@ export async function POST(
 
     return NextResponse.json({ success: true, data: result });
   } catch (error) {
+    console.error(`[agent/${id}] Failed to command AgentSession:`, error);
     return NextResponse.json({
       error: error instanceof Error ? error.message : String(error),
       ...(commandType === "prompt" && !promptAccepted

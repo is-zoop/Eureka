@@ -33,6 +33,9 @@
     "build": "next build --webpack",
     "start": "next start -H 127.0.0.1 -p 8080",
     "start:lan": "next start -H 0.0.0.0 -p 8080",
+    "desktop:dev": "npm --prefix desktop run dev",
+    "desktop:build": "npm --prefix desktop run build",
+    "desktop:bundle": "npm --prefix desktop run bundle",
     "lint": "eslint .",
     "test": "node --experimental-strip-types --test \"app/**/*.test.mjs\" \"components/**/*.test.mjs\" \"hooks/**/*.test.mjs\" \"lib/**/*.test.mjs\" \"public/**/*.test.mjs\"",
     "release": "npm version patch --no-git-tag-version && npm run build && npm publish --access public"
@@ -43,6 +46,7 @@
     "@earendil-works/pi-ai": "0.84.1",
     "@earendil-works/pi-coding-agent": "0.84.1",
     "@earendil-works/pi-tui": "0.84.1",
+    "@tauri-apps/api": "^2.11.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
     "es-toolkit": "^1.51.0",

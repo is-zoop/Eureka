@@ -1,0 +1,16 @@
+{
+  "name": "eureka-desktop",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Windows desktop shell for Eureka",
+  "type": "module",
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "prepare-resources": "node scripts/prepare-resources.mjs",
+    "build": "npm run prepare-resources && tauri build --bundles nsis",
+    "bundle": "npm run build"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.10.0"
+  }
+}

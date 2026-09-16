@@ -1670,14 +1670,14 @@ export function AppShell() {
         }
       }
     `}</style>
-    <div style={{
+    <div className="eureka-app-shell" style={{
       display: "flex",
       width: "100%",
       height: "var(--app-viewport-height, 100dvh)",
       paddingLeft: "env(safe-area-inset-left)",
       paddingRight: "env(safe-area-inset-right)",
       overflow: "hidden",
-      background: "var(--bg)",
+      background: "var(--sidebar-bg)",
     }}>
       {/* Mobile overlay backdrop */}
       <div
@@ -1730,10 +1730,10 @@ export function AppShell() {
       )}
 
       {/* Center: chat */}
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0, background: "var(--chat-bg)" }}>
+      <div className="eureka-main-column" style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0, background: "var(--bg)" }}>
         {/* Top bar with sidebar toggle */}
-        <div ref={topBarRef} style={{ display: mainView === "extensions" ? "none" : undefined, flexShrink: 0, background: "var(--chat-bg)" }}>
-        <div style={{ display: "flex", alignItems: "center", position: "relative", background: "var(--chat-bg)", borderBottom: "1px solid var(--border)", height: `calc(${isMobile ? 48 : 42}px + env(safe-area-inset-top))`, paddingTop: "env(safe-area-inset-top)" }}>
+        <div ref={topBarRef} style={{ display: mainView === "extensions" ? "none" : undefined, flexShrink: 0, background: "var(--bg)" }}>
+        <div style={{ display: "flex", alignItems: "center", position: "relative", background: "var(--bg)", borderBottom: "1px solid var(--border)", height: `calc(${isMobile ? 48 : 42}px + env(safe-area-inset-top))`, paddingTop: "env(safe-area-inset-top)" }}>
           {!sidebarOpen && <button
             onClick={handleSidebarToggle}
              title={sidebarOpen ? translate("sidebar.hide") : translate("sidebar.show")}

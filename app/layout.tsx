@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Inter, JetBrains_Mono, Noto_Sans_Mono, Noto_Sans_SC } from "next/font/google";
 import { PwaRegistration } from "@/components/PwaRegistration";
+import { DesktopNativeBridge } from "@/components/DesktopNativeBridge";
 import "katex/dist/katex.min.css";
 import "./globals.css";
 
@@ -87,7 +88,8 @@ export default function RootLayout({
         />
       </head>
       <body translate="no" className="notranslate" suppressHydrationWarning>
-        {children}
+        <DesktopNativeBridge />
+        <div className="eureka-desktop-content">{children}</div>
         <PwaRegistration />
       </body>
     </html>

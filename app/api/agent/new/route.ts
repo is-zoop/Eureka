@@ -97,6 +97,7 @@ export async function POST(req: Request) {
       thinkingLevel: state.thinkingLevel,
     });
   } catch (error) {
+    console.error("[agent/new] Failed to initialize or command AgentSession:", error);
     return NextResponse.json({
       error: error instanceof Error ? error.message : String(error),
       ...(commandType === "prompt" && !promptAccepted

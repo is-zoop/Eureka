@@ -1,0 +1,4 @@
+[[permission]]
+identifier = "allow-open-external-url"
+description = "Allows Eureka's local WebView to request opening an HTTP or HTTPS link in the system browser."
+commands.allow = ["open_external_url"]

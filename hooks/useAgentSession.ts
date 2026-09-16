@@ -604,12 +604,14 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
             : {}),
         }),
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const result = await res.json() as {
+      const result = await res.json().catch(() => null) as {
         sessionId: string;
         model?: SelectedModel | null;
         thinkingLevel?: ThinkingLevelOption;
-      };
+        error?: string;
+      } | null;
+      if (!res.ok) throw new Error(result?.error ?? `HTTP ${res.status}`);
+      if (!result?.sessionId) throw new Error("The server did not return a session id.");
       const realId = result.sessionId;
       sessionIdRef.current = realId;
       if (result.model && newSessionModelOverrideRef.current === selectedModel) {

@@ -12,6 +12,9 @@ try {
 } catch { /* package not found, use default */ }
 
 const nextConfig: NextConfig = {
+  // The desktop packaging script opts in to a self-contained Node server.
+  // Keep normal web development unchanged.
+  ...(process.env.EUREKA_DESKTOP_BUILD === "1" ? { output: "standalone" } : {}),
   outputFileTracingRoot: configDir,
   serverExternalPackages: [
     "undici",
