@@ -22,7 +22,6 @@ use std::{
 #[cfg(windows)]
 use windows_sys::Win32::{
     Foundation::{CloseHandle, HANDLE},
-    Graphics::Dwm::{DwmSetWindowAttribute, DWMWA_CAPTION_COLOR, DWMWA_TEXT_COLOR},
     System::JobObjects::{
         AssignProcessToJobObject, CreateJobObjectW, JobObjectExtendedLimitInformation,
         SetInformationJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
@@ -32,14 +31,6 @@ use windows_sys::Win32::{
 
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
-
-// Windows 10 builds differ on which immersive-dark-mode attribute they
-// understand. Keep these raw compatibility IDs rather than depending on an
-// SDK enum that only represents one of the historical values.
-#[cfg(windows)]
-const DWMWA_USE_IMMERSIVE_DARK_MODE_NEW: u32 = 20;
-#[cfg(windows)]
-const DWMWA_USE_IMMERSIVE_DARK_MODE_OLD: u32 = 19;
 
 struct SidecarState {
     child: Mutex<Option<Child>>,
@@ -95,82 +86,6 @@ fn open_external_url(url: String) -> Result<(), String> {
     Err("Opening external links is currently supported on Windows only.".into())
 }
 
-/// Keep Windows' own caption buttons and non-client behavior. Tauri selects
-/// the native light/dark caption on every Windows version; DWM enhances that
-/// behavior where individual Windows releases support its attributes.
-fn apply_native_titlebar(window: &tauri::WebviewWindow, dark: bool) -> Result<(), String> {
-    window
-        .set_theme(Some(if dark {
-            tauri::Theme::Dark
-        } else {
-            tauri::Theme::Light
-        }))
-        .map_err(|error| format!("Could not set Eureka window theme: {error}"))?;
-
-    #[cfg(windows)]
-    {
-        // COLORREF stores bytes as 0x00BBGGRR.
-        let caption_color: u32 = if dark { 0x0024_2424 } else { 0x00F5_F5F5 };
-        let text_color: u32 = if dark { 0x00E8_E8E8 } else { 0x002E_3030 };
-        let immersive_dark_mode: i32 = i32::from(dark);
-        // Immersive dark mode gives Windows 10 and 11 a best-effort native
-        // light/dark caption. CAPTION_COLOR and TEXT_COLOR provide exact
-        // Eureka sidebar colors on Windows 11. Every DWM call is cosmetic:
-        // unsupported versions keep their system caption and never affect
-        // Eureka window creation.
-        if let Ok(hwnd) = window.hwnd() {
-            let set_attribute = |attribute: u32, value: *const c_void, value_size: u32| {
-                let result =
-                    unsafe { DwmSetWindowAttribute(hwnd.0 as _, attribute, value, value_size) };
-                #[cfg(debug_assertions)]
-                eprintln!("Eureka DwmSetWindowAttribute({attribute}) HRESULT: 0x{result:08X}");
-                result
-            };
-
-            for (attribute, value) in [
-                (
-                    DWMWA_CAPTION_COLOR as u32,
-                    &caption_color as *const u32 as *const c_void,
-                ),
-                (
-                    DWMWA_TEXT_COLOR as u32,
-                    &text_color as *const u32 as *const c_void,
-                ),
-            ] {
-                let _ = set_attribute(attribute, value, size_of::<u32>() as u32);
-            }
-
-            let dark_result = set_attribute(
-                DWMWA_USE_IMMERSIVE_DARK_MODE_NEW,
-                &immersive_dark_mode as *const i32 as *const c_void,
-                size_of::<i32>() as u32,
-            );
-            if dark_result < 0 {
-                let _ = set_attribute(
-                    DWMWA_USE_IMMERSIVE_DARK_MODE_OLD,
-                    &immersive_dark_mode as *const i32 as *const c_void,
-                    size_of::<i32>() as u32,
-                );
-            }
-        }
-    }
-
-    Ok(())
-}
-
-#[tauri::command]
-fn sync_native_titlebar(app: tauri::AppHandle, theme: String) -> Result<(), String> {
-    let dark = match theme.as_str() {
-        "light" => false,
-        "dark" => true,
-        _ => return Err("Unsupported Eureka theme.".into()),
-    };
-    let window = app
-        .get_webview_window("main")
-        .ok_or_else(|| "Eureka main window is not available.".to_string())?;
-    apply_native_titlebar(&window, dark)
-}
-
 #[cfg(windows)]
 fn assign_sidecar_job(child: &Child) -> Result<JobObject, String> {
     unsafe {
@@ -215,7 +130,7 @@ fn create_window(
         // session cookie into Eureka's own WebView2 cookie store.
         url.scheme() == "tauri" || url.host_str() == Some("127.0.0.1") || url.scheme() == "https"
     };
-    let window = WebviewWindowBuilder::new(app, label, url)
+    WebviewWindowBuilder::new(app, label, url)
         .title(title)
         // Retain standard Windows non-client behavior: dragging, snapping,
         // caption buttons, double-click maximize, DPI, and multi-monitor
@@ -231,13 +146,8 @@ fn create_window(
             NewWindowResponse::Deny
         })
         .build()
-        .map_err(|error| error.to_string())?;
-    if label == "main" {
-        // A light fallback avoids an unstyled caption before the frontend has
-        // resolved its persisted theme and calls sync_native_titlebar.
-        apply_native_titlebar(&window, false)?;
-    }
-    Ok(())
+        .map(|_| ())
+        .map_err(|error| error.to_string())
 }
 
 fn start_eureka(app: tauri::AppHandle) {
@@ -421,10 +331,7 @@ fn main() {
             #[cfg(windows)]
             job: Mutex::new(None),
         })
-        .invoke_handler(tauri::generate_handler![
-            open_external_url,
-            sync_native_titlebar
-        ])
+        .invoke_handler(tauri::generate_handler![open_external_url])
         .plugin(tauri_plugin_single_instance::init(|app, _, _| {
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.show();

@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useTheme } from "@/hooks/useTheme";
 
 function isTauriDesktop(): boolean {
@@ -14,7 +15,7 @@ function isTauriDesktop(): boolean {
  * caption buttons.
  */
 export function DesktopNativeBridge() {
-  const { theme } = useTheme();
+  const { preference } = useTheme();
 
   useEffect(() => {
     if (!isTauriDesktop()) return;
@@ -48,12 +49,13 @@ export function DesktopNativeBridge() {
 
   useEffect(() => {
     if (!isTauriDesktop()) return;
-    // Theme state in useTheme is the only source of truth. Rust maps this
-    // resolved value to the matching native Windows caption colors.
-    void invoke("sync_native_titlebar", { theme }).catch((error) => {
+    // Keep `auto` as null so Tao follows future Windows system-theme changes
+    // instead of freezing the currently resolved web theme.
+    const nativeTheme = preference === "auto" ? null : preference;
+    void getCurrentWindow().setTheme(nativeTheme).catch((error) => {
       console.error("Failed to synchronize Eureka native titlebar theme:", error);
     });
-  }, [theme]);
+  }, [preference]);
 
   return null;
 }
