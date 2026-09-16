@@ -50,7 +50,9 @@ export function DesktopNativeBridge() {
     if (!isTauriDesktop()) return;
     // Theme state in useTheme is the only source of truth. Rust maps this
     // resolved value to the matching native Windows caption colors.
-    void invoke("sync_native_titlebar", { theme }).catch(() => {});
+    void invoke("sync_native_titlebar", { theme }).catch((error) => {
+      console.error("Failed to synchronize Eureka native titlebar theme:", error);
+    });
   }, [theme]);
 
   return null;

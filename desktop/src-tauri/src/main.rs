@@ -33,6 +33,14 @@ use windows_sys::Win32::{
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
 
+// Windows 10 builds differ on which immersive-dark-mode attribute they
+// understand. Keep these raw compatibility IDs rather than depending on an
+// SDK enum that only represents one of the historical values.
+#[cfg(windows)]
+const DWMWA_USE_IMMERSIVE_DARK_MODE_NEW: u32 = 20;
+#[cfg(windows)]
+const DWMWA_USE_IMMERSIVE_DARK_MODE_OLD: u32 = 19;
+
 struct SidecarState {
     child: Mutex<Option<Child>>,
     // Closing a Windows Job Object terminates every process it owns. This
@@ -88,8 +96,8 @@ fn open_external_url(url: String) -> Result<(), String> {
 }
 
 /// Keep Windows' own caption buttons and non-client behavior. Tauri selects
-/// the native light/dark caption on every Windows version; Windows 11 can
-/// additionally accept exact caption colors via DWM.
+/// the native light/dark caption on every Windows version; DWM enhances that
+/// behavior where individual Windows releases support its attributes.
 fn apply_native_titlebar(window: &tauri::WebviewWindow, dark: bool) -> Result<(), String> {
     window
         .set_theme(Some(if dark {
@@ -104,27 +112,45 @@ fn apply_native_titlebar(window: &tauri::WebviewWindow, dark: bool) -> Result<()
         // COLORREF stores bytes as 0x00BBGGRR.
         let caption_color: u32 = if dark { 0x0024_2424 } else { 0x00F5_F5F5 };
         let text_color: u32 = if dark { 0x00E8_E8E8 } else { 0x002E_3030 };
-        // CAPTION_COLOR and TEXT_COLOR are documented Windows 11 attributes.
-        // Windows 10 rejects them, which intentionally leaves its standard
-        // system light/dark caption in place. These are cosmetic best-effort
-        // calls: neither a missing attribute nor an unavailable HWND may stop
-        // the Eureka window from being created.
+        let immersive_dark_mode: i32 = i32::from(dark);
+        // Immersive dark mode gives Windows 10 and 11 a best-effort native
+        // light/dark caption. CAPTION_COLOR and TEXT_COLOR provide exact
+        // Eureka sidebar colors on Windows 11. Every DWM call is cosmetic:
+        // unsupported versions keep their system caption and never affect
+        // Eureka window creation.
         if let Ok(hwnd) = window.hwnd() {
-            unsafe {
-                for (attribute, value) in [
-                    (
-                        DWMWA_CAPTION_COLOR,
-                        &caption_color as *const u32 as *const c_void,
-                    ),
-                    (DWMWA_TEXT_COLOR, &text_color as *const u32 as *const c_void),
-                ] {
-                    let _ = DwmSetWindowAttribute(
-                        hwnd.0 as _,
-                        attribute as u32,
-                        value,
-                        size_of::<u32>() as u32,
-                    );
-                }
+            let set_attribute = |attribute: u32, value: *const c_void, value_size: u32| {
+                let result =
+                    unsafe { DwmSetWindowAttribute(hwnd.0 as _, attribute, value, value_size) };
+                #[cfg(debug_assertions)]
+                eprintln!("Eureka DwmSetWindowAttribute({attribute}) HRESULT: 0x{result:08X}");
+                result
+            };
+
+            for (attribute, value) in [
+                (
+                    DWMWA_CAPTION_COLOR as u32,
+                    &caption_color as *const u32 as *const c_void,
+                ),
+                (
+                    DWMWA_TEXT_COLOR as u32,
+                    &text_color as *const u32 as *const c_void,
+                ),
+            ] {
+                let _ = set_attribute(attribute, value, size_of::<u32>() as u32);
+            }
+
+            let dark_result = set_attribute(
+                DWMWA_USE_IMMERSIVE_DARK_MODE_NEW,
+                &immersive_dark_mode as *const i32 as *const c_void,
+                size_of::<i32>() as u32,
+            );
+            if dark_result < 0 {
+                let _ = set_attribute(
+                    DWMWA_USE_IMMERSIVE_DARK_MODE_OLD,
+                    &immersive_dark_mode as *const i32 as *const c_void,
+                    size_of::<i32>() as u32,
+                );
             }
         }
     }

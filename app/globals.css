@@ -195,9 +195,16 @@ html.eureka-desktop .eureka-app-shell {
   background: var(--sidebar-bg) !important;
 }
 
+html.eureka-desktop .sidebar-container {
+  border-right: none !important;
+}
+
 html.eureka-desktop .eureka-main-column {
+  position: relative;
   background: var(--bg) !important;
   border-top-left-radius: 14px;
+  border-left: 1px solid var(--border);
+  border-top: 1px solid var(--border);
   overflow: hidden;
 }
 
