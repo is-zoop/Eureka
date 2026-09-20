@@ -1,5 +1,8 @@
 "use client";
 
+import { NotificationNotice } from "@/components/Notifications";
+
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { sendAgentCommand } from "@/lib/agent-client";
 import { useIsMobile } from "@/hooks/useIsMobile";
@@ -447,9 +450,7 @@ function AddPluginPanel({
       </div>
 
       {actionError && (
-        <div style={{ fontSize: 12, color: "#ef4444", whiteSpace: "pre-wrap" }}>
-          {actionError}
-        </div>
+        <NotificationNotice message={actionError} type="error" />
       )}
     </div>
   );
@@ -599,14 +600,10 @@ function PackageDetail({
       </div>
 
       {actionMessage && (
-        <div style={{ fontSize: 12, color: "#16a34a" }}>
-          {actionMessage}
-        </div>
+        <NotificationNotice message={actionMessage} type="success" />
       )}
       {actionError && (
-        <div style={{ fontSize: 12, color: "#ef4444", whiteSpace: "pre-wrap" }}>
-          {actionError}
-        </div>
+        <NotificationNotice message={actionError} type="error" />
       )}
     </div>
   );
@@ -875,9 +872,7 @@ export function PluginsConfig({
                   Loading...
                 </div>
               ) : error ? (
-                <div style={{ padding: "10px 8px", fontSize: 11, color: "#ef4444" }}>
-                  {error}
-                </div>
+                <NotificationNotice message={error} type="error" />
               ) : packages.length === 0 ? (
                 <div style={{ padding: "10px 8px", fontSize: 11, color: "var(--text-dim)" }}>
                   No plugins configured
@@ -1082,12 +1077,7 @@ export function PluginsConfig({
         >
           <div style={{ minWidth: 0, flex: 1, fontSize: 11, color: "var(--text-dim)", overflow: "hidden" }}>
             {data?.diagnostics.length ? (
-              <span
-                title={data.diagnostics.map((d) => `${d.type}: ${d.source ? `${d.source}: ` : ""}${d.message}`).join("\n")}
-                style={{ color: data.diagnostics.some((d) => d.type === "error") ? "#ef4444" : "#d97706" }}
-              >
-                {data.diagnostics.length} diagnostic{data.diagnostics.length === 1 ? "" : "s"}
-              </span>
+              <NotificationNotice type={data.diagnostics.some((d) => d.type === "error") ? "error" : "warning"} title="扩展诊断" message={data.diagnostics.map((d) => `${d.source ? `${d.source}: ` : ""}${d.message}`).join("\n")} eventKey={`plugin-diagnostics:${JSON.stringify(data.diagnostics)}`} />
             ) : (
               <span>
                 {data ? `${data.totals.extensions} ext · ${data.totals.skills} skills · ${data.totals.prompts} prompts · ${data.totals.themes} themes` : ""}

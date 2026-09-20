@@ -19,7 +19,14 @@ const web = spawn(process.execPath, [nextBin, "dev", "-H", "127.0.0.1", "-p", "8
   env,
   stdio: "inherit",
 });
-const tauri = spawn(process.execPath, [tauriBin, "dev"], { cwd: desktopDir, env, stdio: "inherit" });
+// Development must not share the production identifier: the single-instance
+// plugin would otherwise focus an installed Eureka release instead of opening
+// the freshly compiled dev window.
+const tauri = spawn(process.execPath, [tauriBin, "dev", "--config", "src-tauri/tauri.dev.conf.json"], {
+  cwd: desktopDir,
+  env,
+  stdio: "inherit",
+});
 
 let stopping = false;
 function stop(exitCode = 0) {

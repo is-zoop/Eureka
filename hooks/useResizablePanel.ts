@@ -30,6 +30,7 @@ interface UseResizablePanelOptions {
   maxWidth: number;
   minWidth: number;
   storageKey: string;
+  syncRefs?: MutableRefObject<HTMLElement | null>[];
   widthRef: MutableRefObject<number>;
 }
 
@@ -67,6 +68,7 @@ export function useResizablePanel(options: UseResizablePanelOptions) {
     growthDirection,
     maxWidth,
     minWidth,
+    syncRefs = [],
     storageKey,
     widthRef,
   } = options;
@@ -91,7 +93,8 @@ export function useResizablePanel(options: UseResizablePanelOptions) {
   const applyLiveWidth = useCallback((nextWidth: number) => {
     widthRef.current = nextWidth;
     panelRef.current?.style.setProperty(cssVariable, `${nextWidth}px`);
-  }, [cssVariable, widthRef]);
+    for (const elementRef of syncRefs) elementRef.current?.style.setProperty(cssVariable, `${nextWidth}px`);
+  }, [cssVariable, syncRefs, widthRef]);
 
   const commitWidth = useCallback((candidate: number, commitOptions: CommitOptions = {}) => {
     const { forcePersist = false, persist = true } = commitOptions;

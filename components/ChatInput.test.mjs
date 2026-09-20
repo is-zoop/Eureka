@@ -10,33 +10,30 @@ const jiti = createJiti(import.meta.url, {
 });
 const { ChatInput, ModelErrorBanner, ModelScopeWarningBanner, canRestoreUserMessage, filterModelOptions, getUpwardMenuMaxHeight, getUserMessageText, getUserMessageDraftImages } = await jiti.import("./ChatInput.tsx");
 const { clearDraft, getDraft, mergeRestoredSubmissionDraft, mergeRestoredSubmissionText, rekeyDraft, setDraft } = await jiti.import("../lib/draft-store.ts");
-const { I18nProvider } = await jiti.import("../hooks/useI18n.tsx");
+const { I18nProvider } = await jiti.import("@/hooks/useI18n");
 
-test("renders the upstream model error", () => {
+test("upstream model errors no longer reserve inline layout space", () => {
   const html = renderToStaticMarkup(
     React.createElement(ModelErrorBanner, {
       error: "Invalid models.json schema:\nproviders.custom.models.0.id must not be empty",
     }),
   );
 
-  assert.match(html, /role="alert"/);
-  assert.match(html, /Model error/);
-  assert.match(html, /providers\.custom\.models\.0\.id must not be empty/);
+  assert.equal(html, "");
 });
 
 test("does not render an empty model error", () => {
   assert.equal(renderToStaticMarkup(React.createElement(ModelErrorBanner, { error: null })), "");
 });
 
-test("renders enabledModels scope warnings", () => {
+test("model scope warnings no longer render an inline banner", () => {
   const html = renderToStaticMarkup(
     React.createElement(ModelScopeWarningBanner, {
       warnings: ['No models match pattern "ghost-gateway/*"'],
     }),
   );
 
-  assert.match(html, /Model scope warning/);
-  assert.match(html, /ghost-gateway/);
+  assert.equal(html, "");
   assert.equal(renderToStaticMarkup(React.createElement(ModelScopeWarningBanner, { warnings: [] })), "");
 });
 
@@ -248,7 +245,7 @@ test("rekey keeps a synchronously restored draft when React state is still empty
   clearDraft(sessionKey);
 });
 
-test("renders compact errors above the input as a wrapping alert", () => {
+test("compact errors leave the composer available without inserting an inline alert", () => {
   const error = "Compaction failed: OpenAI API error (403): <html>request forbidden</html>";
   const html = renderToStaticMarkup(
     React.createElement(
@@ -264,9 +261,7 @@ test("renders compact errors above the input as a wrapping alert", () => {
     ),
   );
 
-  assert.match(html, /role="alert"/);
-  assert.match(html, /Compaction failed: OpenAI API error/);
-  assert.match(html, /&lt;html&gt;request forbidden&lt;\/html&gt;/);
-  assert.match(html, /white-space:pre-wrap/);
-  assert.ok(html.indexOf('role="alert"') < html.indexOf("<textarea"));
+  assert.doesNotMatch(html, /role="alert"/);
+  assert.doesNotMatch(html, /Compaction failed: OpenAI API error/);
+  assert.match(html, /<textarea/);
 });

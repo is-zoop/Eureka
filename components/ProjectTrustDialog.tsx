@@ -1,5 +1,8 @@
 "use client";
 
+import { NotificationNotice } from "@/components/Notifications";
+
+
 import { useI18n } from "@/hooks/useI18n";
 
 export function ProjectTrustDialog({
@@ -88,9 +91,7 @@ export function ProjectTrustDialog({
               {cwd}
             </code>
             {error && (
-              <div role="alert" style={{ marginTop: 10, color: "#ef4444", fontSize: 12, lineHeight: 1.5 }}>
-                {error}
-              </div>
+              <NotificationNotice message={error} type="error" />
             )}
           </div>
         </div>

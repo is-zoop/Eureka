@@ -1,5 +1,8 @@
 "use client";
 
+import { NotificationNotice } from "@/components/Notifications";
+
+
 import { forwardRef, useState, useCallback, useEffect, useImperativeHandle, useMemo, useRef, type ReactElement } from "react";
 import { getFileIcon, FolderIcon } from "./FileIcons";
 import {
@@ -202,25 +205,7 @@ function MentionIcon({ size = 11 }: { size?: number }) {
   );
 }
 
-function DismissButton({ onClick, title }: { onClick: () => void; title: string }) {
-  return (
-    <FileTooltip content={title}>
-      <button
-        type="button"
-        onClick={onClick}
-        aria-label={title}
-        style={{ width: 24, height: 24, padding: 0, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, border: "none", borderRadius: 4, background: "none", color: "var(--text-dim)", cursor: "pointer" }}
-        onMouseEnter={(event) => { event.currentTarget.style.color = "var(--text-muted)"; event.currentTarget.style.background = "var(--bg-hover)"; }}
-        onMouseLeave={(event) => { event.currentTarget.style.color = "var(--text-dim)"; event.currentTarget.style.background = "none"; }}
-      >
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true">
-          <path d="m6 6 12 12" />
-          <path d="m18 6-12 12" />
-        </svg>
-      </button>
-    </FileTooltip>
-  );
-}
+
 
 function TreeNode({
   node,
@@ -738,7 +723,7 @@ export const FileExplorer = forwardRef<FileExplorerHandle, Props>(function FileE
     onChangesCountChange?.(gitFiles.length);
   }, [gitFiles, onChangesCountChange]);
 
-  const showUploadFeedback = uploadBusy || pendingConflict !== null || uploadError !== null || uploadSummary !== null;
+  const showUploadFeedback = uploadBusy || pendingConflict !== null;
 
   const addUploadedFilesToChat = useCallback(() => {
     if (!uploadSummary || uploadSummary.uploaded.length === 0) return;
@@ -750,6 +735,8 @@ export const FileExplorer = forwardRef<FileExplorerHandle, Props>(function FileE
   return (
     <div style={{ minHeight: "100%" }}>
       <input ref={uploadInputRef} type="file" multiple hidden onChange={handleUploadInput} />
+      <NotificationNotice message={uploadError} />
+      <NotificationNotice type={uploadSummary?.errors.length ? "error" : uploadSummary?.skipped.length ? "warning" : "success"} title="文件上传" message={uploadSummary ? [`已上传 ${uploadSummary.uploaded.length} 个文件，跳过 ${uploadSummary.skipped.length} 个文件，失败 ${uploadSummary.errors.length} 个文件。`, ...uploadSummary.errors.map((item) => `${item.name}: ${item.error}`)].join("\n") : null} action={uploadSummary?.uploaded.length && onAtMentions ? { label: t("files.mention"), onClick: addUploadedFilesToChat } : undefined} />
       {showUploadFeedback && (
         <div style={{ padding: "6px 8px", borderBottom: "1px solid var(--border)" }}>
         {uploadBusy && (
@@ -800,71 +787,9 @@ export const FileExplorer = forwardRef<FileExplorerHandle, Props>(function FileE
           </div>
         )}
 
-        {uploadError && (
-          <div role="alert" style={{ display: "flex", alignItems: "flex-start", gap: 6, fontSize: 11, lineHeight: 1.35, color: "#f87171" }}>
-            <span style={{ minWidth: 0, flex: 1, overflowWrap: "anywhere" }}>{uploadError}</span>
-            <DismissButton onClick={() => setUploadError(null)} title={t("files.dismissError")} />
-          </div>
-        )}
 
-        {uploadSummary && (
-          <div aria-live="polite">
-            <div style={{ display: "flex", alignItems: "center", gap: 8, minHeight: 22, fontSize: 11 }}>
-              <div style={{ minWidth: 0, flex: 1, display: "flex", alignItems: "center", gap: 8 }}>
-                {uploadSummary.uploaded.length > 0 && (
-                  <span title={`${uploadSummary.uploaded.length} uploaded`} aria-label={`${uploadSummary.uploaded.length} uploaded`} style={{ display: "flex", alignItems: "center", gap: 3, color: "#22c55e" }}>
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                      <path d="m5 12 4 4L19 6" />
-                    </svg>
-                    <span>{uploadSummary.uploaded.length}</span>
-                  </span>
-                )}
-                {uploadSummary.skipped.length > 0 && (
-                  <span title={`${uploadSummary.skipped.length} skipped`} aria-label={`${uploadSummary.skipped.length} skipped`} style={{ display: "flex", alignItems: "center", gap: 3, color: "var(--text-dim)" }}>
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
-                      <circle cx="12" cy="12" r="9" />
-                      <path d="M8 12h8" />
-                    </svg>
-                    <span>{uploadSummary.skipped.length}</span>
-                  </span>
-                )}
-                {uploadSummary.errors.length > 0 && (
-                  <span title={`${uploadSummary.errors.length} failed`} aria-label={`${uploadSummary.errors.length} failed`} style={{ display: "flex", alignItems: "center", gap: 3, color: "#f87171" }}>
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                      <path d="M12 3 2.5 20h19L12 3Z" />
-                      <path d="M12 9v4" />
-                      <path d="M12 17h.01" />
-                    </svg>
-                    <span>{uploadSummary.errors.length}</span>
-                  </span>
-                )}
-              </div>
-              {uploadSummary.uploaded.length > 0 && onAtMentions && (
-                <button
-                  type="button"
-                  onClick={addUploadedFilesToChat}
-                  title={uploadSummary.uploaded.length === 1 ? t("files.addUploadedFile") : t("files.addAllUploadedFiles")}
-                  aria-label={uploadSummary.uploaded.length === 1 ? t("files.addUploadedFile") : t("files.addAllUploadedFiles")}
-                  style={{ height: 22, padding: "0 7px", display: "flex", alignItems: "center", justifyContent: "center", gap: 4, flexShrink: 0, border: "1px solid var(--border)", borderRadius: 4, background: "var(--bg-panel)", color: "var(--accent)", cursor: "pointer", fontSize: 11, fontWeight: 600, whiteSpace: "nowrap" }}
-                >
-                  <MentionIcon />
-                  {t("files.mention")}
-                </button>
-              )}
-              <DismissButton onClick={() => setUploadSummary(null)} title={t("files.dismissUploadResults")} />
-            </div>
-            {uploadSummary.errors.map((item) => (
-              <div key={item.name} title={item.error} style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 3, minWidth: 0, fontSize: 10, color: "#f87171" }}>
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }} aria-hidden="true">
-                  <circle cx="12" cy="12" r="9" />
-                  <path d="M12 8v5" />
-                  <path d="M12 17h.01" />
-                </svg>
-                <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.name}</span>
-              </div>
-            ))}
-          </div>
-        )}
+
+
         </div>
       )}
 
@@ -895,7 +820,7 @@ export const FileExplorer = forwardRef<FileExplorerHandle, Props>(function FileE
           {loading ? (
             <div style={{ padding: "8px 12px", fontSize: 11, color: "var(--text-dim)" }}>Loading files...</div>
           ) : error ? (
-            <div style={{ padding: "8px 12px", fontSize: 11, color: "#f87171" }}>{error}</div>
+            <NotificationNotice message={error} type="error" />
           ) : (
             roots.map((node) => (
               <TreeNode

@@ -1,5 +1,8 @@
 "use client";
 
+import { NotificationNotice } from "@/components/Notifications";
+
+
 import React, { useRef, useState, useCallback, useEffect, useLayoutEffect, useImperativeHandle, forwardRef, KeyboardEvent } from "react";
 import type { BuiltinSlashCommandResult, CompactResultInfo, QueuedMessages, SlashCommandInfo } from "@/hooks/useAgentSession";
 import type { SkillsResponse } from "@/lib/api-types";
@@ -373,48 +376,7 @@ function QueuedMessageRow({ kind, text }: { kind: "steer" | "follow-up"; text: s
 }
 
 function ModelNoticeBanner({ tone, title, body }: { tone: "error" | "warning"; title: string; body: string }) {
-  const color = tone === "error" ? "239,68,68" : "234,179,8";
-  return (
-    <div
-      role="alert"
-      style={{
-        display: "flex",
-        alignItems: "flex-start",
-        gap: 8,
-        maxHeight: 120,
-        marginBottom: 8,
-        padding: "7px 10px",
-        overflowY: "auto",
-        border: `1px solid rgba(${color},0.3)`,
-        borderRadius: 6,
-        background: `rgba(${color},0.07)`,
-        color: `rgb(${color})`,
-        fontSize: 11,
-        lineHeight: 1.45,
-      }}
-    >
-      <svg
-        width="13"
-        height="13"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        style={{ flexShrink: 0, marginTop: 1 }}
-        aria-hidden="true"
-      >
-        <path d="M10.3 2.9 1.8 17a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 2.9a2 2 0 0 0-3.4 0Z" />
-        <line x1="12" y1="9" x2="12" y2="13" />
-        <line x1="12" y1="17" x2="12.01" y2="17" />
-      </svg>
-      <div style={{ minWidth: 0 }}>
-        <div style={{ fontWeight: 600 }}>{title}</div>
-        <div style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{body}</div>
-      </div>
-    </div>
-  );
+  return <NotificationNotice type={tone} title={title} message={body} eventKey={`model-notice:${tone}:${body}`} />;
 }
 
 export function ModelErrorBanner({ error }: { error?: string | null }) {
@@ -1549,41 +1511,12 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
               <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
               <path d="M3 3v5h5" />
             </svg>
-             {t("chat.retrying", { attempt: retryInfo.attempt, max: retryInfo.maxAttempts })}{retryInfo.errorMessage && <span style={{ opacity: 0.7, marginLeft: 4 }}>— {retryInfo.errorMessage}</span>}
+             {t("chat.retrying", { attempt: retryInfo.attempt, max: retryInfo.maxAttempts })}<NotificationNotice type="warning" message={retryInfo.errorMessage} title={t("chat.retrying", { attempt: retryInfo.attempt, max: retryInfo.maxAttempts })} />
           </div>
         )}
-        {compactResultText && (
-          <div style={{
-            marginBottom: 8, padding: "5px 10px",
-            background: "rgba(16,185,129,0.08)", border: "1px solid rgba(16,185,129,0.24)",
-            borderRadius: 6, fontSize: 12, color: "rgba(5,150,105,0.95)",
-            display: "flex", alignItems: "center", gap: 6,
-          }}>
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-              <polyline points="20 6 9 17 4 12" />
-            </svg>
-            {compactResultText}
-          </div>
-        )}
+        <NotificationNotice type="success" message={compactResultText} />
         {compactError && (
-          <div
-            role="alert"
-            style={{
-              marginBottom: 8,
-              padding: "7px 10px",
-              background: "rgba(239,68,68,0.07)",
-              border: "1px solid rgba(239,68,68,0.3)",
-              borderRadius: 6,
-              color: "#ef4444",
-              fontFamily: "var(--font-mono)",
-              fontSize: 12,
-              lineHeight: 1.5,
-              whiteSpace: "pre-wrap",
-              overflowWrap: "anywhere",
-            }}
-          >
-            {compactError}
-          </div>
+          <NotificationNotice message={compactError} type="error" />
         )}
         {/* Image previews */}
         {attachedImages.length > 0 && (

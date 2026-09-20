@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect, useLayoutEffect, useMemo, useReducer } from "react";
+import { useState, useCallback, useRef, useEffect, useLayoutEffect, useMemo, useReducer, useId } from "react";
 import type {
   AgentMessage,
   BlockingExtensionUiRequest,
@@ -85,24 +85,7 @@ function normalizeQueuedMessages(q?: { steering?: string[]; followUp?: string[] 
 
 type ExtensionUiDialogRequest = Extract<ExtensionUiRequest, { method: "select" | "confirm" | "input" | "editor" }>;
 type ExtensionUiCustomRequest = Extract<ExtensionUiRequest, { method: "custom" }>;
-export type NoticeType = "info" | "success" | "warning" | "error";
-
-export type NoticeItem = {
-  id: string;
-  message: string;
-  type: NoticeType;
-  exiting?: boolean;
-};
-
-type NoticeState = {
-  visible: NoticeItem[];
-  pending: NoticeItem[];
-};
-
-type NoticeAction =
-  | { type: "add"; notice: NoticeItem }
-  | { type: "mark_oldest_exiting" }
-  | { type: "remove"; id: string };
+import { notify, type NoticeType } from "@/lib/notification-store";
 
 export type AgentPhase =
   | { kind: "waiting_model" }
@@ -162,64 +145,8 @@ const AGENT_STATE_RECONCILE_MS = 15_000;
 const BASH_STATE_RECONCILE_MS = 1_000;
 const EVENT_STREAM_READY_TIMEOUT_MS = 60_000;
 const EVENT_STREAM_RECONNECT_DELAY_MS = 1_000;
-const MAX_NOTICES = 5;
-const NOTICE_VISIBLE_MS = 5000;
-const NOTICE_EXIT_ANIMATION_MS = 180;
-function createNoticeId(): string {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-    return crypto.randomUUID();
-  }
-  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-}
-
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function markOldestNoticeExiting(notices: NoticeItem[]): NoticeItem[] {
-  const index = notices.findIndex((notice) => !notice.exiting);
-  if (index === -1) return notices;
-  return notices.map((notice, i) => (
-    i === index ? { ...notice, exiting: true } : notice
-  ));
-}
-
-function fillPendingNotices(visible: NoticeItem[], pending: NoticeItem[]): NoticeState {
-  let nextVisible = visible;
-  let nextPending = pending;
-  while (nextPending.length > 0 && nextVisible.length < MAX_NOTICES) {
-    const [next, ...rest] = nextPending;
-    nextVisible = [...nextVisible, next];
-    nextPending = rest;
-  }
-  if (nextPending.length > 0 && !nextVisible.some((notice) => notice.exiting)) {
-    nextVisible = markOldestNoticeExiting(nextVisible);
-  }
-  return { visible: nextVisible, pending: nextPending };
-}
-
-function noticeReducer(state: NoticeState, action: NoticeAction): NoticeState {
-  switch (action.type) {
-    case "add": {
-      if (state.visible.some((notice) => notice.exiting) || state.visible.length >= MAX_NOTICES) {
-        return {
-          visible: state.visible.some((notice) => notice.exiting)
-            ? state.visible
-            : markOldestNoticeExiting(state.visible),
-          pending: [...state.pending, action.notice],
-        };
-      }
-      return { ...state, visible: [...state.visible, action.notice] };
-    }
-    case "mark_oldest_exiting":
-      return { ...state, visible: markOldestNoticeExiting(state.visible) };
-    case "remove": {
-      const visible = state.visible.filter((notice) => notice.id !== action.id);
-      return fillPendingNotices(visible, state.pending);
-    }
-    default:
-      return state;
-  }
 }
 
 function readCompactResult(result: unknown, reason: string): CompactResultInfo | null {
@@ -263,6 +190,7 @@ type SlashCommandsResponse = {
 };
 
 export function useAgentSession(opts: UseAgentSessionOptions) {
+  const noticeScope = useId();
   const {
     session, sessionRunning, newSessionCwd, newSessionDraftKey, onAgentEnd, onAttentionNeeded, onSessionCreated, onSessionForked,
     modelsRefreshKey, onBranchDataChange, onSystemPromptChange, onSystemPromptLoaderChange, onSessionStatsPanelOpen,
@@ -304,7 +232,6 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const [promptAnchorActive, setPromptAnchorActive] = useState(false);
   const [slashCommands, setSlashCommands] = useState<SlashCommandInfo[]>([]);
   const [slashCommandsLoading, setSlashCommandsLoading] = useState(false);
-  const [noticeState, dispatchNotice] = useReducer(noticeReducer, { visible: [], pending: [] });
   const [sessionStatsOverride, setSessionStatsOverride] = useState<SessionStatsInfo | null>(null);
   const [extensionDialog, setExtensionDialog] = useState<ExtensionUiDialogRequest | null>(null);
   const [extensionCustomUi, setExtensionCustomUi] = useState<ExtensionUiCustomRequest | null>(null);
@@ -743,15 +670,8 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const addNotice = useCallback((notice: { id?: string; message: string; type?: NoticeType }) => {
     const message = notice.message.trim();
     if (!message) return;
-    dispatchNotice({
-      type: "add",
-      notice: {
-        id: notice.id ?? createNoticeId(),
-        message,
-        type: notice.type ?? "info",
-      },
-    });
-  }, []);
+    notify({ ...notice, message, id: notice.id ? `session:${sessionIdRef.current}:${/^(prompt|extension)-error:/.test(notice.id) ? noticeScope + ":" : ""}${notice.id}` : undefined });
+  }, [noticeScope]);
 
   const handleExtensionUiRequest = useCallback((request: ExtensionUiRequest) => {
     if (isBlockingExtensionUiRequest(request)) onAttentionNeeded?.(request);
@@ -1107,10 +1027,11 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         }
         break;
       case "prompt_error":
-        addNotice({ type: "error", message: (event.errorMessage as string | undefined) ?? "Command failed" });
+        addNotice({ id: `prompt-error:${promptRunIdRef.current}:${event.errorMessage}`, type: "error", message: (event.errorMessage as string | undefined) ?? "Command failed" });
         break;
       case "extension_error":
         addNotice({
+          id: `extension-error:${promptRunIdRef.current}:${event.error}`,
           type: "error",
           message: (event.error as string | undefined) ?? "Extension command failed",
         });
@@ -1997,28 +1918,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     return () => controller.abort();
   }, [loadModels, modelsRefreshKey]);
 
-  useEffect(() => {
-    if (!compactResult) return;
-    const t = setTimeout(() => setCompactResult(null), 6000);
-    return () => clearTimeout(t);
-  }, [compactResult]);
 
-  useEffect(() => {
-    if (noticeState.visible.length === 0) return;
-    const exiting = noticeState.visible.find((notice) => notice.exiting);
-    if (exiting) {
-      const t = setTimeout(() => {
-        dispatchNotice({ type: "remove", id: exiting.id });
-      }, NOTICE_EXIT_ANIMATION_MS);
-      return () => clearTimeout(t);
-    }
-    const oldest = noticeState.visible[0];
-    if (!oldest) return;
-    const t = setTimeout(() => {
-      dispatchNotice({ type: "mark_oldest_exiting" });
-    }, NOTICE_VISIBLE_MS);
-    return () => clearTimeout(t);
-  }, [noticeState.visible]);
 
   useEffect(() => {
     setSessionStatsOverride(null);
@@ -2051,7 +1951,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     retryInfo, contextUsage, systemPrompt, forkingEntryId,
     isCompacting, compactError, compactResult, currentModel, displayModel, modelSwitching, sessionStats,
     slashCommands, slashCommandsLoading, queuedMessages, planMode,
-    notices: noticeState.visible, extensionDialog, extensionCustomUi, extensionStatuses, extensionWidgets, respondToExtensionUi, sendExtensionCustomInput,
+    extensionDialog, extensionCustomUi, extensionStatuses, extensionWidgets, respondToExtensionUi, sendExtensionCustomInput,
     isAutoModelSelection: isNew && newSessionModel === null,
     agentPhase,
     isNew,

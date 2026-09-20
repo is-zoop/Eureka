@@ -42,7 +42,9 @@ export function DesktopNativeBridge() {
     }) as typeof window.open;
 
     return () => {
-      document.documentElement.classList.remove("eureka-desktop");
+      // Keep this marker through Fast Refresh. A replacement desktop bridge
+      // mounts immediately, while removing it in between makes the custom
+      // frame briefly lose both its sizing and desktop-only styles.
       window.open = originalOpen;
     };
   }, []);
@@ -52,9 +54,10 @@ export function DesktopNativeBridge() {
     // Keep `auto` as null so Tao follows future Windows system-theme changes
     // instead of freezing the currently resolved web theme.
     const nativeTheme = preference === "auto" ? null : preference;
-    void getCurrentWindow().setTheme(nativeTheme).catch((error) => {
-      console.error("Failed to synchronize Eureka native titlebar theme:", error);
-    });
+    void getCurrentWindow().setTheme(nativeTheme)
+      .catch((error) => {
+        console.error("Failed to synchronize Eureka native titlebar theme:", error);
+      });
   }, [preference]);
 
   return null;

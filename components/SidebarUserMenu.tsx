@@ -18,11 +18,15 @@ function SettingsIcon() {
   return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.38a2 2 0 0 0-.73-2.73l-.15-.09a2 2 0 0 1-1-1.74v-.51a2 2 0 0 1 1-1.72l.15-.1a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2Z" /><circle cx="12" cy="12" r="3" /></svg>;
 }
 
+function ModelsIcon() {
+  return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="4" y="4" width="16" height="16" rx="2" /><rect x="9" y="9" width="6" height="6" /><path d="M9 1v3M15 1v3M9 20v3M15 20v3M20 9h3M20 14h3M1 9h3M1 14h3" /></svg>;
+}
+
 function LogoutIcon() {
   return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path d="m16 17 5-5-5-5" /><path d="M21 12H9" /></svg>;
 }
 
-export function SidebarUserMenu({ user, onOpenSettings }: { user: SidebarUser | null; onOpenSettings?: () => void }) {
+export function SidebarUserMenu({ user, onOpenSettings, onOpenModels }: { user: SidebarUser | null; onOpenSettings?: () => void; onOpenModels?: () => void }) {
   const { t } = useI18n();
   const name = user?.name || t("account.loading");
   const email = user?.email || t("account.emailUnavailable");
@@ -56,11 +60,11 @@ export function SidebarUserMenu({ user, onOpenSettings }: { user: SidebarUser | 
                 </span>
                 <span className="min-w-0"><span className="block truncate text-sm font-medium">{name}</span><span className="block truncate text-xs text-[var(--text-muted)]">{email}</span></span>
               </div>
-              <DropdownMenuSeparator />
+              <DropdownMenuSeparator className="mx-2" />
               <DropdownMenuGroup>
                 <DropdownMenuItem onClick={onOpenSettings}><SettingsIcon />{t("account.settings")}</DropdownMenuItem>
+                <DropdownMenuItem onClick={onOpenModels}><ModelsIcon />{t("settings.models")}</DropdownMenuItem>
               </DropdownMenuGroup>
-              <DropdownMenuSeparator />
               <DropdownMenuItem variant="destructive" onClick={() => void handleLogout()}><LogoutIcon />{t("account.logout")}</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

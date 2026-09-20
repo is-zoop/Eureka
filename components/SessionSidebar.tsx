@@ -1,5 +1,8 @@
 "use client";
 
+import { NotificationNotice } from "@/components/Notifications";
+
+
 import { useEffect, useLayoutEffect, useState, useCallback, useMemo, useRef, type CSSProperties, type ReactNode } from "react";
 import type { SessionInfo } from "@/lib/types";
 import { loadExplorerOpen, saveExplorerOpen } from "@/lib/file-explorer-state";
@@ -1056,7 +1059,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
           </div>
         </div>
       )}
-      {wtError && <div style={{ padding: "3px 12px 8px", color: "#dc2626", fontSize: 11, lineHeight: 1.35, overflowWrap: "anywhere" }}>{wtError}</div>}
+      {wtError && <NotificationNotice message={wtError} type="error" />}
     </>
   );
 
@@ -1711,15 +1714,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
                     </div>
                   )}
                   {wtError && (
-                    <div style={{
-                      padding: "5px 10px 8px",
-                      color: "#dc2626",
-                      fontSize: 11,
-                      lineHeight: 1.35,
-                      overflowWrap: "anywhere",
-                    }}>
-                      {wtError}
-                    </div>
+                    <NotificationNotice message={wtError} type="error" />
                   )}
               </DropdownMenuContent>
               </DropdownMenu>
@@ -1831,9 +1826,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
           </div>
         )}
         {error && (
-          <div style={{ padding: "12px 14px", color: "#f87171", fontSize: 12 }}>
-            {error}
-          </div>
+          <NotificationNotice message={error} type="error" />
         )}
         {!loading && !error && projectSessions.length === 0 && (
           <div style={{ padding: "16px 14px", color: "var(--text-muted)", fontSize: 12 }}>
@@ -1892,7 +1885,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
                 border: "none",
                 color: "var(--text-muted)",
                 cursor: "pointer",
-                fontSize: 11,
+                fontSize: 12,
                 fontWeight: 600,
                 letterSpacing: "0.05em",
                 textTransform: "uppercase",
@@ -2428,10 +2421,11 @@ function SessionItem({
                       minWidth: 0,
                       flex: 1,
                       fontSize: 13,
-                      fontWeight: isSelected ? 600 : 400,
+                      fontWeight: isSelected ? 600 : 500,
                       lineHeight: 1.5,
                       color: "var(--text)",
                     }}
+
                   >
                     <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>
                       {title}
@@ -2442,7 +2436,7 @@ function SessionItem({
               <TooltipContent>{title}</TooltipContent>
             </Tooltip>
             {(isRunning || isUnread) && <span aria-label={isRunning ? t("sidebar.agentRunning") : t("sidebar.newSessionActivity")} style={{ width: 6, height: 6, flexShrink: 0, borderRadius: "50%", background: isRunning ? "var(--accent)" : "#f59e0b" }} />}
-            <span onMouseEnter={() => setMetaHovered(true)} onMouseLeave={() => setMetaHovered(false)} style={{ flexShrink: 0, color: "var(--text-dim)", fontSize: 11, whiteSpace: "nowrap", visibility: metaHovered || actionMenuOpen ? "hidden" : "visible" }}>{relativeTime}</span>
+            <span onMouseEnter={() => setMetaHovered(true)} onMouseLeave={() => setMetaHovered(false)} style={{ flexShrink: 0, color: "var(--text-muted)", fontSize: 10, whiteSpace: "nowrap", visibility: metaHovered || actionMenuOpen ? "hidden" : "visible" }}>{relativeTime}</span>
           </div>
 
           {/* Collapse toggle — always visible when has children */}

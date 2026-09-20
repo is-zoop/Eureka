@@ -4,7 +4,21 @@ import { useEffect } from "react";
 
 export function PwaRegistration() {
   useEffect(() => {
-    if (process.env.NODE_ENV !== "production" || !("serviceWorker" in navigator)) {
+    if (!("serviceWorker" in navigator)) {
+      return;
+    }
+
+    // A production Eureka install and the local dev server share the same
+    // loopback origin. An old production worker can otherwise keep serving
+    // stale Next chunks to WebView2 after `next dev` has restarted.
+    if (process.env.NODE_ENV !== "production") {
+      void navigator.serviceWorker.getRegistrations()
+        .then((registrations) => Promise.all(registrations.map((registration) => registration.unregister())))
+        .then(() => caches.keys())
+        .then((keys) => Promise.all(keys.map((key) => caches.delete(key))))
+        .catch((error: unknown) => {
+          console.warn("Could not clear Eureka development service-worker cache:", error);
+        });
       return;
     }
 

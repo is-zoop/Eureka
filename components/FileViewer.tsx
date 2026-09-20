@@ -1,5 +1,8 @@
 "use client";
 
+import { NotificationNotice } from "@/components/Notifications";
+
+
 import { useEffect, useState, useRef, useCallback, useMemo, type CSSProperties, type MouseEvent, type ReactElement } from "react";
 import {
   Prism as SyntaxHighlighter,
@@ -576,7 +579,7 @@ function ImageViewer({ filePath, cwd, sourceSessionId, watchEnabled = true }: Pr
         }}
       >
         {error ? (
-          <div style={{ color: "#f87171", fontSize: 13 }}>{error}</div>
+          <NotificationNotice title={filePath} message={error} type="error" />
         ) : (
           // eslint-disable-next-line @next/next/no-img-element
           <img
@@ -741,9 +744,7 @@ function AudioViewer({ filePath, cwd, sourceSessionId, watchEnabled = true }: Pr
       >
         <div style={{ width: "min(680px, 100%)" }}>
           {error && (
-            <div style={{ color: "#f87171", fontSize: 13, marginBottom: 12, textAlign: "center" }}>
-              {error}
-            </div>
+            <NotificationNotice title={filePath} message={error} type="error" />
           )}
           <audio
             key={src}
@@ -916,9 +917,7 @@ function DocumentViewer({ filePath, cwd, sourceSessionId, watchEnabled = true }:
       </div>
       <div style={{ flex: 1, minHeight: 0, background: "var(--bg-panel)" }}>
         {error ? (
-          <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", padding: 24, color: "#f87171", fontSize: 13, textAlign: "center" }}>
-            {error}
-          </div>
+          <NotificationNotice title={filePath} message={error} type="error" />
         ) : (
           <iframe
             key={previewUrl}
@@ -1289,9 +1288,7 @@ function TextFileViewer({
 
   if (error && !isDeletedDiff) {
     return (
-      <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "#f87171", fontSize: 13 }}>
-        {error}
-      </div>
+      <NotificationNotice title={filePath} message={error} type="error" />
     );
   }
 

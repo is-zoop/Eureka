@@ -1,5 +1,8 @@
 "use client";
 
+import { NotificationNotice } from "@/components/Notifications";
+
+
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { useI18n } from "@/hooks/useI18n";
@@ -184,9 +187,7 @@ function SkillDetail({
             </span>
           )}
           {saveError && (
-            <span style={{ fontSize: 12, color: "#f87171", overflowWrap: "anywhere" }}>
-              {saveError}
-            </span>
+            <NotificationNotice message={saveError} type="error" />
           )}
         </div>
       </div>
@@ -325,7 +326,7 @@ function SkillDetail({
             )}
           </div>
           {updateError && (
-            <span style={{ fontSize: 12, color: "#ef4444" }}>{updateError}</span>
+            <NotificationNotice message={updateError} type="error" />
           )}
         </div>
       )}
@@ -559,14 +560,10 @@ function AddSkillPanel({
 
         {/* Errors */}
         {searchError && (
-          <div style={{ fontSize: 12, color: "#f87171" }}>{searchError}</div>
+          <NotificationNotice message={searchError} type="error" />
         )}
         {installError && (
-          <div
-            style={{ fontSize: 12, color: "#f87171", wordBreak: "break-word" }}
-          >
-            {installError}
-          </div>
+          <NotificationNotice message={installError} type="error" />
         )}
       </div>
 
@@ -1022,15 +1019,7 @@ export function SkillsConfig({
                    {t("i18n.loading")}
                 </div>
               ) : error ? (
-                <div
-                  style={{
-                    padding: "10px 8px",
-                    fontSize: 11,
-                    color: "#f87171",
-                  }}
-                >
-                  {error}
-                </div>
+                <NotificationNotice message={error} type="error" />
               ) : skills.length === 0 ? (
                 <div
                   style={{

@@ -4,6 +4,7 @@ import { MARKETPLACE_PERMISSION } from "@/lib/auth/config";
 import { getIdentityProvider } from "@/lib/auth/provider";
 import { readAuthSession } from "@/lib/auth/session";
 import { getRememberedHazeAccessSession, rememberHazeAccessSession } from "@/lib/auth/access-token-cache";
+import { writeRuntimeHazeSession } from "@/lib/auth/runtime-session";
 import type { AuthSession } from "@/lib/auth/types";
 
 type RefreshResult = { session: AuthSession; refreshed: boolean };
@@ -30,8 +31,14 @@ export async function refreshMarketplaceSession(force = false): Promise<RefreshR
     if (entry.expiresAt <= now) refreshCache.delete(key);
   }
   const remembered = getRememberedHazeAccessSession(current.refreshToken);
-  if (remembered) return { session: remembered, refreshed: false };
-  if (!force && current.expiresAt > now + 30_000) return { session: current, refreshed: false };
+  if (remembered && !force) {
+    writeRuntimeHazeSession(remembered);
+    return { session: remembered, refreshed: false };
+  }
+  if (!force && current.expiresAt > now + 30_000) {
+    writeRuntimeHazeSession(current);
+    return { session: current, refreshed: false };
+  }
   const cached = refreshCache.get(current.refreshToken);
   if (cached && cached.expiresAt > now) return cached.result;
   const provider = getIdentityProvider();
@@ -42,6 +49,7 @@ export async function refreshMarketplaceSession(force = false): Promise<RefreshR
       const tokens = await provider.refresh(current.refreshToken);
       const principal = await provider.userInfo(tokens.accessToken);
       const session = { ...current, accessToken: tokens.accessToken, refreshToken: tokens.refreshToken, expiresAt: Date.now() + tokens.expiresIn * 1000, principal };
+      writeRuntimeHazeSession(session);
       const value = { session, refreshed: true };
       rememberHazeAccessSession(session);
       refreshCache.set(session.refreshToken, { expiresAt, result: Promise.resolve(value) });

@@ -1,10 +1,13 @@
 "use client";
 
+import { NotificationNotice } from "@/components/Notifications";
+
+
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 import { PlusIcon, RefreshCwIcon } from "lucide-react";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { sendAgentCommand } from "@/lib/agent-client";
-import type { McpConfigScope, McpRuntimeStatus, McpServerInput, McpServerSummary, McpServersResponse } from "@/lib/api-types";
+import type { HazeManagedMcpSummary, McpConfigScope, McpRuntimeStatus, McpServerInput, McpServerSummary, McpServersResponse } from "@/lib/api-types";
 import { Combobox, ComboboxContent, ComboboxInput, ComboboxItem, ComboboxList } from "./ui/combobox";
 
 const sidebarWidth = 210;
@@ -86,7 +89,7 @@ export function McpConfig({ cwd, sessionId, onReloaded }: { cwd: string; session
   };
   const reload = async () => {
     if (!sessionId) return;
-    setBusy(true); setError(null);
+    setBusy(true); setError(null); setNotice(null);
     try { await sendAgentCommand(sessionId, { type: "reload" }); onReloaded?.(); await loadStatus(); setNotice("当前会话已重载。"); }
     catch (value) { setError(value instanceof Error ? value.message : String(value)); } finally { setBusy(false); }
   };
@@ -103,6 +106,20 @@ export function McpConfig({ cwd, sessionId, onReloaded }: { cwd: string; session
       setNotice(disabled ? "已禁用。重载当前会话后停止加载该 Server。" : "已启用。重载当前会话后生效。");
     } catch (value) { setError(value instanceof Error ? value.message : String(value)); } finally { setBusy(false); }
   };
+  const runManagedAction = async (server: HazeManagedMcpSummary, action: "update" | "uninstall" | "set-disabled", disabled?: boolean) => {
+    setBusy(true); setError(null); setNotice(null);
+    try {
+      const response = await fetch(`/api/organization-extensions/${encodeURIComponent(server.capabilityId)}/installation`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cwd, scope: server.scope, action, type: "MCP", ...(disabled === undefined ? {} : { disabled }) }),
+      });
+      const payload = await response.json().catch(() => null) as { error?: string } | null;
+      if (!response.ok) throw new Error(payload?.error ?? "操作失败");
+      await load();
+      setNotice(action === "uninstall" ? "已卸载。重载当前会话后生效。" : action === "update" ? "已更新。重载当前会话后生效。" : disabled ? "已停用。重载当前会话后生效。" : "已启用。重载当前会话后生效。");
+    } catch (value) { setError(value instanceof Error ? value.message : String(value)); } finally { setBusy(false); }
+  };
 
   return <div style={{ height: "100%", minHeight: 0, display: "flex", flexDirection: "column", background: "var(--chat-bg)", color: "var(--text)" }}>
     <div style={{ height: 42, boxSizing: "border-box", display: "flex", alignItems: "center", gap: 10, padding: "8px 18px", borderBottom: "1px solid var(--border)", flexShrink: 0 }}>
@@ -112,9 +129,10 @@ export function McpConfig({ cwd, sessionId, onReloaded }: { cwd: string; session
     <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: isMobile ? "column" : "row", overflow: "hidden" }}>
       <aside style={{ width: isMobile ? "100%" : sidebarWidth, maxHeight: isMobile ? "40vh" : undefined, display: "flex", flexDirection: "column", flexShrink: 0, background: "var(--bg-panel)", borderRight: isMobile ? "none" : "1px solid var(--border)", borderBottom: isMobile ? "1px solid var(--border)" : "none" }}>
         <div style={{ flex: 1, overflowY: "auto", padding: "8px 6px" }}>
-          {error && !data ? <p style={{ padding: "10px 8px", margin: 0, fontSize: 11, color: "#ef4444" }}>{error}</p> : null}
+          {error && !data ? <NotificationNotice message={error} type="error" /> : null}
           {!error && servers.length === 0 ? <p style={{ padding: "10px 8px", margin: 0, fontSize: 11, color: "var(--text-dim)" }}>未找到 MCP Server</p> : null}
           {servers.map((server) => { const isSelected = !isNew && selected === server.name; return <button key={server.name} type="button" onClick={() => edit(server)} style={{ display: "flex", width: "100%", alignItems: "center", gap: 7, padding: "8px", border: "none", borderRadius: 5, cursor: "pointer", textAlign: "left", background: isSelected ? "var(--bg-selected)" : "transparent", color: "var(--text)" }} onMouseEnter={(event) => { if (!isSelected) event.currentTarget.style.background = "var(--bg-hover)"; }} onMouseLeave={(event) => { if (!isSelected) event.currentTarget.style.background = "transparent"; }}><span style={{ width: 7, height: 7, borderRadius: "50%", flexShrink: 0, background: stateColor(server.state) }} /><span style={{ minWidth: 0, flex: 1 }}><span style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 12, fontFamily: "var(--font-mono)", fontWeight: isSelected ? 600 : 400 }}>{server.name}</span><span style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: 2, fontSize: 10, color: "var(--text-dim)" }}>{server.transport === "http" ? "HTTP" : "Stdio"} · {server.disabled ? "已禁用" : `${server.toolCount} 工具`}</span></span></button>; })}
+          {(data?.managedServers?.length ?? 0) > 0 ? <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--border)" }}><p style={{ margin: "0 8px 6px", fontSize: 10, color: "var(--text-dim)", letterSpacing: "0.04em" }}>HAZE 受管 MCP</p>{data!.managedServers!.map((server) => <div key={server.capabilityId} style={{ padding: "8px", borderRadius: 5, background: "var(--bg-hover)", marginBottom: 4 }}><div style={{ display: "flex", alignItems: "center", gap: 6 }}><span style={{ width: 7, height: 7, borderRadius: "50%", flexShrink: 0, background: server.disabled ? "var(--text-dim)" : "var(--accent)" }} /><span title={server.name} style={{ minWidth: 0, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 11, fontFamily: "var(--font-mono)" }}>{server.name}</span></div><span style={{ display: "block", margin: "3px 0 6px 13px", color: "var(--text-dim)", fontSize: 10 }}>HTTP · v{server.version} · {server.disabled ? "已停用" : "已启用"}</span><div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginLeft: 13 }}><button type="button" disabled={busy} onClick={() => void runManagedAction(server, "set-disabled", !server.disabled)} style={{ ...buttonStyle(false, busy), height: 25, padding: "0 7px", fontSize: 10 }}>{server.disabled ? "启用" : "停用"}</button><button type="button" disabled={busy} onClick={() => void runManagedAction(server, "update")} style={{ ...buttonStyle(false, busy), height: 25, padding: "0 7px", fontSize: 10 }}>更新</button><button type="button" disabled={busy} onClick={() => void runManagedAction(server, "uninstall")} style={{ ...buttonStyle(false, busy), height: 25, padding: "0 7px", fontSize: 10 }}>卸载</button></div></div>)}</div> : null}
         </div>
         <div style={{ padding: "8px 6px", borderTop: "1px solid var(--border)", flexShrink: 0 }}><button type="button" onClick={add} style={{ width: "100%", display: "flex", alignItems: "center", gap: 6, padding: "7px 8px", border: "none", borderRadius: 5, background: isNew ? "var(--bg-selected)" : "transparent", color: isNew ? "var(--accent)" : "var(--text-dim)", cursor: "pointer", fontSize: 12 }}><PlusIcon size={13} /> 添加 MCP Server</button></div>
       </aside>
@@ -122,7 +140,7 @@ export function McpConfig({ cwd, sessionId, onReloaded }: { cwd: string; session
         <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "0 0 14px" }}><h2 style={{ margin: 0, fontSize: 14, fontWeight: 600 }}>{isNew ? "添加 MCP Server" : `编辑 ${selected}`}</h2>{!isNew && <button type="button" role="switch" aria-checked={!form.disabled} aria-label={form.disabled ? "启用 MCP Server" : "禁用 MCP Server"} disabled={busy} onClick={() => void toggleDisabled()} title={form.disabled ? "启用 MCP Server" : "禁用 MCP Server"} style={{ width: 42, height: 22, padding: 2, border: "none", borderRadius: 999, background: form.disabled ? "var(--border)" : "var(--accent)", cursor: busy ? "not-allowed" : "pointer", opacity: busy ? 0.55 : 1, transition: "background var(--transition-ui)" }}><span style={{ display: "block", width: 18, height: 18, borderRadius: "50%", background: "#fff", transform: form.disabled ? "translateX(0)" : "translateX(20px)", transition: "transform var(--transition-ui)", boxShadow: "0 1px 2px rgba(0,0,0,0.16)" }} /></button>} {!isNew && <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{form.disabled ? "已禁用" : "已启用"}</span>}</div>
         <p style={{ margin: "0 0 16px", color: "var(--text)", fontSize: 12, fontFamily: "var(--font-mono)" }}>{savedPath}</p>
         {!sessionId ? <p style={{ margin: "0 0 16px", color: "var(--text-muted)", fontSize: 12 }}>选择或新建聊天会话后，才能查看真实连接状态和工具目录。</p> : null}
-        {error && data ? <p style={{ margin: "0 0 16px", color: "#ef4444", fontSize: 12 }}>{error}</p> : null}{notice ? <p style={{ margin: "0 0 16px", color: "var(--text-muted)", fontSize: 12 }}>{notice}</p> : null}
+        {error && data ? <NotificationNotice message={error} type="error" /> : null}{notice ? <NotificationNotice message={notice} type="success" /> : null}
         <div className="mcp-config-form" style={{ display: "grid", gap: 14 }}>
           <Field label="名称" value={form.name} placeholder="例如 github" onChange={(value) => update("name", value)} />
           <label style={{ display: "grid", gap: 6, fontSize: 12, color: "var(--text-muted)" }}><span>传输方式</span><Combobox items={["Stdio（本地命令）", "HTTP"]} value={form.transport === "stdio" ? "Stdio（本地命令）" : "HTTP"} onValueChange={(value) => { if (value) setForm((current) => ({ ...blank(), name: current.name, transport: value === "HTTP" ? "http" : "stdio" })); }}><ComboboxInput aria-label="传输方式" placeholder="选择传输方式" /><ComboboxContent><ComboboxList>{(item: string) => <ComboboxItem key={item} value={item}>{item}</ComboboxItem>}</ComboboxList></ComboboxContent></Combobox></label>

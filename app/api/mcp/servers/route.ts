@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getAllowedFileRoots, isExistingFilePathAllowed } from "@/lib/file-access";
 import { hasJsonContentType, isApiRequestAllowed } from "@/lib/request-security";
 import { listMcpServers, mutateMcpServers } from "@/lib/mcp-config";
+import { listHazeManagedInstalls } from "@/lib/haze-managed-capabilities";
 import type { McpConfigScope, McpServerInput } from "@/lib/api-types";
 
 export const dynamic = "force-dynamic";
@@ -13,7 +14,16 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url); const cwd = searchParams.get("cwd");
   if (!cwd) return NextResponse.json({ error: "cwd required" }, { status: 400 });
   if (!await allowed(cwd)) return NextResponse.json({ error: "Access denied" }, { status: 403 });
-  try { return NextResponse.json(await listMcpServers(cwd, scope(searchParams.get("scope")))); }
+  try {
+    const selectedScope = scope(searchParams.get("scope"));
+    const [config, managed] = await Promise.all([listMcpServers(cwd, selectedScope), listHazeManagedInstalls(cwd)]);
+    return NextResponse.json({
+      ...config,
+      managedServers: managed[selectedScope]
+        .filter((item) => item.type === "MCP" && typeof item.serverUrl === "string")
+        .map((item) => ({ capabilityId: item.capabilityId, name: item.name, version: item.version, scope: selectedScope, serverUrl: item.serverUrl!, disabled: Boolean(item.disabled) })),
+    });
+  }
   catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : String(error) }, { status: 500 }); }
 }
 

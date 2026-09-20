@@ -2,6 +2,8 @@ import "server-only";
 
 import { getAuthConfig } from "@/lib/auth/config";
 import { hasMarketplaceAccess, refreshMarketplaceSession } from "@/lib/auth/marketplace";
+import { getIdentityProvider } from "@/lib/auth/provider";
+import { readRuntimeHazeSession, writeRuntimeHazeSession } from "@/lib/auth/runtime-session";
 import type { AuthSession } from "@/lib/auth/types";
 
 export type OrganizationExtensionType = "skill" | "mcp";
@@ -20,7 +22,9 @@ export type OrganizationExtension = {
   isFavorite: boolean;
   updatedAt: string | null;
   version: string;
+  slug: string | null;
   connectType: string | null;
+  serverUrl: string | null;
   versionHistory: OrganizationExtensionVersion[];
   iconUrl: string | null;
 };
@@ -44,7 +48,9 @@ type HazeCapability = {
   is_favorite?: unknown;
   updated_at?: unknown;
   version?: unknown;
+  slug?: unknown;
   connect_type?: unknown;
+  server_url?: unknown;
   version_history?: unknown;
   icon?: unknown;
 };
@@ -59,15 +65,29 @@ export class OrganizationExtensionsError extends Error {
 
 export type HazeMarketplaceSession = { accessToken: string; session: AuthSession };
 
+async function refreshRuntimeMarketplaceSession(): Promise<AuthSession | null> {
+  const session = readRuntimeHazeSession();
+  const provider = getIdentityProvider();
+  if (!session || !provider) return null;
+  try {
+    const tokens = await provider.refresh(session.refreshToken);
+    const principal = await provider.userInfo(tokens.accessToken);
+    const refreshed = { ...session, accessToken: tokens.accessToken, refreshToken: tokens.refreshToken, expiresAt: Date.now() + tokens.expiresIn * 1000, principal };
+    writeRuntimeHazeSession(refreshed);
+    return refreshed;
+  } catch { return null; }
+}
+
 export async function getHazeMarketplaceSession(): Promise<HazeMarketplaceSession> {
   // The encrypted Eureka cookie deliberately omits access tokens, so every
   // marketplace proxy request refreshes a short-lived token server-side. The
   // shared auth helper deduplicates concurrent refreshes from profile, list,
   // and icon requests so rotating Haze refresh tokens do not race each other.
   const refreshed = await refreshMarketplaceSession(true);
-  if (!refreshed?.session.accessToken) throw new OrganizationExtensionsError("unauthenticated");
-  if (!hasMarketplaceAccess(refreshed.session)) throw new OrganizationExtensionsError("forbidden");
-  return { accessToken: refreshed.session.accessToken, session: refreshed.session };
+  const session = refreshed?.session.accessToken ? refreshed.session : await refreshRuntimeMarketplaceSession();
+  if (!session?.accessToken) throw new OrganizationExtensionsError("unauthenticated");
+  if (!hasMarketplaceAccess(session)) throw new OrganizationExtensionsError("forbidden");
+  return { accessToken: session.accessToken, session };
 }
 
 function getMarketplaceBaseUrl() {
@@ -105,7 +125,9 @@ function mapCapability(item: HazeCapability): OrganizationExtension | null {
     isFavorite: item.is_favorite === true,
     updatedAt: optionalString(item.updated_at),
     version: stringValue(item.version).trim(),
+    slug: optionalString(item.slug),
     connectType: optionalString(item.connect_type),
+    serverUrl: optionalString(item.server_url),
     versionHistory: Array.isArray(item.version_history) ? item.version_history.flatMap((record): OrganizationExtensionVersion[] => {
       const value = record as { version?: unknown; created_at?: unknown; changelog?: unknown };
       const version = stringValue(value.version).trim();

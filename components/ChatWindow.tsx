@@ -1,4 +1,7 @@
 "use client";
+
+import { NotificationNotice } from "@/components/Notifications";
+
 import { registerAbortHandler } from "@/hooks/useKeyboardShortcuts";
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { AgentMessage, AssistantContentBlock, AssistantMessage, BashExecutionMessage, BlockingExtensionUiRequest, CustomMessage, ExtensionUiRequest, SessionInfo, SessionTreeNode, ToolResultMessage, UserMessage } from "@/lib/types";
@@ -12,7 +15,7 @@ import { ChatInput, type ChatInputHandle } from "./ChatInput";
 import { ChatMinimap, useMessageRefs } from "./ChatMinimap";
 import { ExtensionStatusBar } from "./ExtensionStatusBar";
 import { useI18n } from "@/hooks/useI18n";
-import { useAgentSession, type AgentPhase, type NoticeItem } from "@/hooks/useAgentSession";
+import { useAgentSession, type AgentPhase } from "@/hooks/useAgentSession";
 import { useDragDrop } from "@/hooks/useDragDrop";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import type { SessionStatsInfo } from "@/lib/pi-types";
@@ -307,7 +310,7 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
     retryInfo, contextUsage, forkingEntryId,
     isCompacting, compactError, compactResult, displayModel: displayModelValue, modelSwitching, sessionStats,
     slashCommands, slashCommandsLoading, queuedMessages, planMode,
-    notices, extensionDialog, extensionCustomUi, extensionStatuses, extensionWidgets, respondToExtensionUi, sendExtensionCustomInput,
+    extensionDialog, extensionCustomUi, extensionStatuses, extensionWidgets, respondToExtensionUi, sendExtensionCustomInput,
     isAutoModelSelection,
     agentPhase,
     isNew,
@@ -642,9 +645,7 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
 
   if (error) {
     return (
-      <div className="flex h-full items-center justify-center text-red-400">
-        {error}
-      </div>
+      <NotificationNotice message={error} type="error" />
     );
   }
 
@@ -732,7 +733,6 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
                 </span>
               </div>
             </div>
-            <NoticeShelf notices={notices} align="right" />
             {planQuestionElement}
             {chatInputElement}
             <ExtensionStatusBar statuses={extensionStatuses} widgets={extensionWidgets} />
@@ -741,21 +741,6 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
       ) : (
       <>
       <div className="relative flex min-w-0 flex-1 overflow-hidden">
-        <div
-          style={{
-            position: "absolute",
-            top: 12,
-            left: 0,
-            right: isMobile ? 0 : CHAT_MINIMAP_WIDTH,
-            zIndex: 40,
-            padding: `0 ${CHAT_COLUMN_PADDING}px`,
-            pointerEvents: "none",
-          }}
-        >
-          <div style={{ maxWidth: 820, margin: "0 auto" }}>
-            <NoticeShelf notices={notices} floating align="right" />
-          </div>
-        </div>
         <div ref={scrollContainerRef} className="min-w-0 flex-1 overflow-x-hidden overflow-y-auto pt-4 [scrollbar-width:none]">
           <div style={{ minWidth: 0, padding: `0 ${CHAT_COLUMN_PADDING}px` }}>
             <div ref={messageContentRef} style={{ width: "100%", minWidth: 0, maxWidth: 820, margin: "0 auto" }}>
@@ -1053,75 +1038,6 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
       </div>
       </>
       )}
-    </div>
-  );
-}
-
-function NoticeShelf({ notices, floating = false, align = "left" }: { notices: NoticeItem[]; floating?: boolean; align?: "left" | "right" }) {
-  if (notices.length === 0) return null;
-  return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        alignItems: align === "right" ? "flex-end" : "stretch",
-        marginBottom: floating ? 0 : 10,
-      }}
-    >
-      {notices.map((notice, index) => {
-        const color = notice.type === "error"
-          ? "#ef4444"
-          : notice.type === "warning"
-            ? "#d97706"
-            : notice.type === "success"
-              ? "#10b981"
-              : "var(--accent)";
-        return (
-          <div
-            key={notice.id}
-            className="notice-shelf-item"
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-              minHeight: 60,
-              height: 60,
-              maxHeight: 60,
-              marginBottom: index === notices.length - 1 ? 0 : 6,
-              overflow: "hidden",
-              borderRadius: 14,
-              border: "1px solid color-mix(in srgb, var(--border) 70%, transparent)",
-              background: "var(--bg)",
-              color: "var(--text-muted)",
-              width: "fit-content",
-              maxWidth: "min(100%, 620px)",
-              boxShadow: floating
-                ? "0 1px 2px rgba(15,23,42,0.05), 0 10px 28px -14px rgba(15,23,42,0.24)"
-                : "0 1px 2px rgba(15,23,42,0.04), 0 8px 24px -12px rgba(15,23,42,0.10)",
-              fontSize: 18,
-              lineHeight: 1.45,
-              transformOrigin: "top center",
-              animation: notice.exiting
-                ? "notice-shelf-out 0.18s ease-in forwards"
-                : "notice-shelf-in 0.18s ease-out both",
-              padding: "0 12px",
-            }}
-          >
-            <span
-              style={{
-                width: 7,
-                height: 7,
-                borderRadius: "50%",
-                background: color,
-                flexShrink: 0,
-              }}
-            />
-            <span style={{ padding: "14px 0", minWidth: 0, maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              {notice.message}
-            </span>
-          </div>
-        );
-      })}
     </div>
   );
 }

@@ -6,5 +6,13 @@
   "remote": {
     "urls": ["http://127.0.0.1:8080/*"]
   },
-  "permissions": ["core:window:allow-set-theme"]
+  "permissions": [
+    "core:event:allow-listen",
+    "core:window:allow-close",
+    "core:window:allow-is-maximized",
+    "core:window:allow-minimize",
+    "core:window:allow-set-theme",
+    "core:window:allow-start-dragging",
+    "core:window:allow-toggle-maximize"
+  ]
 }

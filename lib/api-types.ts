@@ -150,5 +150,16 @@ export interface McpServersResponse {
   scope: McpConfigScope;
   configPath: string;
   servers: McpServerSummary[];
+  managedServers?: HazeManagedMcpSummary[];
   diagnostics: string[];
+}
+
+/** An HTTP MCP installed from Haze. It is runtime-managed and cannot be edited as a normal MCP server. */
+export interface HazeManagedMcpSummary {
+  capabilityId: string;
+  name: string;
+  version: string;
+  scope: McpConfigScope;
+  serverUrl: string;
+  disabled: boolean;
 }

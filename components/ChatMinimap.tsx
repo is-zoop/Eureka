@@ -656,8 +656,8 @@ export function ChatMinimap({
           >
             <div
               style={{
-                width: 8,
-                height: 8,
+                width: 6,
+                height: 6,
                 borderRadius: "50%",
                 background: isActive ? "var(--minimap-node-active)" : "var(--minimap-node)",
                 border: "none",

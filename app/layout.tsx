@@ -2,8 +2,10 @@ import type { Metadata, Viewport } from "next";
 import { Inter, JetBrains_Mono, Noto_Sans_Mono, Noto_Sans_SC } from "next/font/google";
 import { PwaRegistration } from "@/components/PwaRegistration";
 import { DesktopNativeBridge } from "@/components/DesktopNativeBridge";
+import { DesktopTitlebar } from "@/components/desktop/DesktopTitlebar";
 import "katex/dist/katex.min.css";
 import "./globals.css";
+import { NotificationProvider } from "@/components/Notifications";
 
 const notoSansMono = Noto_Sans_Mono({
   subsets: ["latin", "cyrillic"],
@@ -89,7 +91,8 @@ export default function RootLayout({
       </head>
       <body translate="no" className="notranslate" suppressHydrationWarning>
         <DesktopNativeBridge />
-        <div className="eureka-desktop-content">{children}</div>
+        <DesktopTitlebar />
+        <NotificationProvider><div className="eureka-desktop-content">{children}</div></NotificationProvider>
         <PwaRegistration />
       </body>
     </html>

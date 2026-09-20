@@ -1,4 +1,5 @@
 "use client";
+import { NotificationNotice } from "./Notifications";
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
@@ -205,7 +206,7 @@ export function DirectoryPicker({ onCancel, onSelect, busy = false, error }: Pro
           ) : (
             <div style={{ padding: 8, color: "var(--text-dim)", fontSize: 11 }}>{t("directoryPicker.noSubdirectories")}</div>
           )}
-          {(loadError || error) && <div style={{ padding: "8px", color: "#dc2626", fontSize: 11 }}>{loadError ?? error}</div>}
+          {(loadError || error) && <NotificationNotice message={loadError ?? error} />}
         </div>
 
         <div className="directory-picker-footer" style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 10, flexShrink: 0, padding: "10px 18px", borderTop: "1px solid var(--border)" }}>

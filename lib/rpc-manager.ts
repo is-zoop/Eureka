@@ -1,12 +1,13 @@
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
-import { createAgentSessionFromServices, createAgentSessionServices, getAgentDir, initTheme, SessionManager, Theme } from "@earendil-works/pi-coding-agent";
+import { createAgentSessionFromServices, createAgentSessionServices, getAgentDir, initTheme, loadSkillsFromDir, SessionManager, Theme } from "@earendil-works/pi-coding-agent";
 import { KeybindingsManager as TuiKeybindingsManager, TUI_KEYBINDINGS } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { installBuiltInMcpAdapter, MCP_STATUS_EVENT } from "./mcp-adapter";
+import { installHazeManagedMcpRuntime } from "./haze-mcp-runtime";
 import { clearMcpRuntime, updateMcpRuntime } from "./mcp-runtime";
 import { randomUUID } from "crypto";
 import { existsSync, realpathSync, writeFileSync } from "fs";
-import { resolve } from "path";
+import { dirname, relative, resolve, sep } from "path";
 import { validateAgentImages } from "./image-attachments";
 import { invalidateModelsCache } from "./models-cache";
 import { resolveVisibleModels, selectInitialModelScope } from "./model-scope";
@@ -298,6 +299,35 @@ const EUREKA_MCP_EXTENSION: InlineExtension = {
     });
   },
 };
+
+/** Pi normally keeps the first matching skill name (global before project).
+ * Haze Skill roots are their market slugs, so reload a matching project root
+ * and replace the global result before it reaches the session. */
+function applyHazeProjectSkillOverrides(cwd: string, base: { skills: import("@earendil-works/pi-coding-agent").Skill[]; diagnostics: import("@earendil-works/pi-coding-agent").ResourceDiagnostic[] }) {
+  const globalRoot = resolve(getAgentDir(), "skills");
+  const projectRoot = resolve(cwd, ".pi", "skills");
+  const overriddenRoots = new Set<string>();
+  for (const skill of base.skills) {
+    const globalRelative = relative(globalRoot, dirname(skill.filePath));
+    const rootName = globalRelative.split(sep)[0];
+    if (globalRelative.startsWith("..") || !globalRelative) continue;
+    const projectSkillRoot = resolve(projectRoot, rootName);
+    if (existsSync(resolve(projectSkillRoot, "SKILL.md"))) overriddenRoots.add(rootName);
+  }
+  if (!overriddenRoots.size) return base;
+  const skills = base.skills.filter((skill) => {
+    const globalRelative = relative(globalRoot, dirname(skill.filePath));
+    const projectRelative = relative(projectRoot, dirname(skill.filePath));
+    return ![globalRelative, projectRelative].some((path) => overriddenRoots.has(path.split(sep)[0]));
+  });
+  const diagnostics = [...base.diagnostics];
+  for (const rootName of overriddenRoots) {
+    const result = loadSkillsFromDir({ dir: resolve(projectRoot, rootName), source: "project" });
+    skills.push(...result.skills);
+    diagnostics.push(...result.diagnostics);
+  }
+  return { skills, diagnostics };
+}
 
 function withExtensionTools(session: AgentSessionLike, toolNames: string[]): string[] {
   if (toolNames.length === 0) return [];
@@ -1955,7 +1985,10 @@ export async function startRpcSession(
     const services = await createAgentSessionServices({
       cwd: sessionCwd,
       agentDir,
-      resourceLoaderOptions: { extensionFactories: [installBuiltInMcpAdapter, EUREKA_NATIVE_PLAN_EXTENSION, EUREKA_MCP_EXTENSION] },
+      resourceLoaderOptions: {
+        extensionFactories: [installBuiltInMcpAdapter, installHazeManagedMcpRuntime, EUREKA_NATIVE_PLAN_EXTENSION, EUREKA_MCP_EXTENSION],
+        skillsOverride: (base) => applyHazeProjectSkillOverrides(sessionCwd, base),
+      },
       ...(trustReloadOptions ? { resourceLoaderReloadOptions: trustReloadOptions } : {}),
     });
     const scope = await resolveVisibleModels(

@@ -132,10 +132,9 @@ fn create_window(
     };
     WebviewWindowBuilder::new(app, label, url)
         .title(title)
-        // Retain standard Windows non-client behavior: dragging, snapping,
-        // caption buttons, double-click maximize, DPI, and multi-monitor
-        // handling are all owned by the operating system.
-        .decorations(true)
+        // The main window supplies its visual caption in the WebView. Error
+        // recovery windows retain the native Windows frame.
+        .decorations(label != "main")
         .inner_size(1440.0, 960.0)
         .min_inner_size(960.0, 640.0)
         .on_navigation(allowed_navigation)

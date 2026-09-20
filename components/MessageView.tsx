@@ -1,4 +1,5 @@
 "use client";
+import { NotificationNotice } from "./Notifications";
 
 import { memo, useState, useRef, useEffect, useMemo } from "react";
 import { MarkdownBody } from "./MarkdownBody";
@@ -928,11 +929,11 @@ function ThinkingBlock({ block, duration, sessionId, entryId, blockIndex }: {
           <span style={{ marginLeft: "auto", fontSize: 11, color: "var(--text-dim)", fontVariantNumeric: "tabular-nums" }}>{duration}s</span>
         )}
       </button>
-      {expanded && (
+      {expanded && (error ? <NotificationNotice message={error} /> :
         <div
           style={{
             padding: "8px 10px",
-            color: error ? "#f87171" : "var(--text-muted)",
+            color: "var(--text-muted)",
             fontSize: 12,
             lineHeight: 1.6,
             whiteSpace: "pre-wrap",
@@ -940,7 +941,7 @@ function ThinkingBlock({ block, duration, sessionId, entryId, blockIndex }: {
             borderTop: "1px solid var(--border)",
           }}
         >
-           {loading ? t("i18n.loadingThinking") : error ?? (block.deferred ? content : block.thinking)}
+           {loading ? t("i18n.loadingThinking") : (block.deferred ? content : block.thinking)}
         </div>
       )}
     </div>

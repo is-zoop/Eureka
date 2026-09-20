@@ -164,7 +164,7 @@ html, body {
   color: var(--text);
   font-family: var(--font-ui);
   font-size: 15px;
-  font-weight: 400;
+  font-weight: 500;
   letter-spacing: 0;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -190,9 +190,120 @@ body {
   min-height: 0;
 }
 
+html.eureka-desktop {
+  --desktop-titlebar-height: 32px;
+}
+
+.desktop-titlebar {
+  display: none;
+}
+
+html.eureka-desktop .desktop-titlebar {
+  display: flex;
+  position: fixed;
+  z-index: 1000;
+  top: 0;
+  right: 0;
+  left: 0;
+  height: var(--desktop-titlebar-height);
+  color: var(--text);
+  background: var(--sidebar-bg);
+  user-select: none;
+}
+
+.desktop-titlebar-drag {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  min-width: 0;
+  padding-left: 10px;
+}
+
+.desktop-titlebar-icon {
+  width: 16px;
+  height: 16px;
+  margin-right: 6px;
+  pointer-events: none;
+}
+
+.desktop-titlebar-name {
+  overflow: hidden;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.desktop-titlebar-controls {
+  display: flex;
+  flex: 0 0 auto;
+  height: 100%;
+}
+
+.desktop-caption-button {
+  display: grid;
+  width: 46px;
+  height: var(--desktop-titlebar-height);
+  padding: 0;
+  color: var(--text);
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  cursor: default;
+  place-items: center;
+  transition: background-color 120ms ease, color 120ms ease, opacity 120ms ease;
+}
+
+.desktop-caption-button:hover {
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.desktop-caption-button:active {
+  background: rgba(0, 0, 0, 0.11);
+}
+
+.dark .desktop-caption-button:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.dark .desktop-caption-button:active {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.desktop-caption-button svg {
+  width: 12px;
+  height: 12px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: square;
+  stroke-width: 1.1;
+}
+
+.desktop-caption-close:hover {
+  color: #fff;
+  background: #e81123;
+}
+
+.desktop-caption-close:active {
+  color: #fff;
+  background: #c50f1f;
+}
+
+.desktop-titlebar-unfocused .desktop-titlebar-icon,
+.desktop-titlebar-unfocused .desktop-titlebar-name,
+.desktop-titlebar-unfocused .desktop-caption-button:not(:hover) {
+  opacity: 0.65;
+}
+
 html.eureka-desktop .eureka-app-shell {
   height: 100% !important;
   background: var(--sidebar-bg) !important;
+}
+
+html.eureka-desktop .eureka-desktop-content {
+  height: var(--app-viewport-height, 100dvh);
+  padding-top: var(--desktop-titlebar-height);
 }
 
 html.eureka-desktop .sidebar-container {
@@ -205,6 +316,29 @@ html.eureka-desktop .eureka-main-column {
   border-top-left-radius: 14px;
   border-left: 1px solid var(--border);
   border-top: 1px solid var(--border);
+  overflow: hidden;
+}
+
+/* Settings is a fixed AppShell overlay rather than a child of the main
+ * column, so it needs the same desktop frame rules explicitly. */
+html.eureka-desktop .eureka-settings-overlay {
+  top: var(--desktop-titlebar-height) !important;
+}
+
+html.eureka-desktop .eureka-settings-sidebar {
+  border-right: none !important;
+}
+
+html.eureka-desktop .eureka-settings-page {
+  background: var(--sidebar-bg) !important;
+}
+
+html.eureka-desktop .eureka-settings-main {
+  position: relative;
+  background: var(--chat-bg) !important;
+  border-top: 1px solid var(--border);
+  border-left: 1px solid var(--border);
+  border-top-left-radius: 14px;
   overflow: hidden;
 }
 
@@ -1508,20 +1642,9 @@ span.linenumber {
   outline: none;
 }
 .panel-resize-handle::after {
-  content: "";
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: calc(50% - 0.5px);
-  width: 1px;
-  pointer-events: none;
-  background: transparent;
-  transition: background-color 0.12s ease;
-}
-.panel-resize-handle:hover::after,
-.panel-resize-handle:focus-visible::after,
-.panel-resize-handle.is-resizing::after {
-  background: var(--text-muted);
+  /* The panel itself owns the visible border. The resize handle is only a
+     wider transparent pointer target, so it cannot create a second line. */
+  content: none;
 }
 .right-panel-overlay-backdrop {
   display: none;
@@ -1572,6 +1695,27 @@ span.linenumber {
     width: 0;
     min-width: 0;
     border-left: none !important;
+  }
+  /* Organization extension details float without shrinking the card grid. */
+  .right-panel-container.organization-extension-overlay {
+    position: fixed;
+    top: var(--desktop-titlebar-height, 0px);
+    right: env(safe-area-inset-right);
+    bottom: 0;
+    z-index: 250;
+    box-shadow: -12px 0 32px rgba(0, 0, 0, 0.18);
+  }
+  .right-panel-container.organization-extension-overlay.right-panel-closed {
+    box-shadow: none;
+    pointer-events: none;
+  }
+  .organization-extension-resize-handle {
+    position: fixed;
+    top: var(--desktop-titlebar-height, 0px);
+    right: calc(env(safe-area-inset-right) + var(--right-panel-width) - 6px);
+    bottom: 0;
+    margin: 0;
+    z-index: 260;
   }
   /* keep inner content at fixed width so it doesn't reflow during animation */
   .right-panel-container > * {

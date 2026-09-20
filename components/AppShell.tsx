@@ -1,5 +1,9 @@
 "use client";
 
+import { notify } from "@/lib/notification-store";
+import { NotificationNotice } from "@/components/Notifications";
+
+
 import { useState, useCallback, useRef, useEffect, useLayoutEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useGlobalKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
@@ -13,7 +17,7 @@ import { ExtensionsCenter } from "./ExtensionsCenter";
 import { OrganizationExtensionDetails, type OrganizationExtensionDetailItem } from "./OrganizationExtensionDetails";
 import { PlanReviewPanel } from "./PlanReviewPanel";
 import type { EurekaPlanState } from "@/lib/plan-mode";
-import { SettingsPage } from "./SettingsPage";
+import { SettingsPage, type SettingsSection } from "./SettingsPage";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "./ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 import { SidebarUserMenu, type SidebarUser } from "./SidebarUserMenu";
@@ -102,12 +106,14 @@ export function AppShell() {
   const [modelsRefreshKey, setModelsRefreshKey] = useState(0);
   const [mainView, setMainView] = useState<"chat" | "extensions">("chat");
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsSection, setSettingsSection] = useState<SettingsSection>("system");
   const [projectTrust, setProjectTrust] = useState<ProjectTrustStatus | null>(null);
   const [projectTrustDialogOpen, setProjectTrustDialogOpen] = useState(false);
   const [projectTrustBusy, setProjectTrustBusy] = useState(false);
   const [projectTrustError, setProjectTrustError] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [rightPanelOpen, setRightPanelOpen] = useState(false);
+  const [hoveredResizeHandle, setHoveredResizeHandle] = useState<"sidebar" | "right" | null>(null);
   const [mobileToolbarMoreOpen, setMobileToolbarMoreOpen] = useState(false);
   const [mobileSidebarReady, setMobileSidebarReady] = useState(false);
   const [authenticatedUser, setAuthenticatedUser] = useState<SidebarUser | null>(null);
@@ -132,6 +138,8 @@ export function AppShell() {
   }, []);
   const sidebarWidthRef = useRef(SIDEBAR_DEFAULT_WIDTH);
   const rightPanelWidthRef = useRef(RIGHT_PANEL_FALLBACK_WIDTH);
+  const extensionPanelWidthRef = useRef(360);
+  const extensionPanelHandleRef = useRef<HTMLDivElement>(null);
   const getResponsiveRightPanelWidth = useCallback(
     () => typeof window === "undefined"
       ? RIGHT_PANEL_FALLBACK_WIDTH
@@ -180,6 +188,18 @@ export function AppShell() {
     minWidth: RIGHT_PANEL_MIN_WIDTH,
     storageKey: "pi-right-panel-width",
     widthRef: rightPanelWidthRef,
+  });
+  const extensionPanelResizer = useResizablePanel({
+    ariaLabel: "调整详情侧边栏宽度",
+    cssVariable: "--right-panel-width",
+    defaultWidth: 360,
+    getMaxWidth: () => typeof window === "undefined" ? 720 : Math.max(300, Math.min(720, window.innerWidth - 32)),
+    growthDirection: "left",
+    maxWidth: 720,
+    minWidth: 300,
+    syncRefs: [extensionPanelHandleRef],
+    storageKey: "pi-organization-extension-width",
+    widthRef: extensionPanelWidthRef,
   });
   const reclampSidebarWidth = sidebarResizer.reclampWidth;
   const reclampRightPanelWidth = rightPanelResizer.reclampWidth;
@@ -769,11 +789,13 @@ export function AppShell() {
       setSelectedSession((current) => current?.id === sessionId ? { ...current, name: title } : current);
       setSessionStats((current) => current?.sessionId === sessionId ? { ...current, sessionName: title } : current);
       setAutoNameStatus({ kind: "success" });
+      notify({ type: "success", message: "任务名称已更新。" });
       autoNameTimerRef.current = setTimeout(() => setAutoNameStatus({ kind: "idle" }), 1800);
     } catch (error) {
       if (activeSessionIdRef.current !== sessionId) return;
       const message = error instanceof Error ? error.message : String(error);
       setAutoNameStatus({ kind: "error", message });
+      notify({ type: "error", message });
       autoNameTimerRef.current = setTimeout(() => setAutoNameStatus({ kind: "idle" }), 5000);
     }
   }, [autoNameStatus.kind, selectedSession?.id]);
@@ -851,6 +873,18 @@ export function AppShell() {
     // On mobile the file panel is full-screen; close the drawer so it shows.
     if (isMobile) setSidebarOpen(false);
   }, [isMobile]);
+
+  useEffect(() => {
+    if (!rightPanelOpen || rightPanelMode !== "extension") return;
+    const closeOutside = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Element) || document.getElementById("file-panel")?.contains(target) || target.closest('[data-resize-handle="extension-panel"]')) return;
+      setExtensionDetails(null);
+      setRightPanelOpen(false);
+    };
+    document.addEventListener("pointerdown", closeOutside, true);
+    return () => document.removeEventListener("pointerdown", closeOutside, true);
+  }, [rightPanelOpen, rightPanelMode]);
 
   const handleOpenExtensionDetails = useCallback((item: OrganizationExtensionDetailItem, onFavoriteChange: (id: string, isFavorite: boolean) => void) => {
     setExtensionDetails({ item, onFavoriteChange });
@@ -1017,7 +1051,11 @@ export function AppShell() {
           setMainView("extensions");
         }}
       />
-      <SidebarUserMenu user={authenticatedUser} onOpenSettings={() => setSettingsOpen(true)} />
+      <SidebarUserMenu
+        user={authenticatedUser}
+        onOpenSettings={() => { setSettingsSection("system"); setSettingsOpen(true); }}
+        onOpenModels={() => { setSettingsSection("models"); setSettingsOpen(true); }}
+      />
     </>
   );
 
@@ -1108,58 +1146,9 @@ export function AppShell() {
     </button>
   );
 
-  const renderProjectTrustWarning = (mobileBanner: boolean) => {
+  const renderProjectTrustWarning = () => {
     if (!showChat || !projectTrust?.requiresTrust || projectTrust.trusted) return null;
-    return (
-      <button
-        type="button"
-        onClick={() => {
-          setProjectTrustError(null);
-          setProjectTrustDialogOpen(true);
-        }}
-        title={translate("trust.resourcesNotLoaded")}
-        aria-label={translate("trust.resourcesNotLoaded")}
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: mobileBanner ? "flex-start" : "center",
-          gap: 6,
-          width: mobileBanner ? "100%" : undefined,
-          minHeight: mobileBanner ? 32 : undefined,
-          height: mobileBanner ? undefined : "100%",
-          padding: mobileBanner ? "6px 12px" : "0 12px",
-          background: mobileBanner ? "color-mix(in srgb, #d97706 8%, var(--bg-panel))" : "none",
-          border: "none",
-          borderRight: mobileBanner ? "none" : "1px solid var(--border)",
-          borderBottom: mobileBanner ? "1px solid var(--border)" : "none",
-          color: "#d97706",
-          cursor: "pointer",
-          flexShrink: 0,
-          fontSize: 11,
-          lineHeight: 1.35,
-          textAlign: "left",
-        }}
-        data-mobile-trust-banner={mobileBanner ? "true" : undefined}
-      >
-        <svg
-          width="13"
-          height="13"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          aria-hidden="true"
-          style={{ flexShrink: 0 }}
-        >
-          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z" />
-          <path d="M12 8v4" />
-          <path d="M12 16h.01" />
-        </svg>
-        <span>{translate("trust.resourcesNotLoaded")}</span>
-      </button>
-    );
+    return <NotificationNotice type="warning" message={translate("trust.resourcesNotLoaded")} eventKey={`project-trust:${projectTrustCwd}`} action={{ label: translate("trust.resourcesNotLoaded"), onClick: () => { setProjectTrustError(null); setProjectTrustDialogOpen(true); } }} />;
   };
 
   const renderChatToolbarActions = (mobile: boolean) => {
@@ -1624,8 +1613,8 @@ export function AppShell() {
           width: TOP_BAR_ICON_BUTTON_SIZE, height: TOP_BAR_ICON_BUTTON_SIZE, padding: 0,
           visibility: covered ? "hidden" : "visible",
           pointerEvents: covered ? "none" : "auto",
-          background: rightPanelOpen ? "var(--bg-selected)" : "none",
-          border: "none", borderLeft: "1px solid var(--border)",
+              background: "var(--chat-bg)",
+              border: "none",
           color: rightPanelOpen ? "var(--text)" : "var(--text-muted)",
           cursor: "pointer", flexShrink: 0, transition: "color 0.12s, background 0.12s",
         }}
@@ -1702,7 +1691,7 @@ export function AppShell() {
         style={{
           "--sidebar-width": `${sidebarResizer.width}px`,
           background: "var(--sidebar-bg)",
-          borderRight: "1px solid var(--border)",
+          borderRight: `1.5px solid ${(hoveredResizeHandle === "sidebar" || sidebarResizer.isResizing) ? "#b8b7b7" : "var(--border)"}`,
           display: "flex",
           flexDirection: "column",
           flexShrink: 0,
@@ -1722,6 +1711,8 @@ export function AppShell() {
                 aria-controls="session-sidebar"
                 className={`panel-resize-handle sidebar-resize-handle${sidebarResizer.isResizing ? " is-resizing" : ""}`}
                 data-resize-handle="sidebar"
+                onPointerEnter={() => setHoveredResizeHandle("sidebar")}
+                onPointerLeave={() => setHoveredResizeHandle((current) => current === "sidebar" ? null : current)}
               />
             }
           />
@@ -1730,10 +1721,10 @@ export function AppShell() {
       )}
 
       {/* Center: chat */}
-      <div className="eureka-main-column" style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0, background: "var(--bg)" }}>
+      <div data-notification-boundary="10" className="eureka-main-column" style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0, background: "var(--chat-bg)" }}>
         {/* Top bar with sidebar toggle */}
-        <div ref={topBarRef} style={{ display: mainView === "extensions" ? "none" : undefined, flexShrink: 0, background: "var(--bg)" }}>
-        <div style={{ display: "flex", alignItems: "center", position: "relative", background: "var(--bg)", borderBottom: "1px solid var(--border)", height: `calc(${isMobile ? 48 : 42}px + env(safe-area-inset-top))`, paddingTop: "env(safe-area-inset-top)" }}>
+        <div ref={topBarRef} style={{ display: mainView === "extensions" ? "none" : undefined, flexShrink: 0, background: "var(--chat-bg)" }}>
+        <div style={{ display: "flex", alignItems: "center", position: "relative", background: "var(--chat-bg)", borderBottom: "1px solid var(--border)", height: `calc(${isMobile ? 48 : 42}px + env(safe-area-inset-top))`, paddingTop: "env(safe-area-inset-top)" }}>
           {!sidebarOpen && <button
             onClick={handleSidebarToggle}
              title={sidebarOpen ? translate("sidebar.hide") : translate("sidebar.show")}
@@ -1828,7 +1819,7 @@ export function AppShell() {
           )}
           {!isMobile && mainView === "chat" && (
             <>
-              {renderProjectTrustWarning(false)}
+              {renderProjectTrustWarning()}
               {renderChatToolbarActions(false)}
               {renderSessionStatsButton(false)}
             </>
@@ -1909,6 +1900,11 @@ export function AppShell() {
                   background: "var(--bg-panel)",
                   borderBottom: "1px solid var(--border)",
                 }}>
+                  {projectTrust?.requiresTrust && !projectTrust.trusted && (
+                    <button type="button" onClick={() => { setProjectTrustError(null); setProjectTrustDialogOpen(true); }} className="m-3 rounded border border-[var(--border)] px-3 py-1.5 text-xs text-[var(--text)]">
+                      {translate("trust.dialogTitle")}
+                    </button>
+                  )}
                   {systemPrompt ? (
                     <div style={{
                       maxHeight: "min(600px, 75vh)",
@@ -2107,7 +2103,7 @@ export function AppShell() {
           )}
 
         </div>
-        {isMobile && renderProjectTrustWarning(true)}
+        {isMobile && renderProjectTrustWarning()}
         </div>
 
         {/* Chat content */}
@@ -2157,16 +2153,7 @@ export function AppShell() {
               </div>
             </div>
           ) : initialCwdStatus === "error" ? (
-            <div
-              role="alert"
-              style={{ height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8, padding: 24, color: "var(--text-muted)", textAlign: "center" }}
-            >
-               <div style={{ fontSize: 14, color: "#dc2626" }}>{translate("workspace.unable")}</div>
-              <div style={{ maxWidth: "min(720px, 100%)", overflowWrap: "anywhere", fontFamily: "var(--font-mono)", fontSize: 12 }}>
-                {initialNavigation.requestedCwd}
-              </div>
-              <div style={{ maxWidth: 720, fontSize: 12 }}>{initialCwdError}</div>
-            </div>
+            <NotificationNotice title={translate("workspace.unable")} message={initialCwdError ?? initialNavigation.requestedCwd} />
           ) : showPlaceholder ? (
             activeCwd ? (
               <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-muted)", fontSize: 15 }}>
@@ -2192,7 +2179,7 @@ export function AppShell() {
 
       <div
         aria-hidden="true"
-        className={`right-panel-overlay-backdrop${rightPanelOpen ? " is-open" : ""}`}
+        className={`right-panel-overlay-backdrop${rightPanelOpen && rightPanelMode !== "extension" ? " is-open" : ""}`}
         onClick={() => setRightPanelOpen(false)}
       />
       {rightPanelOpen && (
@@ -2200,28 +2187,32 @@ export function AppShell() {
           <TooltipTrigger
             render={
               <div
-                {...rightPanelResizer.separatorProps}
+                ref={rightPanelMode === "extension" ? extensionPanelHandleRef : undefined}
+                {...(rightPanelMode === "extension" ? extensionPanelResizer.separatorProps : rightPanelResizer.separatorProps)}
                 aria-controls="file-panel"
-                className={`panel-resize-handle right-panel-resize-handle${rightPanelResizer.isResizing ? " is-resizing" : ""}`}
-                data-resize-handle="right-panel"
+                className={`panel-resize-handle right-panel-resize-handle${rightPanelMode === "extension" ? " organization-extension-resize-handle" : ""}${(rightPanelMode === "extension" ? extensionPanelResizer.isResizing : rightPanelResizer.isResizing) ? " is-resizing" : ""}`}
+                data-resize-handle={rightPanelMode === "extension" ? "extension-panel" : "right-panel"}
+                style={rightPanelMode === "extension" ? { "--right-panel-width": `${extensionPanelResizer.width}px` } as React.CSSProperties : undefined}
+                onPointerEnter={() => setHoveredResizeHandle("right")}
+                onPointerLeave={() => setHoveredResizeHandle((current) => current === "right" ? null : current)}
               />
             }
           />
-          <TooltipContent side="left">{`${translate("layout.resizeFilePanel")}: ${translate("layout.resizeHint")}`}</TooltipContent>
+          <TooltipContent side="left">{rightPanelMode === "extension" ? "拖动调整详情侧边栏宽度" : `${translate("layout.resizeFilePanel")}: ${translate("layout.resizeHint")}`}</TooltipContent>
         </Tooltip>
       )}
 
       {/* Right panel: file viewer — always mounted, width animated via CSS */}
       <div
-        ref={rightPanelResizer.panelRef}
+        ref={rightPanelMode === "extension" ? extensionPanelResizer.panelRef : rightPanelResizer.panelRef}
         id="file-panel"
-        className={`right-panel-container${rightPanelOpen ? " right-panel-open" : " right-panel-closed"}${rightPanelResizer.isResizing ? " right-panel-resizing" : ""}`}
+        className={`right-panel-container${rightPanelMode === "extension" ? " organization-extension-overlay" : ""}${rightPanelOpen ? " right-panel-open" : " right-panel-closed"}${(rightPanelMode === "extension" ? extensionPanelResizer.isResizing : rightPanelResizer.isResizing) ? " right-panel-resizing" : ""}`}
         style={{
-          "--right-panel-width": `${rightPanelResizer.width}px`,
+          "--right-panel-width": `${rightPanelMode === "extension" ? extensionPanelResizer.width : rightPanelResizer.width}px`,
           display: "flex",
           flexDirection: "column",
-          borderLeft: "1px solid var(--border)",
-          background: "var(--sidebar-bg)",
+          borderLeft: `1.5px solid ${(hoveredResizeHandle === "right" || (rightPanelMode === "extension" ? extensionPanelResizer.isResizing : rightPanelResizer.isResizing)) ? "#b8b7b7" : "var(--border)"}`,
+          background: "var(--chat-bg)",
         } as React.CSSProperties}
       >
         {rightPanelMode === "plan" && planReview ? (
@@ -2236,6 +2227,7 @@ export function AppShell() {
         ) : rightPanelMode === "extension" && extensionDetails ? (
           <OrganizationExtensionDetails
             item={extensionDetails.item}
+            cwd={activeCwd ?? ""}
             onClose={() => { setExtensionDetails(null); setRightPanelOpen(false); }}
             onFavoriteChange={handleExtensionFavoriteChange}
           />
@@ -2245,9 +2237,9 @@ export function AppShell() {
           display: "flex",
           alignItems: "center",
           flexShrink: 0,
-          height: "calc(36px + env(safe-area-inset-top))",
+          height: `calc(${isMobile ? 48 : 42}px + env(safe-area-inset-top))`,
           paddingTop: "env(safe-area-inset-top)",
-          background: "var(--sidebar-bg)",
+          background: "var(--chat-bg)",
           borderBottom: "1px solid var(--border)",
         }}>
           <div style={{ flex: 1, overflow: "hidden" }}>
@@ -2268,7 +2260,7 @@ export function AppShell() {
             style={{
               display: "flex", alignItems: "center", justifyContent: "center",
               width: TOP_BAR_ICON_BUTTON_SIZE, height: TOP_BAR_ICON_BUTTON_SIZE, padding: 0,
-              background: "var(--bg-selected)", border: "none", borderLeft: "1px solid var(--border)",
+              background: "var(--chat-bg)", border: "none",
               color: "var(--text)", cursor: "pointer", flexShrink: 0, transition: "color 0.12s",
             }}
             onMouseEnter={(event) => { event.currentTarget.style.color = "var(--accent)"; }}
@@ -2326,8 +2318,8 @@ export function AppShell() {
       />
     )}
     {settingsOpen && (
-      <div style={{ position: "fixed", inset: 0, zIndex: 300, background: "var(--chat-bg)" }}>
-        <SettingsPage onBack={() => setSettingsOpen(false)} />
+      <div className="eureka-settings-overlay" style={{ position: "fixed", inset: 0, zIndex: 300, background: "var(--chat-bg)" }}>
+        <SettingsPage initialSection={settingsSection} onBack={() => setSettingsOpen(false)} />
       </div>
     )}
     </>

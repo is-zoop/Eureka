@@ -1,5 +1,6 @@
+import { NotificationNotice } from "@/components/Notifications";
 import Link from "next/link";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 
 const errors: Record<string, string> = {
@@ -14,5 +15,5 @@ const errors: Record<string, string> = {
 export default async function LoginPage({ searchParams }: { searchParams: Promise<{ returnTo?: string; error?: string }> }) {
   const { returnTo, error } = await searchParams;
   const target = returnTo?.startsWith("/") && !returnTo.startsWith("//") ? returnTo : "/";
-  return <main className="grid min-h-screen place-items-center bg-[var(--bg)] p-6"><Card className="w-full max-w-sm"><CardHeader><CardTitle>登录 Eureka</CardTitle><CardDescription>使用 Eureka 的 Agent、项目和会话功能前需要完成 Haze 登录。</CardDescription></CardHeader><CardContent>{error && <p role="alert" className="rounded-[var(--radius-control)] bg-[var(--danger-hover)] px-3 py-2 text-sm text-[var(--danger)]">{errors[error] ?? "登录暂时不可用，请重试。"}</p>}</CardContent><CardFooter className="flex-col gap-3"><Link href={`/api/marketplace-auth/start?returnTo=${encodeURIComponent(target)}`} className="w-full"><Button className="w-full">使用 Haze 登录</Button></Link><p className="text-center text-xs text-[var(--text-muted)]">密码仅在 Haze 输入，Eureka 不会收集或保存你的密码。</p></CardFooter></Card></main>;
+  return <main className="grid min-h-screen place-items-center bg-[var(--bg)] p-6"><Card className="w-full max-w-sm"><CardHeader><CardTitle>登录 Eureka</CardTitle><CardDescription>使用 Eureka 的 Agent、项目和会话功能前需要完成 Haze 登录。</CardDescription></CardHeader><NotificationNotice message={error ? errors[error] ?? "登录暂时不可用，请重试。" : null} type="error" /><CardFooter className="flex-col gap-3"><Link href={`/api/marketplace-auth/start?returnTo=${encodeURIComponent(target)}`} className="w-full"><Button className="w-full">使用 Haze 登录</Button></Link><p className="text-center text-xs text-[var(--text-muted)]">密码仅在 Haze 输入，Eureka 不会收集或保存你的密码。</p></CardFooter></Card></main>;
 }

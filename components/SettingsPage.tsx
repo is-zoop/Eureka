@@ -6,7 +6,7 @@ import { ModelsConfig } from "@/components/ModelsConfig";
 import { useI18n } from "@/hooks/useI18n";
 import { type ThemePreference, useTheme } from "@/hooks/useTheme";
 
-type SettingsSection = "system" | "models";
+export type SettingsSection = "system" | "models";
 
 function SettingsIcon({ section }: { section: SettingsSection }) {
   return section === "system" ? (
@@ -22,24 +22,24 @@ function ThemeIcon({ preference }: { preference: ThemePreference }) {
   return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" /></svg>;
 }
 
-export function SettingsPage({ onBack }: { onBack?: () => void }) {
+export function SettingsPage({ onBack, initialSection = "system" }: { onBack?: () => void; initialSection?: SettingsSection }) {
   const { locale, setLocale, supportedLocales, t } = useI18n();
   const { preference, setPreference } = useTheme();
-  const [section, setSection] = useState<SettingsSection>("system");
+  const [section, setSection] = useState<SettingsSection>(initialSection);
   const sections: { id: SettingsSection; label: string }[] = [
     { id: "system", label: t("settings.system") },
     { id: "models", label: t("settings.models") },
   ];
 
   return (
-    <main className="flex h-full min-h-0 bg-[var(--chat-bg)] text-[var(--text)]">
-      <aside className="flex w-60 shrink-0 flex-col border-r border-[var(--border)] bg-[var(--sidebar-bg)] p-3 max-sm:w-48">
+    <main className="eureka-settings-page flex h-full min-h-0 bg-[var(--chat-bg)] text-[var(--text)]">
+      <aside className="eureka-settings-sidebar flex w-60 shrink-0 flex-col border-r border-[var(--border)] bg-[var(--sidebar-bg)] p-3 max-sm:w-48">
         {onBack ? (
-          <button type="button" onClick={onBack} className="mb-6 inline-flex h-8 items-center gap-2 rounded-[var(--radius-control)] border-0 bg-transparent px-2 text-sm text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text)]">
+          <button type="button" onClick={onBack} className="mb-6 inline-flex h-8 items-center gap-2 rounded-[var(--radius-control)] border-0 bg-transparent px-2 text-sm text-[var(--text-muted)] transition-colors hover:text-[var(--text)]" onMouseEnter={(event) => { event.currentTarget.style.background = "color-mix(in srgb, var(--text) 6%, var(--sidebar-bg))"; }} onMouseLeave={(event) => { event.currentTarget.style.background = "transparent"; }}>
             <span aria-hidden="true">←</span>{t("settings.backToApp")}
           </button>
         ) : (
-          <Link href="/" className="mb-6 inline-flex h-8 items-center gap-2 rounded-[var(--radius-control)] px-2 text-sm text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text)]">
+          <Link href="/" className="mb-6 inline-flex h-8 items-center gap-2 rounded-[var(--radius-control)] px-2 text-sm text-[var(--text-muted)] transition-colors hover:text-[var(--text)]" onMouseEnter={(event) => { event.currentTarget.style.background = "color-mix(in srgb, var(--text) 6%, var(--sidebar-bg))"; }} onMouseLeave={(event) => { event.currentTarget.style.background = "transparent"; }}>
             <span aria-hidden="true">←</span>{t("settings.backToApp")}
           </Link>
         )}
@@ -51,7 +51,7 @@ export function SettingsPage({ onBack }: { onBack?: () => void }) {
           })}
         </nav>
       </aside>
-      <section className="min-w-0 flex-1 overflow-y-auto bg-[var(--chat-bg)]">
+      <section data-notification-boundary="20" className="eureka-settings-main min-w-0 flex-1 overflow-y-auto bg-[var(--chat-bg)]">
         {section === "system" ? (
           <div className="mx-auto w-full max-w-4xl px-8 py-12 max-sm:px-5 max-sm:py-8">
             <h1 className="text-2xl font-semibold tracking-[-0.02em]">{t("settings.system")}</h1>

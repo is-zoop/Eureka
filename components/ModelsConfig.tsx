@@ -1,5 +1,9 @@
 "use client";
 
+import { notify } from "@/lib/notification-store";
+import { NotificationNotice } from "@/components/Notifications";
+
+
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { useI18n } from "@/hooks/useI18n";
@@ -476,9 +480,7 @@ function ProviderDetail({ name, provider, onChange, onRename, onDelete, onAddMod
         )}
 
         {discoveryState.phase === "error" && (
-          <div style={{ padding: "7px 9px", border: "1px solid rgba(239,68,68,0.3)", borderRadius: 5, color: "#ef4444", fontSize: 11, lineHeight: 1.4 }}>
-            {discoveryState.message}
-          </div>
+          <NotificationNotice message={discoveryState.message} type="error" />
         )}
 
         {discoveryState.phase === "success" && (
@@ -1003,11 +1005,6 @@ function ModelDetail({
   const catalogStatusText = catalogState.phase === "error"
     ? catalogState.message
     : catalogResultSummary;
-  const catalogStatusColor = catalogState.phase === "error"
-    ? "#ef4444"
-    : catalogState.phase === "success" && catalogState.recommendation.price.status === "unreliable"
-      ? "#d97706"
-      : "var(--text-dim)";
   const costFields = [
     { key: "input", label: t("models.costInput") },
     { key: "output", label: t("models.costOutput") },
@@ -1052,27 +1049,7 @@ function ModelDetail({
          <SectionTitle>{t("i18n.model")}</SectionTitle>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           {testSummary && (
-            <span
-              title={testSummary}
-              style={{
-                maxWidth: 260,
-                height: 24,
-                padding: "0 8px",
-                border: `1px solid ${testState.phase === "error" ? "#fecaca" : testState.phase === "success" ? "#bbf7d0" : "var(--border)"}`,
-                borderRadius: 4,
-                background: testState.phase === "error" ? "#fee2e2" : testState.phase === "success" ? "#dcfce7" : "#e5e7eb",
-                color: "#111827",
-                fontSize: 11,
-                display: "inline-flex",
-                alignItems: "center",
-                whiteSpace: "nowrap",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                boxSizing: "border-box",
-              }}
-            >
-              {testSummary}
-            </span>
+            <NotificationNotice message={testState.phase === "testing" ? null : testSummary} type={testState.phase === "success" ? "success" : "error"} />
           )}
           <button
             onClick={handleTest}
@@ -1139,19 +1116,8 @@ function ModelDetail({
         </div>
 
         {catalogStatusText && (
-          <div
-            aria-live="polite"
-            style={{
-              marginTop: 8, display: "flex", alignItems: "center",
-              justifyContent: "space-between", gap: 8, color: catalogStatusColor, fontSize: 10,
-            }}
-          >
-            <span
-              title={catalogStatusText}
-              style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
-            >
-              {catalogStatusText}
-            </span>
+          <>
+            <NotificationNotice message={catalogStatusText} type={catalogState.phase === "error" ? "error" : catalogState.phase === "success" && catalogState.recommendation.price.status === "unreliable" ? "warning" : "success"} />
             {catalogUndoRef.current && (
               <button
                 onClick={undoCatalogFill}
@@ -1160,7 +1126,7 @@ function ModelDetail({
                 {t("models.catalogUndo")}
               </button>
             )}
-          </div>
+          </>
         )}
       </div>
 
@@ -1209,9 +1175,7 @@ function ModelDetail({
                 </Field>
               ))}
               {hasModelCostDraftValue(costDraft) && !parseCompleteModelCost(costDraft) && (
-                <div aria-live="polite" style={{ gridColumn: "1 / -1", color: "#d97706", fontSize: 10 }}>
-                  {t("models.costAllRequired")}
-                </div>
+                <NotificationNotice type="warning" message={t("models.costAllRequired")} />
               )}
             </div>
           ) : (
@@ -1472,9 +1436,7 @@ function OAuthDetail({ provider, onRefresh }: { provider: OAuthProvider; onRefre
         )}
         {loginState.phase === "select" && (
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            <p style={{ margin: 0, fontSize: 12, color: "var(--text-muted)", lineHeight: 1.5 }}>
-              {loginState.message}
-            </p>
+            <NotificationNotice message={loginState.message} type="error" />
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               {loginState.options.map((option) => (
                 <button
@@ -1540,13 +1502,13 @@ function OAuthDetail({ provider, onRefresh }: { provider: OAuthProvider; onRefre
           </div>
         )}
         {loginState.phase === "progress" && (
-          <p style={{ margin: 0, fontSize: 12, color: "var(--text-muted)" }}>{loginState.message}</p>
+          <NotificationNotice message={loginState.message} type="error" />
         )}
         {loginState.phase === "success" && (
-             <p style={{ margin: 0, fontSize: 12, color: "#4ade80" }}>{t("i18n.connectedSuccessfully")}</p>
+             <NotificationNotice type="success" message={t("i18n.connectedSuccessfully")} />
         )}
         {loginState.phase === "error" && (
-          <p style={{ margin: 0, fontSize: 12, color: "#f87171" }}>{loginState.message}</p>
+          <NotificationNotice message={loginState.message} type="error" />
         )}
       </div>
 
@@ -1616,6 +1578,7 @@ function ApiKeyDetail({ provider, onRefresh }: { provider: ApiKeyProvider; onRef
       } else {
         setApiKey("");
         setSavedOk(true);
+        notify({ type: "success", message: t("i18n.saved") });
         setTimeout(() => setSavedOk(false), 2000);
         onRefresh();
       }
@@ -1624,7 +1587,7 @@ function ApiKeyDetail({ provider, onRefresh }: { provider: ApiKeyProvider; onRef
     } finally {
       setSaving(false);
     }
-  }, [apiKey, provider.id, onRefresh]);
+  }, [apiKey, provider.id, onRefresh, t]);
 
   const handleRemove = useCallback(async () => {
     setRemoving(true);
@@ -1694,7 +1657,7 @@ function ApiKeyDetail({ provider, onRefresh }: { provider: ApiKeyProvider; onRef
         </div>
       </Field>
 
-      {error && <p style={{ margin: 0, fontSize: 12, color: "#f87171" }}>{error}</p>}
+      {error && <NotificationNotice message={error} type="error" />}
 
       {provider.configured && (
         <button
@@ -2046,6 +2009,7 @@ export function ModelsConfig({ onClose, embedded = false }: { onClose: () => voi
       else {
         lastSavedConfigRef.current = JSON.stringify(config);
         setSavedOk(true);
+        notify({ type: "success", message: t("i18n.saved") });
         setTimeout(() => setSavedOk(false), 2000);
       }
     } catch (e) {
@@ -2053,7 +2017,7 @@ export function ModelsConfig({ onClose, embedded = false }: { onClose: () => voi
     } finally {
       setSaving(false);
     }
-  }, [config]);
+  }, [config, t]);
 
   useEffect(() => {
     if (!embedded || loading || JSON.stringify(config) === lastSavedConfigRef.current) return;
@@ -2259,9 +2223,10 @@ export function ModelsConfig({ onClose, embedded = false }: { onClose: () => voi
           </div>
         </div>
 
+        <NotificationNotice message={saveError} type="error" />
         {/* Footer */}
         {!embedded && <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 10, padding: "10px 18px", borderTop: "1px solid var(--border)", flexShrink: 0 }}>
-          {saveError && <span style={{ fontSize: 12, color: "#f87171", flex: 1 }}>{saveError}</span>}
+
           <button onClick={onClose} style={{ padding: "6px 14px", background: "none", border: "1px solid var(--border)", borderRadius: 6, color: "var(--text-muted)", cursor: "pointer", fontSize: 13 }}>
              {t("i18n.cancel")}
           </button>
