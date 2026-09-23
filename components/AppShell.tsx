@@ -20,6 +20,7 @@ import type { EurekaPlanState } from "@/lib/plan-mode";
 import { SettingsPage, type SettingsSection } from "./SettingsPage";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "./ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
+import { Skeleton } from "./ui/skeleton";
 import { SidebarUserMenu, type SidebarUser } from "./SidebarUserMenu";
 import { ProjectTrustDialog } from "./ProjectTrustDialog";
 import { BranchNavigator } from "./BranchNavigator";
@@ -31,7 +32,8 @@ import { useResizablePanel } from "@/hooks/useResizablePanel";
 import { useAudio } from "@/hooks/useAudio";
 import { copyText } from "@/lib/clipboard";
 import { getFileName } from "@/lib/file-paths";
-import { buildAtMentionText, buildFileAtMentionsText, buildFileLineMentionText } from "@/lib/file-fuzzy";
+import type { ChatDraftReference } from "@/lib/draft-store";
+import { buildFileLineMentionText } from "@/lib/file-fuzzy";
 import {
   claimExtensionAttentionNotification,
   shouldShowBrowserNotification,
@@ -117,6 +119,8 @@ export function AppShell() {
   const [mobileToolbarMoreOpen, setMobileToolbarMoreOpen] = useState(false);
   const [mobileSidebarReady, setMobileSidebarReady] = useState(false);
   const [authenticatedUser, setAuthenticatedUser] = useState<SidebarUser | null>(null);
+  const [authenticatedUserLoading, setAuthenticatedUserLoading] = useState(true);
+  const [sessionContentLoading, setSessionContentLoading] = useState(false);
   const authProfileRequestedRef = useRef(false);
   useEffect(() => {
     // React Strict Mode replays effects during development. Keep this to one
@@ -131,6 +135,7 @@ export function AppShell() {
           return;
         }
         if (response.ok && body?.user?.name) setAuthenticatedUser(body.user);
+        setAuthenticatedUserLoading(false);
       })
       .catch(() => {
         window.location.replace("/login?returnTo=/");
@@ -425,6 +430,7 @@ export function AppShell() {
   // Right panel — file tabs only
   const [fileTabs, setFileTabs] = useState<Tab[]>([]);
   const [activeFileTabId, setActiveFileTabId] = useState<string | null>(null);
+  const [revealDirectoryPath, setRevealDirectoryPath] = useState<string | null>(null);
 
   const handleFileViewerStateChange = useCallback((
     tabId: string,
@@ -437,13 +443,12 @@ export function AppShell() {
   // Same @mention format as the chat input's @ autocomplete, so the agent's
   // read tool resolves it the same way (it strips the @ prefix).
   const handleAtMention = useCallback((relativePath: string, isDir: boolean) => {
-    chatInputRef.current?.insertText(buildAtMentionText(relativePath, isDir));
+    chatInputRef.current?.addReferences([{ path: relativePath, isDir }]);
     if (isMobile) { setRightPanelOpen(false); setSidebarOpen(false); }
   }, [isMobile]);
 
   const handleAtMentions = useCallback((relativePaths: string[]) => {
-    const mentions = buildFileAtMentionsText(relativePaths);
-    if (mentions) chatInputRef.current?.insertText(mentions);
+    if (relativePaths.length) chatInputRef.current?.addReferences(relativePaths.map((path) => ({ path, isDir: false })));
     if (isMobile) { setRightPanelOpen(false); setSidebarOpen(false); }
   }, [isMobile]);
 
@@ -455,8 +460,6 @@ export function AppShell() {
   const initialSessionId = initialNavigation.sessionId;
   const [activeCwd, setActiveCwd] = useState<string | null>(null);
   const activeProjectRootRef = useRef<string | null>(null);
-  // True once the initial ?session= URL param has been resolved (or confirmed absent)
-  const [initialSessionRestored, setInitialSessionRestored] = useState<boolean>(() => !initialSessionId);
   // Suppresses sessionKey bump in handleCwdChange during the initial URL restore
   const suppressCwdBumpRef = useRef(false);
   // Guards the async workspace restore so a slow response from an earlier
@@ -545,6 +548,7 @@ export function AppShell() {
         // present: useAgentSession loads content in a mount-only effect, so
         // the null-session welcome mount from the switch would never load
         // the restored session's messages.
+        setSessionContentLoading(true);
         setSelectedSession(s);
         setSessionKey((k) => k + 1);
         if (new URLSearchParams(window.location.search).get("session") !== s.id) {
@@ -590,10 +594,7 @@ export function AppShell() {
     setNewSessionDraftId(draftId);
     activeNewSessionDraftKeyRef.current = `new:${draftId}:${cwd}`;
     setSelectedSession(null);
-    setNewSessionCwd((prev) => {
-      if (prev && prev !== cwd) return null;
-      return prev;
-    });
+    setNewSessionCwd(cwd);
     setSessionKey((k) => k + 1);
     setBranchTree([]);
     setBranchActiveLeafId(null);
@@ -631,11 +632,11 @@ export function AppShell() {
       }
     }
     setNewSessionCwd(null);
+    setSessionContentLoading(true);
     setSelectedSession(session);
     setSessionKey((k) => k + 1);
     setSystemPrompt(null);
     setSystemPromptLoading(false);
-    setInitialSessionRestored(true);
     // On mobile, collapse the overlay drawer so the chat is revealed after pick.
     if (isMobile && !isRestore) setSidebarOpen(false);
     if (isRestore) {
@@ -656,6 +657,7 @@ export function AppShell() {
     const draftKey = `new:${sessionId}:${cwd}`;
     activeNewSessionDraftKeyRef.current = draftKey;
     setNewSessionDraftId(sessionId);
+    setSessionContentLoading(false);
     setSelectedSession(null);
     setNewSessionCwd(cwd);
     setSessionKey((k) => k + 1);
@@ -700,6 +702,7 @@ export function AppShell() {
     invalidateWorkspaceRestore();
     activeNewSessionDraftKeyRef.current = null;
     setNewSessionCwd(null);
+    setSessionContentLoading(false);
     setSelectedSession(session);
     hydrateSelectedSession(session.id);
     router.replace(`?session=${encodeURIComponent(session.id)}`, { scroll: false });
@@ -815,6 +818,7 @@ export function AppShell() {
     setRefreshKey((k) => k + 1);
     setSessionKey((k) => k + 1);
     setNewSessionCwd(null);
+    setSessionContentLoading(true);
     setSelectedSession((prev) => ({
       ...(prev ?? { path: "", cwd: "", created: "", modified: "", messageCount: 0, firstMessage: "" }),
       id: newSessionId,
@@ -823,10 +827,6 @@ export function AppShell() {
     hydrateSelectedSession(newSessionId);
     router.replace(`?session=${encodeURIComponent(newSessionId)}`, { scroll: false });
   }, [invalidateWorkspaceRestore, router, hydrateSelectedSession]);
-
-  const handleInitialRestoreDone = useCallback(() => {
-    setInitialSessionRestored(true);
-  }, []);
 
   const handleSessionDeleted = useCallback((sessionId: string) => {
     invalidateWorkspaceRestore();
@@ -838,6 +838,7 @@ export function AppShell() {
         ? crypto.randomUUID()
         : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
       setNewSessionDraftId(draftId);
+      setSessionContentLoading(false);
       activeNewSessionDraftKeyRef.current = cwd ? `new:${draftId}:${cwd}` : null;
       setSelectedSession(null);
       setNewSessionCwd(cwd ?? null);
@@ -927,6 +928,17 @@ export function AppShell() {
     handleOpenFile(filePath, getFileName(filePath), { sourceSessionId: selectedSession?.id ?? null });
   }, [handleOpenFile, selectedSession?.id]);
 
+  const handleOpenComposerReference = useCallback((reference: ChatDraftReference) => {
+    if (reference.isDir) {
+      setRevealDirectoryPath(reference.path);
+      if (isMobile) setSidebarOpen(true);
+      return;
+    }
+    const cwd = selectedSession?.cwd ?? newSessionCwd;
+    if (!cwd) return;
+    handleOpenLinkedFile(`${cwd.replace(/[\\/]$/, "")}/${reference.path}`);
+  }, [handleOpenLinkedFile, isMobile, newSessionCwd, selectedSession?.cwd]);
+
   const handleCloseFileTab = useCallback((tabId: string) => {
     setFileTabs((prev) => {
       const next = prev.filter((t) => t.id !== tabId);
@@ -959,8 +971,6 @@ export function AppShell() {
   }, [newSessionDraftKey]);
   const showChat = selectedSession !== null || effectiveNewSessionCwd !== null;
   const projectTrustCwd = selectedSession?.cwd ?? effectiveNewSessionCwd;
-  // While restoring initial session from URL, don't show the placeholder
-  const showPlaceholder = initialSessionRestored && !showChat;
 
   useEffect(() => {
     setProjectTrust(null);
@@ -1033,7 +1043,6 @@ export function AppShell() {
         onNewSession={handleNewSession}
         initialSessionId={initialSessionId}
         skipInitialProjectSelection={initialNavigation.requestedCwd !== null}
-        onInitialRestoreDone={handleInitialRestoreDone}
         refreshKey={refreshKey}
         onSessionDeleted={handleSessionDeleted}
         selectedCwd={selectedSession?.cwd ?? newSessionCwd ?? null}
@@ -1043,6 +1052,7 @@ export function AppShell() {
         onExplorerRefresh={handleExplorerRefresh}
         onAtMention={handleAtMention}
         onAtMentions={handleAtMentions}
+        revealDirectoryPath={revealDirectoryPath}
         onBackgroundTaskDone={handleBackgroundTaskDone}
         onRunningSessionIdsChange={handleRunningSessionIdsChange}
         onRequestHide={() => setSidebarOpen(false)}
@@ -1053,6 +1063,7 @@ export function AppShell() {
       />
       <SidebarUserMenu
         user={authenticatedUser}
+        loading={authenticatedUserLoading}
         onOpenSettings={() => { setSettingsSection("system"); setSettingsOpen(true); }}
         onOpenModels={() => { setSettingsSection("models"); setSettingsOpen(true); }}
       />
@@ -1153,6 +1164,11 @@ export function AppShell() {
 
   const renderChatToolbarActions = (mobile: boolean) => {
     if (!mobile && !showChat) return null;
+    // A new task has no persisted session yet, so keep its header uncluttered.
+    if (!mobile && selectedSession === null) return null;
+    if (mobile && sessionContentLoading && selectedSession) {
+      return <div aria-busy="true" aria-label={translate("chat.loadingSession")} style={{ display: "flex", alignItems: "center", gap: 8, height: "100%", padding: "0 10px" }}><Skeleton className="size-7 rounded-[var(--radius-control)]" /><Skeleton className="size-7 rounded-[var(--radius-control)]" /></div>;
+    }
     if (!mobile) {
       const hasMessages = Boolean(
         selectedSession
@@ -1160,10 +1176,16 @@ export function AppShell() {
       );
       const canAutoName = Boolean(selectedSession && !selectedSession.transient && hasMessages && autoNameStatus.kind !== "naming");
       const sessionTitle = selectedSession?.name || selectedSession?.firstMessage || translate("sidebar.new");
+      const titleLoading = Boolean(sessionContentLoading && selectedSession);
 
       return (
         <div style={{ display: "flex", alignItems: "center", minWidth: 0, height: "100%" }}>
-          <Tooltip>
+          {titleLoading ? (
+            <div aria-busy="true" aria-label={translate("chat.loadingSession")} style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0, height: "100%", padding: "0 14px" }}>
+              <Skeleton className="size-[17px] shrink-0 rounded-full" />
+              <Skeleton className="h-4 w-36" />
+            </div>
+          ) : <Tooltip>
             <TooltipTrigger
               render={
                 <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0, height: "100%", padding: "0 14px", color: "var(--text)" }}>
@@ -1173,8 +1195,8 @@ export function AppShell() {
               }
             />
             <TooltipContent>{sessionTitle}</TooltipContent>
-          </Tooltip>
-          <DropdownMenu>
+          </Tooltip>}
+          {titleLoading ? <Skeleton className="ml-1 size-7 rounded-[var(--radius-control)]" /> : <DropdownMenu>
             <Tooltip>
               <DropdownMenuTrigger render={<TooltipTrigger render={<button type="button" aria-label={translate("chat.moreControls")} style={{ display: "grid", placeItems: "center", width: 34, height: 34, marginLeft: -4, padding: 0, border: "none", borderRadius: "var(--radius-control)", background: "transparent", color: "var(--text-muted)", cursor: "pointer" }} onMouseEnter={(event) => { event.currentTarget.style.background = "var(--bg-hover)"; event.currentTarget.style.color = "var(--text)"; }} onMouseLeave={(event) => { event.currentTarget.style.background = "transparent"; event.currentTarget.style.color = "var(--text-muted)"; }}><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.5" /><circle cx="12" cy="12" r="1.5" /><circle cx="19" cy="12" r="1.5" /></svg></button>} />} />
               <TooltipContent>{translate("chat.moreControls")}</TooltipContent>
@@ -1190,8 +1212,8 @@ export function AppShell() {
                 <DropdownMenuItem onClick={() => handleSystemPromptToggle()}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="8" y1="13" x2="16" y2="13" /><line x1="8" y1="17" x2="13" y2="17" /></svg>{translate("system.label")}</DropdownMenuItem>
               </DropdownMenuGroup>
             </DropdownMenuContent>
-          </DropdownMenu>
-          <BranchNavigator tree={branchTree} activeLeafId={branchActiveLeafId} onLeafChange={handleBranchLeafChange} inline compact containerRef={topBarRef} open={activeTopPanel === "branches"} onToggle={() => toggleTopPanel("branches")} hasSession={showChat} hideInlineButton />
+          </DropdownMenu>}
+          {!titleLoading && <BranchNavigator tree={branchTree} activeLeafId={branchActiveLeafId} onLeafChange={handleBranchLeafChange} inline compact containerRef={topBarRef} open={activeTopPanel === "branches"} onToggle={() => toggleTopPanel("branches")} hasSession={showChat} hideInlineButton />}
         </div>
       );
     }
@@ -1593,6 +1615,40 @@ export function AppShell() {
     );
   };
 
+  const renderSoundToggle = (mobile: boolean) => (
+    <button
+      type="button"
+      onClick={onSoundToggle}
+      title={soundEnabled ? translate("chat.disableSound") : translate("chat.enableSound")}
+      aria-label={soundEnabled ? translate("chat.disableSound") : translate("chat.enableSound")}
+      style={{
+        marginLeft: !mobile && !sessionStats && !contextUsage ? "auto" : 0,
+        display: "flex", alignItems: "center", justifyContent: "center",
+        width: TOP_BAR_ICON_BUTTON_SIZE, height: TOP_BAR_ICON_BUTTON_SIZE, padding: 0,
+        background: "var(--chat-bg)", border: "none",
+        color: soundEnabled ? "var(--text-muted)" : "var(--text-dim)",
+        cursor: "pointer", flexShrink: 0, transition: "color 0.12s, background 0.12s, opacity 0.12s",
+        opacity: soundEnabled ? 1 : 0.55,
+      }}
+      onMouseEnter={(event) => { event.currentTarget.style.color = "var(--text)"; event.currentTarget.style.opacity = "1"; }}
+      onMouseLeave={(event) => { event.currentTarget.style.color = soundEnabled ? "var(--text-muted)" : "var(--text-dim)"; event.currentTarget.style.opacity = soundEnabled ? "1" : "0.55"; }}
+    >
+      {soundEnabled ? (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M10.268 21a2 2 0 0 0 3.464 0" />
+          <path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326" />
+        </svg>
+      ) : (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M10.268 21a2 2 0 0 0 3.464 0" />
+          <path d="M17 17H4a1 1 0 0 1-.74-1.673C4.59 13.956 6 12.499 6 8a6 6 0 0 1 .258-1.742" />
+          <path d="m2 2 20 20" />
+          <path d="M8.668 3.01A6 6 0 0 1 18 8c0 2.687.77 4.653 1.707 6.05" />
+        </svg>
+      )}
+    </button>
+  );
+
   const renderMainFileToggle = (mobile: boolean) => {
     const covered = mobile && mobileToolbarMoreOpen;
     return (
@@ -1608,7 +1664,7 @@ export function AppShell() {
         aria-label={rightPanelOpen ? translate("files.hidePanel") : translate("files.showPanel")}
         data-mobile-toolbar-file={mobile ? "true" : undefined}
         style={{
-          marginLeft: !mobile && !sessionStats && !contextUsage ? "auto" : 0,
+          marginLeft: 0,
           display: "flex", alignItems: "center", justifyContent: "center",
           width: TOP_BAR_ICON_BUTTON_SIZE, height: TOP_BAR_ICON_BUTTON_SIZE, padding: 0,
           visibility: covered ? "hidden" : "visible",
@@ -1723,7 +1779,7 @@ export function AppShell() {
       {/* Center: chat */}
       <div data-notification-boundary="10" className="eureka-main-column" style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0, background: "var(--chat-bg)" }}>
         {/* Top bar with sidebar toggle */}
-        <div ref={topBarRef} style={{ display: mainView === "extensions" ? "none" : undefined, flexShrink: 0, background: "var(--chat-bg)" }}>
+        <div ref={topBarRef} style={{ display: mainView === "extensions" || (!isMobile && mainView === "chat" && selectedSession === null) ? "none" : undefined, flexShrink: 0, background: "var(--chat-bg)" }}>
         <div style={{ display: "flex", alignItems: "center", position: "relative", background: "var(--chat-bg)", borderBottom: "1px solid var(--border)", height: `calc(${isMobile ? 48 : 42}px + env(safe-area-inset-top))`, paddingTop: "env(safe-area-inset-top)" }}>
           {!sidebarOpen && <button
             onClick={handleSidebarToggle}
@@ -1791,6 +1847,7 @@ export function AppShell() {
                 )}
               </button>
               {renderSessionStatsButton(true)}
+              {renderSoundToggle(true)}
               {renderMainFileToggle(true)}
               {mobileToolbarMoreOpen && (
                 <div
@@ -1824,7 +1881,7 @@ export function AppShell() {
               {renderSessionStatsButton(false)}
             </>
           )}
-          {!isMobile && mainView === "chat" && renderMainFileToggle(false)}
+          {!isMobile && mainView === "chat" && <>{renderSoundToggle(false)}{renderMainFileToggle(false)}</>}
           {isMobile && mainView === "chat" && (
             <BranchNavigator
               tree={branchTree}
@@ -2135,12 +2192,14 @@ export function AppShell() {
               onSessionStatsPanelOpen={openSessionStatsPanel}
               onContextUsageChange={handleContextUsageChange}
               onOpenFile={handleOpenLinkedFile}
+              onOpenComposerReference={handleOpenComposerReference}
               soundEnabled={soundEnabled}
               onSoundToggle={onSoundToggle}
               playDoneSound={playDoneSound}
               unlockAudio={unlockAudio}
               onPlanStateChange={handlePlanStateChange}
               onOpenPlanReview={handleOpenPlanReview}
+              onContentLoadingChange={setSessionContentLoading}
             />
           ) : initialCwdStatus === "validating" ? (
             <div
@@ -2154,25 +2213,6 @@ export function AppShell() {
             </div>
           ) : initialCwdStatus === "error" ? (
             <NotificationNotice title={translate("workspace.unable")} message={initialCwdError ?? initialNavigation.requestedCwd} />
-          ) : showPlaceholder ? (
-            activeCwd ? (
-              <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-muted)", fontSize: 15 }}>
-                 {translate("workspace.selectSession")}
-              </div>
-            ) : (
-              <div style={{ position: "absolute", top: 12, left: 12, display: "flex", alignItems: "flex-start", gap: 8, userSelect: "none", pointerEvents: "none" }}>
-                <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.7, flexShrink: 0 }}>
-                  <line x1="20" y1="12" x2="4" y2="12" /><polyline points="10 6 4 12 10 18" />
-                </svg>
-                <div>
-                   <div style={{ fontSize: 18, fontWeight: 600, color: "var(--text)", marginBottom: 8 }}>{translate("workspace.getStarted")}</div>
-                  <div style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.8 }}>
-                     <span style={{ color: "var(--text-dim)", marginRight: 6 }}>1.</span>{translate("workspace.selectProject")}<br />
-                     <span style={{ color: "var(--text-dim)", marginRight: 6 }}>2.</span>{translate("workspace.addModels")}
-                  </div>
-                </div>
-              </div>
-            )
           ) : null}
         </div>
       </div>

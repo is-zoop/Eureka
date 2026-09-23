@@ -18,7 +18,7 @@ test("explicit context changes invalidate a pending workspace restore", () => {
     ["handleSelectSession", "handleNewSession"],
     ["handleNewSession", "hydrateSelectedSession"],
     ["handleSessionCreated", "handleAgentEnd"],
-    ["handleSessionForked", "handleInitialRestoreDone"],
+    ["handleSessionForked", "handleSessionDeleted"],
     ["handleSessionDeleted", "handleOpenFile"],
   ];
 

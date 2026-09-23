@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { MarkdownBody } from "./MarkdownBody";
 import { Button } from "./ui/button";
+import { Checkbox } from "./ui/checkbox";
 import type { EurekaPlanAnnotation, EurekaPlanState } from "@/lib/plan-mode";
 
 type Props = {
@@ -99,7 +100,7 @@ export function PlanReviewPanel({ plan, onClose, onUpdate, onReturnForRevision, 
 
         <section className="mt-3 rounded-lg border border-[var(--border)] bg-[var(--bg-panel)] p-3"><label className="mb-2 block text-xs font-medium">总体说明</label><textarea value={generalNote} disabled={!reviewing} onChange={(event) => setGeneralNote(event.target.value)} onBlur={() => { if (reviewing) void persist(); }} placeholder={reviewing ? "可选：填写给 Agent 的整体反馈…" : "无"} className="min-h-20 w-full resize-y rounded-md border border-[var(--border)] bg-[var(--bg)] p-2 text-sm outline-none disabled:opacity-70 focus:border-[var(--text-muted)]" /></section>
 
-        {plan.todos.length > 0 && <section className="mt-3 rounded-lg border border-[var(--border)] bg-[var(--bg-panel)] p-3"><div className="mb-2 text-xs font-medium">执行进度 {completed}/{plan.todos.length}</div><div className="space-y-1.5">{plan.todos.map((todo) => <div key={todo.index} className="flex items-start gap-2 text-xs text-[var(--text-muted)]"><span className={todo.done ? "text-emerald-500" : "text-[var(--text-dim)]"}>{todo.done ? "✓" : "○"}</span><span className={todo.done ? "line-through opacity-70" : ""}>{todo.text}</span></div>)}</div></section>}
+        {plan.todos.length > 0 && <section className="mt-3 rounded-lg border border-[var(--border)] bg-[var(--bg-panel)] p-3"><div className="mb-2 text-xs font-medium">执行进度 {completed}/{plan.todos.length}</div><div className="space-y-1.5">{plan.todos.map((todo) => <div key={todo.index} className="flex items-start gap-2 text-xs text-[var(--text-muted)]"><Checkbox checked={todo.done} disabled aria-label={todo.text} /><span className={todo.done ? "line-through opacity-70" : ""}>{todo.text}</span></div>)}</div></section>}
       </main>
 
       {reviewing && <footer className="flex shrink-0 gap-2 border-t border-[var(--border)] bg-[var(--sidebar-bg)] p-3"><Button variant="outline" className="flex-1" disabled={busy} onClick={() => void withBusy(async () => { await persist(); await onReturnForRevision(); })}>退回修改</Button><Button className="flex-1" disabled={busy} onClick={() => void withBusy(async () => { await persist(); await onApprove(); })}>批准并执行</Button></footer>}

@@ -118,6 +118,38 @@ const RUNNING_STATE_EVENT_TYPES = new Set([
 ]);
 
 const PLAN_MODE_EXIT_FRAMING = "[EUREKA NATIVE PLAN MODE OFF]\nPlanning mode has been exited. Any earlier Eureka planning-only instructions in this session are no longer active. Resume normal conversation and follow the user's current request.";
+const PLAN_EXECUTION_TRIGGER = "执行计划";
+const PLAN_EXECUTION_CONTINUE = "Continue the approved plan from the first remaining checklist item. Do not repeat completed work; report each newly completed item with its [DONE:n] marker.";
+const MAX_PLAN_EXECUTION_TURNS = 4;
+
+// The execution state is persisted so the plan card can show progress, but the
+// instruction to obey that plan must be scoped to exactly one AgentSession run.
+// A WeakSet keeps that gate local to the live SessionManager and naturally drops
+// it if the process/session is recreated.
+const activePlanExecutionManagers = new WeakSet<object>();
+const abortedPlanExecutionManagers = new WeakSet<object>();
+const planExecutionEntryOffsets = new WeakMap<object, number>();
+const planExecutionTurnCounts = new WeakMap<object, number>();
+
+function executionAssistantText(entries: SessionEntry[], offset: number): string {
+  return entries.slice(offset)
+    .flatMap((entry) => {
+      if (entry.type !== "message" || entry.message.role !== "assistant") return [];
+      return entry.message.content
+        .filter((block) => block.type === "text")
+        .map((block) => block.text);
+    })
+    .join("\n");
+}
+
+function latestExecutionStopReason(entries: SessionEntry[], offset: number): string | undefined {
+  for (let index = entries.length - 1; index >= offset; index -= 1) {
+    const entry = entries[index];
+    if (entry.type !== "message" || entry.message.role !== "assistant") continue;
+    return (entry.message as { stopReason?: string }).stopReason;
+  }
+  return undefined;
+}
 
 function needsPlanModeExitFraming(entries: SessionEntry[], state: EurekaPlanState): boolean {
   if (state.phase !== "idle") return false;
@@ -271,16 +303,44 @@ const EUREKA_NATIVE_PLAN_EXTENSION: InlineExtension = {
           },
         };
       }
-      if (state.phase === "executing") {
+      if (state.phase === "executing" && activePlanExecutionManagers.has(ctx.sessionManager as object)) {
         return {
           message: {
             customType: "eureka-plan-execution-framing",
             display: false,
-            content: `[EUREKA NATIVE PLAN EXECUTION]\nThe following session plan has been approved. It is not a file. Do not search for PLAN.md or use Plannotator plan commands. Execute only this plan and mark completed checklist items with [DONE:n]. Apply the approved review feedback below as part of the plan.\n\n${state.content}${planReviewContext(state)}`,
+            content: `[EUREKA NATIVE PLAN EXECUTION]\n${PLAN_EXECUTION_SYSTEM_PROMPT}\n\n${state.content}${planReviewContext(state)}`,
           },
         };
       }
       return undefined;
+    });
+
+    // Pi drains messages queued by agent_end handlers before it settles the
+    // current prompt. This lets a long plan continue internally without adding
+    // extra visible user bubbles or leaking its constraints into later chats.
+    pi.on("agent_end", (_event, ctx) => {
+      const manager = ctx.sessionManager as object;
+      if (!activePlanExecutionManagers.has(manager) || abortedPlanExecutionManagers.has(manager)) return;
+
+      const entries = ctx.sessionManager.getEntries() as SessionEntry[];
+      const state = readPlanState(entries);
+      const offset = planExecutionEntryOffsets.get(manager);
+      if (state.phase !== "executing" || offset === undefined) return;
+      const stopReason = latestExecutionStopReason(entries, offset);
+      if (stopReason && stopReason !== "stop") return;
+
+      const todos = markPlanTodosDone(state.todos, executionAssistantText(entries, offset));
+      if (todos.every((todo) => todo.done)) return;
+
+      const turnCount = (planExecutionTurnCounts.get(manager) ?? 0) + 1;
+      planExecutionTurnCounts.set(manager, turnCount);
+      if (turnCount >= MAX_PLAN_EXECUTION_TURNS) return;
+
+      pi.sendMessage({
+        customType: "eureka-plan-execution-continue",
+        display: false,
+        content: PLAN_EXECUTION_CONTINUE,
+      }, { deliverAs: "followUp" });
     });
   },
 };
@@ -369,9 +429,15 @@ export class AgentSessionWrapper {
   private _alive = true;
   private planModeState: EurekaPlanState;
   private baseSystemPrompt: string | null = null;
+  private planExecutionEntryOffset: number | null = null;
 
   constructor(public readonly inner: AgentSessionLike) {
     this.planModeState = readPlanState(this.inner.sessionManager.getEntries() as SessionEntry[]);
+    // A live execution cannot survive a server/session recreation. Archive it
+    // immediately so a later ordinary prompt never inherits its plan framing.
+    if (this.planModeState.phase === "executing") {
+      this.finishPlanExecution();
+    }
     if (this.planModeState.phase === "idle") {
       const activeTools = this.inner.getActiveToolNames().filter((name) => name !== PLAN_MODE_QUESTION_TOOL);
       this.inner.setActiveToolsByName(activeTools);
@@ -465,6 +531,39 @@ export class AgentSessionWrapper {
     this.planModeState = { ...this.planModeState, ...patch, phase };
     this.applyPlanModeRuntime();
     this.persistPlanModeState();
+    return this.planModeState;
+  }
+
+  private finishPlanExecution(): EurekaPlanState {
+    this.refreshPlanModeState();
+    if (this.planModeState.phase !== "executing") return this.planModeState;
+
+    const entries = this.inner.sessionManager.getEntries() as SessionEntry[];
+    const assistantText = this.planExecutionEntryOffset === null
+      ? ""
+      : executionAssistantText(entries, this.planExecutionEntryOffset);
+    const completedPlan = {
+      ...this.planModeState,
+      todos: markPlanTodosDone(this.planModeState.todos, assistantText),
+    };
+    this.planModeState = {
+      ...EMPTY_PLAN_STATE,
+      plans: completedPlan.activePlanId
+        ? [...completedPlan.plans, planSnapshot(completedPlan)]
+        : completedPlan.plans,
+      // Restore the tools before clearing the captured preference from state.
+      originalToolNames: completedPlan.originalToolNames,
+    };
+    this.applyPlanModeRuntime();
+    this.planModeState = { ...this.planModeState, originalToolNames: [], originalToolPreset: null };
+    this.persistPlanModeState();
+    this.inner.sessionManager.appendCustomMessageEntry("eureka-plan-mode-exit", PLAN_MODE_EXIT_FRAMING, false);
+    const manager = this.inner.sessionManager as object;
+    activePlanExecutionManagers.delete(manager);
+    abortedPlanExecutionManagers.delete(manager);
+    planExecutionEntryOffsets.delete(manager);
+    planExecutionTurnCounts.delete(manager);
+    this.planExecutionEntryOffset = null;
     return this.planModeState;
   }
 
@@ -649,8 +748,18 @@ export class AgentSessionWrapper {
     }
 
     switch (type) {
-      case "prompt": {
+      case "prompt":
+      case "execute_plan": {
+        const isPlanExecution = type === "execute_plan";
         this.refreshPlanModeState();
+        if (isPlanExecution) {
+          if (this.planModeState.phase !== "executing" || !this.planModeState.approvedAt) {
+            throw new Error("Only an approved plan can be executed");
+          }
+        } else if (this.planModeState.phase === "executing") {
+          // A plan awaiting execution must never constrain an unrelated prompt.
+          this.finishPlanExecution();
+        }
         if (this.planModeState.planModeActive && this.planModeState.phase === "reviewing") {
           throw new Error("The plan is under review. Approve it or return it for revision before sending another task.");
         }
@@ -665,8 +774,13 @@ export class AgentSessionWrapper {
           if (this.inner.isBashRunning) {
             throw new Error("Cannot send a prompt while a shell command is running");
           }
-          const promptImages = command.images as Array<{ type: "image"; data: string; mimeType: string }> | undefined;
-          const streamingBehavior = command.streamingBehavior as "steer" | "followUp" | undefined;
+          const promptImages = isPlanExecution
+            ? undefined
+            : command.images as Array<{ type: "image"; data: string; mimeType: string }> | undefined;
+          const streamingBehavior = isPlanExecution
+            ? undefined
+            : command.streamingBehavior as "steer" | "followUp" | undefined;
+          const promptMessage = isPlanExecution ? PLAN_EXECUTION_TRIGGER : command.message as string;
           let preflightAccepted = false;
           let preflightSettled = false;
           let promptSettled = false;
@@ -697,7 +811,15 @@ export class AgentSessionWrapper {
           notifyRunningChange();
           let prompt: Promise<void>;
           try {
-            prompt = this.inner.prompt(command.message as string, {
+            if (isPlanExecution) {
+              this.planExecutionEntryOffset = this.inner.sessionManager.getEntries().length;
+              const manager = this.inner.sessionManager as object;
+              activePlanExecutionManagers.add(manager);
+              abortedPlanExecutionManagers.delete(manager);
+              planExecutionEntryOffsets.set(manager, this.planExecutionEntryOffset);
+              planExecutionTurnCounts.set(manager, 0);
+            }
+            prompt = this.inner.prompt(promptMessage, {
               ...(promptImages?.length ? { images: promptImages } : {}),
               ...(streamingBehavior ? { streamingBehavior } : {}),
               source: "rpc",
@@ -708,6 +830,14 @@ export class AgentSessionWrapper {
               },
             });
           } catch (error) {
+            if (isPlanExecution) {
+              const manager = this.inner.sessionManager as object;
+              activePlanExecutionManagers.delete(manager);
+              abortedPlanExecutionManagers.delete(manager);
+              planExecutionEntryOffsets.delete(manager);
+              planExecutionTurnCounts.delete(manager);
+              this.planExecutionEntryOffset = null;
+            }
             finishPrompt();
             throw error;
           }
@@ -717,10 +847,18 @@ export class AgentSessionWrapper {
             // the internal callback. This waits for the run, but never acks early.
             acceptPreflight();
             finishPrompt();
+            if (isPlanExecution) {
+              activePlanExecutionManagers.delete(this.inner.sessionManager as object);
+              this.finishPlanExecution();
+            }
             if (!streamingBehavior) this.emit({ type: "prompt_done" });
           }, (error) => {
             rejectPreflight(error);
             finishPrompt();
+            if (isPlanExecution) {
+              activePlanExecutionManagers.delete(this.inner.sessionManager as object);
+              this.finishPlanExecution();
+            }
             invalidateSessionListCache();
             // A preflight rejection is returned by the POST itself. Only an
             // unexpected failure after acceptance needs the asynchronous event.
@@ -746,6 +884,9 @@ export class AgentSessionWrapper {
       }
 
       case "abort":
+        if (activePlanExecutionManagers.has(this.inner.sessionManager as object)) {
+          abortedPlanExecutionManagers.add(this.inner.sessionManager as object);
+        }
         await this.withFinalRunningNotification(() => this.inner.abort());
         return null;
 

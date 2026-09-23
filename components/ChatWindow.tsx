@@ -10,17 +10,20 @@ import { asBracketedPaste, toTerminalKeyData } from "@/lib/terminal-input";
 import { countToolCallBlocks, getAssistantErrorMessage, getDisplayableAssistantBlocks, splitFinalAssistantBlocks } from "@/lib/message-display";
 import { extractTurnWrittenFiles, type WrittenFile } from "@/lib/turn-written-files";
 import { MessageView } from "./MessageView";
+import { PlanCard } from "./PlanCard";
 import { PlanQuestionCard } from "./PlanQuestionCard";
 import { ChatInput, type ChatInputHandle } from "./ChatInput";
 import { ChatMinimap, useMessageRefs } from "./ChatMinimap";
 import { ExtensionStatusBar } from "./ExtensionStatusBar";
 import { useI18n } from "@/hooks/useI18n";
+import { useTheme } from "@/hooks/useTheme";
 import { useAgentSession, type AgentPhase } from "@/hooks/useAgentSession";
 import { useDragDrop } from "@/hooks/useDragDrop";
 import { useIsMobile } from "@/hooks/useIsMobile";
+import { Skeleton } from "./ui/skeleton";
 import type { SessionStatsInfo } from "@/lib/pi-types";
+import type { ChatDraftReference } from "@/lib/draft-store";
 import { getSessionPlans, type EurekaPlanAnnotation, type EurekaPlanQuestion, type EurekaPlanState } from "@/lib/plan-mode";
-import type { AppUpdateResponse } from "@/lib/api-types";
 import {
   captureScrollDistance,
   getNextVisibleCount,
@@ -48,6 +51,7 @@ interface Props {
   onSessionStatsPanelOpen?: () => void;
   onContextUsageChange?: (usage: { percent: number | null; contextWindow: number; tokens: number | null } | null) => void;
   onOpenFile?: (filePath: string) => void;
+  onOpenComposerReference?: (reference: ChatDraftReference) => void;
   /** Completion sound state + controls, owned by AppShell so tasks finishing in
    *  a non-active workspace can still ring. */
   soundEnabled?: boolean;
@@ -56,6 +60,7 @@ interface Props {
   unlockAudio?: () => void;
   onPlanStateChange?: (plan: EurekaPlanState, controls: PlanReviewControls) => void;
   onOpenPlanReview?: (plan: EurekaPlanState, controls: PlanReviewControls, readOnly?: boolean) => void;
+  onContentLoadingChange?: (loading: boolean) => void;
 }
 
 export interface PlanReviewControls {
@@ -80,71 +85,6 @@ function phaseLabel(phase: AgentPhase, t: (key: string, params?: Record<string, 
 const CHAT_MINIMAP_WIDTH = 36;
 const CHAT_COLUMN_PADDING = 16;
 const CHAT_INPUT_RIGHT_PADDING = CHAT_COLUMN_PADDING + CHAT_MINIMAP_WIDTH;
-
-function NewSessionUpdateLink({
-  label,
-}: {
-  label: (version: string) => string;
-}) {
-  const [update, setUpdate] = useState<AppUpdateResponse | null>(null);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    void fetch("/api/app-update", { signal: controller.signal })
-      .then(async (response) => {
-        if (!response.ok) return null;
-        return response.json() as Promise<AppUpdateResponse>;
-      })
-      .then((result) => {
-        if (result?.updateAvailable && result.latestVersion && result.releaseUrl) {
-          setUpdate(result);
-        }
-      })
-      .catch(() => {
-        // Update checks are best-effort and must not interrupt a new session.
-      });
-    return () => controller.abort();
-  }, []);
-
-  if (!update) return null;
-  const accessibleLabel = label(update.latestVersion);
-
-  return (
-    <a
-      href={update.releaseUrl}
-      target="_blank"
-      rel="noopener noreferrer"
-      title={accessibleLabel}
-      aria-label={accessibleLabel}
-      onMouseEnter={(event) => { event.currentTarget.style.background = "var(--bg-hover)"; }}
-      onMouseLeave={(event) => { event.currentTarget.style.background = "transparent"; }}
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        alignSelf: "center",
-        gap: 3,
-        minHeight: 32,
-        minWidth: 0,
-        padding: "0 4px",
-        background: "transparent",
-        borderRadius: 5,
-        color: "var(--accent)",
-        fontSize: 12,
-        fontWeight: 600,
-        lineHeight: 1.2,
-        textDecoration: "none",
-        transition: "background 0.12s",
-        whiteSpace: "nowrap",
-      }}
-    >
-      <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>v{update.latestVersion}</span>
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}>
-        <path d="M7 17 17 7" />
-        <path d="M7 7h10v10" />
-      </svg>
-    </a>
-  );
-}
 
 function hasFinalAssistantAnswer(message: AgentMessage): boolean {
   if (message.role !== "assistant") return false;
@@ -279,8 +219,9 @@ function ProcessDetailsGroup({ messageCount, toolCallCount, defaultExpanded = fa
   );
 }
 
-export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionDraftKey, onAgentEnd, onAttentionNeeded, onSessionCreated, onSessionForked, modelsRefreshKey, chatInputRef, onBranchDataChange, onSystemPromptChange, onSystemPromptLoaderChange, onSessionStatsChange, onSessionStatsPanelOpen, onContextUsageChange, onOpenFile, soundEnabled = true, onSoundToggle, playDoneSound = () => {}, unlockAudio, onPlanStateChange, onOpenPlanReview }: Props) {
+export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionDraftKey, onAgentEnd, onAttentionNeeded, onSessionCreated, onSessionForked, modelsRefreshKey, chatInputRef, onBranchDataChange, onSystemPromptChange, onSystemPromptLoaderChange, onSessionStatsChange, onSessionStatsPanelOpen, onContextUsageChange, onOpenFile, onOpenComposerReference, soundEnabled = true, onSoundToggle, playDoneSound = () => {}, unlockAudio, onPlanStateChange, onOpenPlanReview, onContentLoadingChange }: Props) {
   const { t } = useI18n();
+  const { isDark } = useTheme();
   const isMobile = useIsMobile();
 
   // Wrap onAgentEnd to play the completion sound. This is more reliable than
@@ -326,6 +267,10 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
     session, sessionRunning, newSessionCwd, newSessionDraftKey, onAgentEnd: wrappedOnAgentEnd, onAttentionNeeded, onSessionCreated, onSessionForked,
     modelsRefreshKey, chatInputRef, onBranchDataChange, onSystemPromptChange, onSystemPromptLoaderChange, onSessionStatsPanelOpen,
   });
+
+  useEffect(() => {
+    onContentLoadingChange?.(loading);
+  }, [loading, onContentLoadingChange]);
 
   const planReviewControls = useMemo<PlanReviewControls>(() => ({
     update: handlePlanReviewUpdate,
@@ -611,6 +556,8 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
       isCompacting={isCompacting}
       compactError={compactError}
       compactResult={compactResult}
+      soundEnabled={soundEnabled}
+      onSoundToggle={onSoundToggle}
       toolPreset={toolPreset}
       onToolPresetChange={session || isNew ? handleToolPresetChange : undefined}
       planMode={planMode}
@@ -627,18 +574,21 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
       slashCommandsLoading={slashCommandsLoading}
       onLoadSlashCommands={loadSlashCommands}
       onBuiltinCommand={handleBuiltinSlashCommand}
-      soundEnabled={soundEnabled}
-      onSoundToggle={onSoundToggle}
       onAudioUnlock={unlockAudio}
       draftKey={session?.id ?? newSessionDraftKey ?? undefined}
       cwd={session?.cwd ?? newSessionCwd}
+      onOpenReference={onOpenComposerReference}
     />
   );
 
   if (loading) {
     return (
-      <div className="flex h-full items-center justify-center text-text-muted">
-         {t("chat.loadingSession")}
+      <div className="flex h-full min-w-0 flex-col overflow-hidden bg-[var(--chat-bg)]" role="status" aria-busy="true" aria-label={t("chat.loadingSession")}>
+        <div className="mx-auto flex w-full max-w-[820px] flex-1 flex-col gap-7 overflow-hidden px-6 py-8">
+          <div className="flex max-w-[74%] flex-col gap-3"><Skeleton className="h-3.5 w-24" /><Skeleton className="h-3.5 w-full" /><Skeleton className="h-3.5 w-4/5" /><Skeleton className="h-3 w-16" /></div>
+          <div className="ml-auto flex w-[min(70%,30rem)] flex-col gap-3 rounded-2xl bg-[var(--bg-panel)] p-4"><Skeleton className="h-3.5 w-full" /><Skeleton className="h-3.5 w-3/4" /><Skeleton className="ml-auto h-3 w-14" /></div>
+          <div className="flex max-w-[62%] flex-col gap-3"><Skeleton className="h-3.5 w-20" /><Skeleton className="h-3.5 w-full" /><Skeleton className="h-3.5 w-2/3" /><Skeleton className="h-3 w-12" /></div>
+        </div>
       </div>
     );
   }
@@ -707,31 +657,22 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
       {isEmptyNew ? (
         <div className="flex flex-1 flex-col items-center justify-center overflow-y-auto px-4 py-8">
           <div className="w-full max-w-[820px]">
-            <div
-              className="mb-3"
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                gap: 12,
-                marginLeft: 16,
-                marginRight: isMobile ? 16 : 52,
-                fontFamily: "var(--font-mono)",
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "baseline", gap: isMobile ? 7 : 10, minWidth: 0, flex: 1, lineHeight: 1.4, overflow: "hidden" }}>
-                <span style={{ fontSize: 28, fontWeight: 600, letterSpacing: "-0.02em", color: "var(--text)", flexShrink: 0, whiteSpace: "nowrap" }}>π</span>
-                <span style={{ fontSize: 22, color: "var(--text)", fontWeight: 600, letterSpacing: "-0.02em", flexShrink: 0, whiteSpace: "nowrap" }}>Eureka</span>
-                <NewSessionUpdateLink label={(version) => t("appUpdate.releaseNotes", { version })} />
+            <div className="mb-16 flex flex-col items-center px-4 text-center text-[var(--text)]">
+              <div className="flex items-center justify-center gap-4">
+                <img
+                  src={isDark ? "/icons/logo-white-transparent.png" : "/icons/logo-black-transparent.png"}
+                  alt=""
+                  aria-hidden="true"
+                  draggable={false}
+                  style={{ width: isMobile ? 58 : 76, height: isMobile ? 58 : 76, objectFit: "contain", flex: "0 0 auto" }}
+                />
+                <h1 style={{ margin: 0, fontSize: isMobile ? 28 : 32, fontWeight: 750, letterSpacing: "-0.04em", lineHeight: 1.15 }}>
+                  将灵感付诸行动吧！
+                </h1>
               </div>
-              <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2, flexShrink: 0 }}>
-                <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
-                  web <span style={{ color: "var(--text)" }}>v{process.env.NEXT_PUBLIC_APP_VERSION ?? "0.0.0"}</span>
-                </span>
-                <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
-                  pi <span style={{ color: "var(--text)" }}>v{process.env.NEXT_PUBLIC_PI_VERSION ?? "0.0.0"}</span>
-                </span>
-              </div>
+              <p style={{ margin: "8px 0 0", color: "var(--text-muted)", fontSize: isMobile ? 14 : 16, lineHeight: 1.5 }}>
+                在这里，和 Eureka 一起把想法变成现实。
+              </p>
             </div>
             {planQuestionElement}
             {chatInputElement}
@@ -803,6 +744,7 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
                     modelNames={modelNames}
                     cwd={messageCwd}
                     onOpenFile={onOpenFile}
+                    onOpenReference={onOpenComposerReference}
                     entryId={entryIds[idx]}
                     onFork={sessionBusy || isNew || (idx === 0 && msg.role === "user") ? undefined : handleFork}
                     forking={forkingEntryId === entryIds[idx]}
@@ -831,33 +773,27 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
                 const currentPlanAction = Boolean(sourcePlan && (sourcePlan.phase === "executing" || (sourcePlanIsCurrent && sourcePlan.phase === "reviewing")) && onOpenPlanReview);
                 const planQuestions = getPlanQuestionsForMessage(msg, planMode.questions)
                   .filter((question) => question.status === "answered");
-                const content = canSubmitPlan ? (
-                  <div>
-                    {messageView}
-                    <div className="mt-2 flex justify-start">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const content = getAssistantText(msg as AssistantMessage);
-                          void handleSubmitPlan(content, entryIds[idx]).then((next) => {
-                            if (next) onOpenPlanReview?.(next, planReviewControls);
-                          });
-                        }}
-                        className="rounded-md border border-[var(--border)] bg-[var(--bg-panel)] px-2.5 py-1 text-xs font-medium text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text)]"
-                      >提交评审</button>
-                    </div>
-                  </div>
-                ) : currentPlanAction ? (
-                  <div>
-                    {messageView}
-                    <div className="mt-2 flex justify-start">
-                      <button
-                        type="button"
-                        onClick={() => sourcePlan && onOpenPlanReview?.(sourcePlan, planReviewControls, !sourcePlanIsCurrent)}
-                        className="rounded-md border border-[var(--border)] bg-[var(--bg-panel)] px-2.5 py-1 text-xs font-medium text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text)]"
-                      >{sourcePlanIsCurrent && sourcePlan?.phase === "reviewing" ? "计划评审" : "查看计划"}</button>
-                    </div>
-                  </div>
+                const planMarkdown = sourcePlan?.content ?? (canSubmitPlan ? getAssistantText(msg as AssistantMessage) : "");
+                const planPrimaryAction = canSubmitPlan ? {
+                  label: t("plan.submitReview"),
+                  onClick: async () => {
+                    const next = await handleSubmitPlan(planMarkdown, entryIds[idx]);
+                    if (next) onOpenPlanReview?.(next, planReviewControls);
+                  },
+                } : currentPlanAction && sourcePlan ? {
+                  label: sourcePlanIsCurrent && sourcePlan.phase === "reviewing" ? t("plan.openReview") : t("plan.view"),
+                  onClick: () => onOpenPlanReview?.(sourcePlan, planReviewControls, !sourcePlanIsCurrent),
+                } : undefined;
+                const content = planMarkdown ? (
+                  <PlanCard
+                    id={sourcePlan?.activePlanId ?? `draft-${entryIds[idx] ?? idx}`}
+                    markdown={planMarkdown}
+                    revision={sourcePlan?.revision}
+                    defaultCollapsed={!canSubmitPlan && !sourcePlanIsCurrent}
+                    cwd={messageCwd}
+                    onOpenFile={onOpenFile}
+                    primaryAction={planPrimaryAction}
+                  />
                 ) : messageView;
                 const view = planQuestions.length > 0 ? (
                   <div>

@@ -3,6 +3,7 @@ import { Inter, JetBrains_Mono, Noto_Sans_Mono, Noto_Sans_SC } from "next/font/g
 import { PwaRegistration } from "@/components/PwaRegistration";
 import { DesktopNativeBridge } from "@/components/DesktopNativeBridge";
 import { DesktopTitlebar } from "@/components/desktop/DesktopTitlebar";
+import { ThemeAwareFavicon } from "@/components/ThemeAwareFavicon";
 import "katex/dist/katex.min.css";
 import "./globals.css";
 import { NotificationProvider } from "@/components/Notifications";
@@ -40,8 +41,7 @@ export const metadata: Metadata = {
   icons: {
     icon: [
       {
-        url: "/icons/icon-192.png",
-        sizes: "192x192",
+        url: "/icons/logo-black-transparent.png",
         type: "image/png",
       },
     ],
@@ -90,6 +90,7 @@ export default function RootLayout({
         />
       </head>
       <body translate="no" className="notranslate" suppressHydrationWarning>
+        <ThemeAwareFavicon />
         <DesktopNativeBridge />
         <DesktopTitlebar />
         <NotificationProvider><div className="eureka-desktop-content">{children}</div></NotificationProvider>

@@ -14,6 +14,7 @@
  */
 
 const STORAGE_KEY = "pi-web:last-open-by-workspace";
+const SELECTED_PROJECT_STORAGE_KEY = "pi-web:last-selected-project";
 
 interface StorageLike {
   getItem(key: string): string | null;
@@ -86,6 +87,35 @@ export function clearLastOpen(
     else storage.setItem(STORAGE_KEY, JSON.stringify(map));
   } catch {
     // ignore
+  }
+}
+
+/** The project most recently selected in the sidebar, if it is still known. */
+export function getLastSelectedProject(storage: StorageLike | null = getBrowserStorage()): string | null {
+  if (!storage) return null;
+  try {
+    const project = storage.getItem(SELECTED_PROJECT_STORAGE_KEY);
+    return typeof project === "string" && project.length > 0 ? project : null;
+  } catch {
+    return null;
+  }
+}
+
+export function setLastSelectedProject(project: string, storage: StorageLike | null = getBrowserStorage()): void {
+  if (!storage || !project) return;
+  try {
+    storage.setItem(SELECTED_PROJECT_STORAGE_KEY, project);
+  } catch {
+    // storage unavailable — memory is best-effort
+  }
+}
+
+export function clearLastSelectedProject(project: string, storage: StorageLike | null = getBrowserStorage()): void {
+  if (!storage) return;
+  try {
+    if (storage.getItem(SELECTED_PROJECT_STORAGE_KEY) === project) storage.removeItem(SELECTED_PROJECT_STORAGE_KEY);
+  } catch {
+    // storage unavailable — memory is best-effort
   }
 }
 

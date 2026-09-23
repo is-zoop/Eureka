@@ -14,7 +14,7 @@ import type {
 import { isBlockingExtensionUiRequest } from "@/lib/browser-notifications";
 import { normalizeToolCalls } from "@/lib/normalize";
 import { isPromptRejectedError, sendAgentCommand } from "@/lib/agent-client";
-import { clearDraft, rekeyDraft, restoreDraftSubmission } from "@/lib/draft-store";
+import { clearDraft, rekeyDraft, restoreDraftSubmission, type ChatDraftReference } from "@/lib/draft-store";
 import { getPreferredToolPreset, setPreferredToolPreset } from "@/lib/tool-preset-preference";
 import { getToolNamesForPreset, type ToolEntry, type ToolPreset } from "@/lib/tool-presets";
 import { EMPTY_PLAN_STATE, getPendingPlanQuestion, type EurekaPlanAnnotation, type EurekaPlanQuestion, type EurekaPlanState } from "@/lib/plan-mode";
@@ -162,8 +162,9 @@ export interface ChatInputHandle {
   replaceMessage: (message: UserMessage) => void;
   prependText: (text: string) => void;
   addImages: (files: File[]) => void;
+  addReferences: (references: ChatDraftReference[]) => void;
   rekeyDraft: (previousKey: string, nextKey: string) => void;
-  restoreSubmission: (text: string, images?: Array<{ data: string; mimeType: string }>, targetDraftKey?: string) => void;
+  restoreSubmission: (text: string, images?: Array<{ data: string; mimeType: string }>, references?: ChatDraftReference[], targetDraftKey?: string) => void;
 }
 
 export interface AttachedImage {
@@ -331,6 +332,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const restoreSubmission = useCallback((
     text: string,
     images: AttachedImage[] | undefined,
+    references: ChatDraftReference[] | undefined,
     targetDraftKey: string | undefined,
   ) => {
     const draftImages = images?.map(({ data, mimeType }) => ({ data, mimeType }));
@@ -342,9 +344,9 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     ) return;
     const input = opts.chatInputRef?.current;
     if (input) {
-      input.restoreSubmission(text, draftImages, destinationDraftKey);
+      input.restoreSubmission(text, draftImages, references, destinationDraftKey);
     } else if (destinationDraftKey) {
-      restoreDraftSubmission(destinationDraftKey, text, draftImages);
+      restoreDraftSubmission(destinationDraftKey, text, draftImages, references);
     }
   }, [newSessionDraftKey, opts.chatInputRef, resolveComposerDraftKey]);
 
@@ -1159,16 +1161,17 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   }, [addNotice, cancelEventStreamGrace, handleExtensionUiRequest, loadSession, notifyPromptStage, onAgentEnd, scheduleEventStreamClose, scrollToBottom, settleUiStage]);
   handleAgentEventRef.current = handleAgentEvent;
 
-  const handleSend = useCallback(async (message: string, images?: AttachedImage[], options?: { bypassPlanQuestionGuard?: boolean }) => {
-    const trimmedMessage = message.trim();
+  const handleSend = useCallback(async (message: string, images?: AttachedImage[], references?: ChatDraftReference[], options?: { bypassPlanQuestionGuard?: boolean; executePlan?: boolean }) => {
+    const wireMessage = [...(references ?? []).map((reference) => `@${reference.path}${reference.isDir ? "/" : ""}`), message.trim()].filter(Boolean).join(" ");
+    const trimmedMessage = wireMessage.trim();
     if (!trimmedMessage && !images?.length) return;
     if (agentRunningRef.current || bashRunningRef.current) {
-      restoreSubmission(message, images, composerDraftKey);
+      restoreSubmission(message, images, references, composerDraftKey);
       return;
     }
     if (!options?.bypassPlanQuestionGuard && getPendingPlanQuestion(planMode)) {
       addNotice({ type: "warning", message: "请先回答当前规划澄清问题。" });
-      restoreSubmission(message, images, composerDraftKey);
+      restoreSubmission(message, images, references, composerDraftKey);
       return;
     }
     const isSlashCommandPrompt = !images?.length && trimmedMessage.startsWith("/");
@@ -1177,13 +1180,13 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     if (isBashCommand) {
       if (planMode.planModeActive) {
         addNotice({ type: "warning", message: "规划模式不允许执行本地命令。" });
-        restoreSubmission(message, images, composerDraftKey);
+        restoreSubmission(message, images, references, composerDraftKey);
         return;
       }
       const isExcluded = trimmedMessage.startsWith("!!");
       const bashCmd = (isExcluded ? trimmedMessage.slice(2) : trimmedMessage.slice(1)).trim();
       if (!bashCmd) {
-        restoreSubmission(message, images, composerDraftKey);
+        restoreSubmission(message, images, references, composerDraftKey);
         return;
       }
       await executeBashRef.current?.(bashCmd, isExcluded);
@@ -1198,8 +1201,8 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     const userMsg: AgentMessage = {
       role: "user",
       content: imageBlocks?.length
-        ? [...(message.trim() ? [{ type: "text" as const, text: message }] : []), ...imageBlocks]
-        : message,
+        ? [...(wireMessage ? [{ type: "text" as const, text: wireMessage }] : []), ...imageBlocks]
+        : wireMessage,
       timestamp: Date.now(),
     };
     setMessages((prev) => [...prev, userMsg]);
@@ -1233,19 +1236,19 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         await ensureEventsConnected(sid);
         promptRequestStarted = true;
         await sendAgentCommand(sid, {
-          type: "prompt",
-          message,
-          ...(piImages?.length ? { images: piImages } : {}),
+          type: options?.executePlan ? "execute_plan" : "prompt",
+          message: wireMessage,
+          ...(options?.executePlan ? {} : piImages?.length ? { images: piImages } : {}),
         });
-        promoteNewSession(1, message);
+        promoteNewSession(1, wireMessage);
       } else if (session) {
         sentSessionId = session.id;
         await ensureEventsConnected(session.id);
         promptRequestStarted = true;
         await sendAgentCommand(session.id, {
-          type: "prompt",
-          message,
-          ...(piImages?.length ? { images: piImages } : {}),
+          type: options?.executePlan ? "execute_plan" : "prompt",
+          message: wireMessage,
+          ...(options?.executePlan ? {} : piImages?.length ? { images: piImages } : {}),
         });
       } else {
         throw new Error("No active session for the prompt");
@@ -1271,7 +1274,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           : [...prev.slice(0, optimisticIndex), ...prev.slice(optimisticIndex + 1)];
       });
       addNotice({ type: "error", message: e instanceof Error ? e.message : String(e) });
-      restoreSubmission(message, images, composerDraftKey);
+      restoreSubmission(message, images, references, composerDraftKey);
       optimisticUserMessageKeyRef.current = null;
       // Rejection only describes this submission. Another tab or an event we
       // missed may still have a real run active for the same session, so keep
@@ -1307,7 +1310,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     } catch (e) {
       console.error("Failed to execute shell command:", e);
       addNotice({ type: "error", message: e instanceof Error ? e.message : String(e) });
-      restoreSubmission(inputText, undefined, composerDraftKey);
+      restoreSubmission(inputText, undefined, undefined, composerDraftKey);
     } finally {
       bashRunningRef.current = false;
       setPendingBash(null);
@@ -1558,7 +1561,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     images?: AttachedImage[],
   ) => {
     const sid = sessionIdRef.current;
-    const restore = () => restoreSubmission(message, images, composerDraftKey);
+    const restore = () => restoreSubmission(message, images, undefined, composerDraftKey);
     if (!sid) {
       restore();
       addNotice({ type: "error", message: "No active session for the queued message" });
@@ -1712,7 +1715,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       const selected = answer.optionId
         ? question.options.find((option) => option.id === answer.optionId)?.label ?? answer.optionId
         : answer.customAnswer ?? "";
-      await handleSend(`已回答规划澄清“${question.title}”：${selected}`, undefined, { bypassPlanQuestionGuard: true });
+      await handleSend(`已回答规划澄清“${question.title}”：${selected}`, undefined, undefined, { bypassPlanQuestionGuard: true });
     } catch (error) {
       addNotice({ type: "error", message: error instanceof Error ? error.message : String(error) });
     }
@@ -1755,9 +1758,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     try {
       const next = await sendAgentCommand<EurekaPlanState>(sid, { type: "approve_plan" });
       setPlanMode(next);
-      const annotations = next.annotations.map((annotation) => `- 对“${annotation.quote.replace(/\s+/g, " ").slice(0, 180)}”的批注：${annotation.note}`).join("\n");
-      const reviewContext = [next.generalNote ? `总体说明：${next.generalNote}` : "", annotations].filter(Boolean).join("\n");
-      await handleSend("这是 Eureka 原生计划执行，不要查找或创建 PLAN.md 等计划文件。请直接按当前会话中已批准的计划和评审反馈开始执行；每完成一个清单项，在回复中标记 [DONE:n]。\n\n已批准计划：\n" + next.content + (reviewContext ? `\n\n已批准的评审反馈：\n${reviewContext}` : ""));
+      await handleSend("执行计划", undefined, undefined, { executePlan: true });
     } catch (error) {
       addNotice({ type: "error", message: error instanceof Error ? error.message : String(error) });
     }

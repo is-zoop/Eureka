@@ -52,6 +52,7 @@ interface Props {
   onUploadBusyChange?: (busy: boolean) => void;
   changesCollapsed: boolean;
   onChangesCountChange?: (count: number) => void;
+  revealDirectoryPath?: string | null;
 }
 
 export interface FileExplorerHandle {
@@ -277,6 +278,10 @@ function TreeNode({
       onOpenFile(node.fullPath, node.name);
     }
   }, [node.isDir, node.fullPath, node.name, loaded, open, loadChildren, onOpenFile, onToggleExpanded]);
+
+  useEffect(() => {
+    if (open && node.isDir && !loaded) void loadChildren();
+  }, [open, node.isDir, loaded, loadChildren]);
 
   return (
     <div>
@@ -529,6 +534,7 @@ export const FileExplorer = forwardRef<FileExplorerHandle, Props>(function FileE
   onUploadBusyChange,
   changesCollapsed,
   onChangesCountChange,
+  revealDirectoryPath,
 }, ref) {
   const { t } = useI18n();
   const [roots, setRoots] = useState<FileNode[]>([]);
@@ -576,6 +582,13 @@ export const FileExplorer = forwardRef<FileExplorerHandle, Props>(function FileE
       return next;
     });
   }, []);
+
+  useEffect(() => {
+    if (!revealDirectoryPath) return;
+    const normalized = revealDirectoryPath.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
+    const ancestors = normalized.split("/").filter(Boolean).map((_, index, parts) => joinFilePath(cwd, parts.slice(0, index + 1).join("/")));
+    setExpandedPaths((current) => new Set([...current, ...ancestors]));
+  }, [cwd, revealDirectoryPath]);
 
   const applyUploadResult = useCallback((data: UploadResponse) => {
     const uploaded = data.uploaded ?? [];

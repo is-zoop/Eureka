@@ -324,10 +324,12 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
 
 // ── Provider detail ───────────────────────────────────────────────────────────
 
-function ProviderDetail({ name, provider, onChange, onRename, onDelete, onAddModels }: {
+function ProviderDetail({ name, provider, onChange, onRename, onDelete, onAddModels, autoDiscoveryEnabled, onAutoDiscoveryChange }: {
   name: string; provider: ProviderEntry;
   onChange: (p: ProviderEntry) => void; onRename: (n: string) => void; onDelete: () => void;
   onAddModels: (models: DiscoveredModel[]) => void;
+  autoDiscoveryEnabled: boolean;
+  onAutoDiscoveryChange: (enabled: boolean) => void;
 }) {
   const { t } = useI18n();
   const [editingName, setEditingName] = useState(name);
@@ -461,6 +463,22 @@ function ProviderDetail({ name, provider, onChange, onRename, onDelete, onAddMod
         />
         <span style={{ fontSize: 10, color: "var(--text-dim)", marginTop: 2 }}>
           Added to every request from this provider (e.g. User-Agent). Useful for gateways with bot detection.
+        </span>
+      </Field>
+
+      <Field label="Automatic model sync">
+        <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: provider.baseUrl?.trim() ? "pointer" : "not-allowed", fontSize: 11, color: provider.baseUrl?.trim() ? "var(--text-muted)" : "var(--text-dim)" }}>
+          <input
+            type="checkbox"
+            checked={autoDiscoveryEnabled}
+            disabled={!provider.baseUrl?.trim()}
+            onChange={(event) => onAutoDiscoveryChange(event.target.checked)}
+            style={{ accentColor: "var(--accent)" }}
+          />
+          Check this provider daily and add newly available models
+        </label>
+        <span style={{ fontSize: 10, color: "var(--text-dim)", marginTop: 2 }}>
+          Existing models are never overwritten or removed. Command-based credentials are not run automatically.
         </span>
       </Field>
 
@@ -1866,6 +1884,7 @@ export function ModelsConfig({ onClose, embedded = false }: { onClose: () => voi
   const [selection, setSelection] = useState<Selection | null>(null);
   const [oauthProviders, setOauthProviders] = useState<OAuthProvider[]>([]);
   const [apiKeyProviders, setApiKeyProviders] = useState<ApiKeyProvider[]>([]);
+  const [discoveryProviders, setDiscoveryProviders] = useState<Record<string, { enabled: boolean }>>({});
   const [pickerOpen, setPickerOpen] = useState(false);
   const lastSavedConfigRef = useRef<string | null>(null);
 
@@ -1904,6 +1923,10 @@ export function ModelsConfig({ onClose, embedded = false }: { onClose: () => voi
       })
       .catch(() => setConfig({ providers: {} }))
       .finally(() => setLoading(false));
+    fetch("/api/models-config/discovery")
+      .then((r) => r.json())
+      .then((d: { providers?: Record<string, { enabled: boolean }> }) => setDiscoveryProviders(d.providers ?? {}))
+      .catch(() => {});
     refreshAuthProviders();
   }, [refreshAuthProviders]);
 
@@ -1917,6 +1940,32 @@ export function ModelsConfig({ onClose, embedded = false }: { onClose: () => voi
 
   const updateProvider = useCallback((name: string, p: ProviderEntry) => {
     setConfig((prev) => ({ ...prev, providers: { ...(prev.providers ?? {}), [name]: p } }));
+  }, []);
+
+  const setAutoDiscovery = useCallback(async (providerName: string, enabled: boolean) => {
+    const res = await fetch("/api/models-config/discovery", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ providerName, enabled }),
+    });
+    const data = await res.json() as { providers?: Record<string, { enabled: boolean }> };
+    if (!res.ok || !data.providers) {
+      notify({ type: "error", message: "Save this provider before enabling automatic model sync." });
+      return;
+    }
+    setDiscoveryProviders(data.providers);
+    if (enabled) {
+      void fetch("/api/models-config/discovery", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ providerName }),
+      }).then(() => fetch("/api/models-config/discovery"))
+        .then((response) => response.json())
+        .then((next: { providers?: Record<string, { enabled: boolean }> }) => {
+          if (next.providers) setDiscoveryProviders(next.providers);
+        })
+        .catch(() => {});
+    }
   }, []);
 
   const renameProvider = useCallback((oldName: string, newName: string) => {
@@ -2054,6 +2103,8 @@ export function ModelsConfig({ onClose, embedded = false }: { onClose: () => voi
           onRename={(n) => renameProvider(selection.name, n)}
           onDelete={() => deleteProvider(selection.name)}
           onAddModels={(models) => addDiscoveredModels(selection.name, models)}
+          autoDiscoveryEnabled={discoveryProviders[selection.name]?.enabled === true}
+          onAutoDiscoveryChange={(enabled) => { void setAutoDiscovery(selection.name, enabled); }}
         />
       );
     }

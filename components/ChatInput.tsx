@@ -14,7 +14,9 @@ import {
   mergeRestoredSubmissionText,
   rekeyDraft as rekeyStoredDraft,
   setDraft,
+  dedupeReferences,
   type ChatDraftImage,
+  type ChatDraftReference,
 } from "@/lib/draft-store";
 import {
   MAX_ATTACHED_IMAGE_BYTES,
@@ -22,7 +24,7 @@ import {
   isBase64ImageWithinLimits,
 } from "@/lib/image-attachments";
 import {
-  buildEntriesFromFiles, buildAtInsertText, extractAtQuery, filterFileEntries,
+  buildEntriesFromFiles, extractAtQuery, filterFileEntries,
   type AtQueryMatch, type FileIndexEntry,
 } from "@/lib/file-fuzzy";
 import { FolderIcon, getFileIcon } from "./FileIcons";
@@ -47,6 +49,7 @@ import {
   CommandItem,
   CommandList,
 } from "./ui/command";
+import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
 export interface AttachedImage {
   data: string;   // base64, no prefix
@@ -61,11 +64,11 @@ interface ModelOption {
 }
 
 interface Props {
-  onSend: (message: string, images?: AttachedImage[]) => void;
+  onSend: (message: string, images?: AttachedImage[], references?: ChatDraftReference[]) => void;
   onAbort: () => void;
-  onSteer?: (message: string, images?: AttachedImage[]) => void;
-  onFollowUp?: (message: string, images?: AttachedImage[]) => void;
-  onPromptWithStreamingBehavior?: (message: string, behavior: "steer" | "followUp", images?: AttachedImage[]) => void;
+  onSteer?: (message: string, images?: AttachedImage[], references?: ChatDraftReference[]) => void;
+  onFollowUp?: (message: string, images?: AttachedImage[], references?: ChatDraftReference[]) => void;
+  onPromptWithStreamingBehavior?: (message: string, behavior: "steer" | "followUp", images?: AttachedImage[], references?: ChatDraftReference[]) => void;
   isStreaming: boolean;
   inputLocked?: boolean;
   model?: { provider: string; modelId: string } | null;
@@ -105,6 +108,7 @@ interface Props {
   draftKey?: string;
   /** Session working directory — enables the @ file autocomplete menu */
   cwd?: string | null;
+  onOpenReference?: (reference: ChatDraftReference) => void;
 }
 
 export interface ChatInputHandle {
@@ -113,8 +117,9 @@ export interface ChatInputHandle {
   replaceMessage: (message: UserMessage) => void;
   prependText: (text: string) => void;
   addImages: (files: File[]) => void;
+  addReferences: (references: ChatDraftReference[]) => void;
   rekeyDraft: (previousKey: string, nextKey: string) => void;
-  restoreSubmission: (text: string, images?: ChatDraftImage[], targetDraftKey?: string) => void;
+  restoreSubmission: (text: string, images?: ChatDraftImage[], references?: ChatDraftReference[], targetDraftKey?: string) => void;
 }
 
 const TOOL_PRESETS = ["off", "read-only", "default", "full"] as const;
@@ -262,14 +267,14 @@ export function buildSlashCommandLayout(
   };
 }
 
-function CommandPaletteIcon({ kind }: { kind: "add" | CommandPaletteSource }) {
+function CommandPaletteIcon({ kind }: { kind: "add" | "plan" | CommandPaletteSource }) {
   const common = {
     width: 16,
     height: 16,
     viewBox: "0 0 24 24",
     fill: "none",
     stroke: "currentColor",
-    strokeWidth: 1.7,
+    strokeWidth: 2,
     strokeLinecap: "round" as const,
     strokeLinejoin: "round" as const,
     "aria-hidden": true,
@@ -278,13 +283,16 @@ function CommandPaletteIcon({ kind }: { kind: "add" | CommandPaletteSource }) {
   if (kind === "add") {
     return <svg {...common}><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="8.5" cy="8.5" r="1.5" /><path d="m21 15-5-5L5 21" /><path d="M17 4v4M15 6h4" /></svg>;
   }
+  if (kind === "plan") {
+    return <svg {...common}><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5" /><path d="M9 18h6" /><path d="M10 22h4" /></svg>;
+  }
   if (kind === "extension") {
-    return <svg {...common}><path d="M8.5 3.5a2.5 2.5 0 1 1 4 2v2h2a2.5 2.5 0 1 1 0 4h-2v2a2.5 2.5 0 1 1-4 0v-2h-2a2.5 2.5 0 1 1 0-4h2v-2a2.5 2.5 0 0 1 0-2Z" /><path d="M12 7.5v4" /></svg>;
+    return <svg {...common}><path d="M17 19a1 1 0 0 1-1-1v-2a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2a1 1 0 0 1-1 1z" /><path d="M17 21v-2" /><path d="M19 14V6.5a1 1 0 0 0-7 0v11a1 1 0 0 1-7 0V10" /><path d="M21 21v-2" /><path d="M3 5V3" /><path d="M4 10a2 2 0 0 1-2-2V6a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2a2 2 0 0 1-2 2z" /><path d="M7 5V3" /></svg>;
   }
   if (kind === "skill") {
-    return <svg {...common}><path d="m12 3 1.4 4.6L18 9l-4.6 1.4L12 15l-1.4-4.6L6 9l4.6-1.4L12 3Z" /><path d="m19 15 .7 2.3L22 18l-2.3.7L19 21l-.7-2.3L16 18l2.3-.7L19 15Z" /></svg>;
+    return <svg {...common}><path d="M12 5v16" /><path d="M16 13h2" /><path d="M16 9h2" /><path d="M20.001 19A2 2 0 0 0 22 17V5a2 2 0 0 0-1.999-2L16 3.002A5 5 0 0 0 12 5a5 5 0 0 0-4-2H4a2 2 0 0 0-2 2v12a2 2 0 0 0 1.999 2H8a5 5 0 0 1 4 2 5 5 0 0 1 4-2z" /><path d="M6 13h2" /><path d="M6 9h2" /></svg>;
   }
-  return <svg {...common}><path d="M5 6h14M5 12h9M5 18h14" /><path d="m16 10 3 2-3 2" /></svg>;
+  return <svg {...common}><path d="M10 22v-8" /><path d="M2.336 8.89 10 14l11.715-7.029" /><path d="M22 14a2 2 0 0 1-.971 1.715l-10 6a2 2 0 0 1-2.138-.05l-6-4A2 2 0 0 1 2 16v-6a2 2 0 0 1 .971-1.715l10-6a2 2 0 0 1 2.138.05l6 4A2 2 0 0 1 22 8z" /></svg>;
 }
 
 function imageToDraftImage(image: AttachedImage): ChatDraftImage {
@@ -408,6 +416,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   onPromptWithStreamingBehavior,
   draftKey,
   cwd,
+  onOpenReference,
 }: Props, ref) {
   const { t } = useI18n();
   const isMobile = useIsMobile();
@@ -419,9 +428,16 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   const [toolDropdownOpen, setToolDropdownOpen] = useState(false);
   const [thinkingDropdownOpen, setThinkingDropdownOpen] = useState(false);
   const [controlsMenuOpen, setControlsMenuOpen] = useState(false);
+  const [pendingStreamingSubmission, setPendingStreamingSubmission] = useState<{ message: string; images: AttachedImage[]; references: ChatDraftReference[] } | null>(null);
+  const [deferredModel, setDeferredModel] = useState<{ provider: string; modelId: string } | null>(null);
+  const [deferredThinkingLevel, setDeferredThinkingLevel] = useState<Props["thinkingLevel"] | null>(null);
+  const [deferredToolPreset, setDeferredToolPreset] = useState<ToolPreset | null>(null);
+  const [compactBlockedNotice, setCompactBlockedNotice] = useState(false);
+  const [planModeGlowReady, setPlanModeGlowReady] = useState(false);
   const [attachedImages, setAttachedImages] = useState<AttachedImage[]>(() => (
     draftKey ? draftImagesToAttachedImages(getDraft(draftKey)?.images) : []
   ));
+  const [references, setReferences] = useState<ChatDraftReference[]>(() => draftKey ? getDraft(draftKey)?.references ?? [] : []);
   const trimmedValue = value.trimStart();
   const bashMode = attachedImages.length === 0 && trimmedValue.startsWith("!");
   const bashExcluded = bashMode && trimmedValue.startsWith("!!");
@@ -446,6 +462,26 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     ? skillDormancyState.values
     : {};
 
+  useEffect(() => {
+    if (isStreaming) return;
+    if (deferredModel && onModelChange) {
+      const next = deferredModel;
+      setDeferredModel(null);
+      onModelChange(next.provider, next.modelId);
+    }
+    if (deferredThinkingLevel && onThinkingLevelChange) {
+      const next = deferredThinkingLevel;
+      setDeferredThinkingLevel(null);
+      onThinkingLevelChange(next);
+    }
+    if (deferredToolPreset && onToolPresetChange) {
+      const next = deferredToolPreset;
+      setDeferredToolPreset(null);
+      onToolPresetChange(next);
+    }
+    setCompactBlockedNotice(false);
+  }, [isStreaming, deferredModel, deferredThinkingLevel, deferredToolPreset, onModelChange, onThinkingLevelChange, onToolPresetChange]);
+
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const modelDropdownPanelRef = useRef<HTMLDivElement>(null);
@@ -465,9 +501,21 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   const draftKeyRef = useRef(draftKey);
   const valueRef = useRef(value);
   const attachedImagesRef = useRef(attachedImages);
+  const referencesRef = useRef(references);
   const pendingImageCountRef = useRef(0);
   valueRef.current = value;
   attachedImagesRef.current = attachedImages;
+  referencesRef.current = references;
+
+  const resizeTextarea = useCallback((target = textareaRef.current) => {
+    if (!target) return;
+    const maxHeight = 200;
+    const minHeight = isMobile ? 52 : 82;
+    target.style.height = "auto";
+    const nextHeight = Math.max(minHeight, Math.min(target.scrollHeight, maxHeight));
+    target.style.height = `${nextHeight}px`;
+    target.style.overflowY = target.scrollHeight > maxHeight ? "auto" : "hidden";
+  }, [isMobile]);
 
   useImperativeHandle(ref, () => ({
     insertIfEmpty(text: string) {
@@ -535,8 +583,9 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
       const currentDraft = {
         value: valueRef.current,
         images: attachedImagesRef.current.map(imageToDraftImage),
+        references: referencesRef.current,
       };
-      const moved = rekeyStoredDraft(previousKey, nextKey, currentDraft) ?? { value: "", images: [] };
+      const moved = rekeyStoredDraft(previousKey, nextKey, currentDraft) ?? { value: "", images: [], references: [] };
       const unchanged = moved.value === currentDraft.value
         && moved.images.length === currentDraft.images.length
         && moved.images.every((image, index) => (
@@ -554,11 +603,12 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
         current.forEach(revokeImagePreview);
         return movedImages;
       });
+      setReferences(moved.references ?? []);
       setAtQuery(null);
       setHistoryMenuOpen(false);
     },
-    restoreSubmission(text: string, images?: ChatDraftImage[], targetDraftKey?: string) {
-      if (!text.trim() && !images?.length) return;
+    restoreSubmission(text: string, images?: ChatDraftImage[], restoredReferences?: ChatDraftReference[], targetDraftKey?: string) {
+      if (!text.trim() && !images?.length && !restoredReferences?.length) return;
 
       // clearInput is queued before the submission handler runs. Compose with
       // that queued state so a fast rejection cannot observe stale DOM text and
@@ -576,6 +626,8 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
         targetsCurrentComposer
           ? attachedImagesRef.current.map(imageToDraftImage)
           : (storedDraft?.images ?? []),
+        restoredReferences,
+        targetsCurrentComposer ? referencesRef.current : (storedDraft?.references ?? []),
       );
       // The first optimistic message switches ChatWindow out of its empty-state
       // layout and remounts this component. Persist synchronously so recovery is
@@ -595,6 +647,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
       // functional updates below, so update the imperative snapshot first.
       valueRef.current = restoredDraft.value;
       attachedImagesRef.current = restoredImages;
+      referencesRef.current = restoredDraft.references ?? [];
       setValue((current) => {
         const restored = mergeRestoredSubmissionText(text, current);
         valueRef.current = restored;
@@ -602,6 +655,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
       });
       setAtQuery(null);
       setHistoryMenuOpen(false);
+      setReferences(restoredDraft.references ?? []);
       if (images?.length) {
         setAttachedImages((current) => {
           const available = Math.max(0, MAX_ATTACHED_IMAGES - current.length);
@@ -647,6 +701,13 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     },
     addImages(files: File[]) {
       processImageFiles(files);
+    },
+    addReferences(nextReferences: ChatDraftReference[]) {
+      const next = dedupeReferences([...referencesRef.current, ...nextReferences]);
+      referencesRef.current = next;
+      setReferences(next);
+      setAtQuery(null);
+      requestAnimationFrame(() => textareaRef.current?.focus());
     },
   }));
 
@@ -715,6 +776,8 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     if (draftKey) clearDraft(draftKey);
     if (draftKeyRef.current && draftKeyRef.current !== draftKey) clearDraft(draftKeyRef.current);
     clearImages();
+    referencesRef.current = [];
+    setReferences([]);
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
     }
@@ -725,8 +788,9 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     setDraft(draftKey, {
       value,
       images: attachedImages.map(imageToDraftImage),
+      references,
     });
-  }, [attachedImages, draftKey, value]);
+  }, [attachedImages, draftKey, references, value]);
 
   useEffect(() => {
     const previousDraftKey = draftKeyRef.current;
@@ -736,6 +800,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
       setDraft(previousDraftKey, {
         value: valueRef.current,
         images: attachedImagesRef.current.map(imageToDraftImage),
+        references: referencesRef.current,
       });
     }
 
@@ -743,8 +808,10 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     draftKeyRef.current = draftKey;
     const nextValue = draft?.value ?? "";
     const nextImages = draftImagesToAttachedImages(draft?.images);
+    const nextReferences = draft?.references ?? [];
     valueRef.current = nextValue;
     attachedImagesRef.current = nextImages;
+    referencesRef.current = nextReferences;
     setValue(nextValue);
     setAtQuery(null);
     setHistoryMenuOpen(false);
@@ -752,14 +819,12 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
       prev.forEach(revokeImagePreview);
       return nextImages;
     });
+    setReferences(nextReferences);
   }, [draftKey]);
 
-  useEffect(() => {
-    const ta = textareaRef.current;
-    if (!ta) return;
-    ta.style.height = "auto";
-    if (value) ta.style.height = `${Math.min(ta.scrollHeight, 200)}px`;
-  }, [value]);
+  useLayoutEffect(() => {
+    resizeTextarea();
+  }, [resizeTextarea, value]);
 
   useEffect(() => {
     return () => {
@@ -769,10 +834,10 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
 
   const handleSend = useCallback(async () => {
     const msg = value.trim();
-    if (!msg && !attachedImages.length) return;
+    if (!msg && !attachedImages.length && !references.length) return;
     if (isStreaming || inputLocked) return;
     onAudioUnlock?.();
-    if (!attachedImages.length && msg.startsWith("/") && onBuiltinCommand) {
+    if (!attachedImages.length && !references.length && msg.startsWith("/") && onBuiltinCommand) {
       const result = await onBuiltinCommand(msg);
       if (result.handled) {
         if (!result.error) clearInput();
@@ -780,8 +845,8 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
       }
     }
     clearInput();
-    onSend(msg, attachedImages.length ? attachedImages : undefined);
-  }, [value, attachedImages, isStreaming, inputLocked, onBuiltinCommand, onSend, clearInput, onAudioUnlock]);
+    onSend(msg, attachedImages.length ? attachedImages : undefined, references);
+  }, [value, attachedImages, references, isStreaming, inputLocked, onBuiltinCommand, onSend, clearInput, onAudioUnlock]);
 
   const slashQuery = value.startsWith("/") && !/\s/.test(value.slice(1))
     ? value.slice(1).toLowerCase()
@@ -827,7 +892,26 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   const commandPaletteRadius = 8;
 
   const hasInputText = Boolean(value.trim());
-  const canQueueStreamingMessage = hasInputText || attachedImages.length > 0;
+  const referenceNameCounts = React.useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const reference of references) {
+      const name = reference.path.replace(/\\/g, "/").split("/").at(-1) ?? reference.path;
+      counts.set(name, (counts.get(name) ?? 0) + 1);
+    }
+    return counts;
+  }, [references]);
+  const canQueueStreamingMessage = hasInputText || attachedImages.length > 0 || references.length > 0;
+  const composerDrawerVisible = Boolean(pendingStreamingSubmission);
+  const planModeActive = Boolean(planMode?.planModeActive);
+
+  useEffect(() => {
+    if (!planModeActive) {
+      setPlanModeGlowReady(false);
+      return;
+    }
+    const animationFrame = requestAnimationFrame(() => setPlanModeGlowReady(true));
+    return () => cancelAnimationFrame(animationFrame);
+  }, [planModeActive]);
 
   // ── @ file autocomplete ──────────────────────────────────────────────────
   // Recomputed from the text before the caret on every change/caret move.
@@ -933,14 +1017,13 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     if (atQuery.quoted && after.startsWith('"')) {
       after = after.slice(1);
     }
-    const insert = buildAtInsertText(entry.path, entry.isDir, atQuery.quoted);
-    const newValue = before + insert.text + after;
-    const newPos = before.length + insert.cursorOffset;
+    const newValue = before + after;
+    const newPos = before.length;
+    const nextReferences = dedupeReferences([...referencesRef.current, { path: entry.path, isDir: entry.isDir }]);
+    referencesRef.current = nextReferences;
+    setReferences(nextReferences);
     setValue(newValue);
-    // setValue alone does not fire onChange — re-derive the token here. Files
-    // end with a space (token closes, menu hides); directories end with "/"
-    // before the caret (token stays open for drill-down into the directory).
-    setAtQuery(extractAtQuery(newValue.slice(0, newPos)));
+    setAtQuery(null);
     requestAnimationFrame(() => {
       const el = textareaRef.current;
       if (!el) return;
@@ -1013,23 +1096,60 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     });
   }, []);
 
-  const sendQueued = useCallback((mode: "steer" | "followup") => {
-    const msg = value.trim();
-    if (!msg && !attachedImages.length) return;
+  const sendQueued = useCallback((mode: "steer" | "followup", pending?: { message: string; images: AttachedImage[]; references: ChatDraftReference[] }) => {
+    const msg = pending?.message ?? value.trim();
+    const images = pending?.images ?? attachedImages;
+    const queuedReferences = pending?.references ?? references;
+    if (!msg && !images.length && !queuedReferences.length) return;
     onAudioUnlock?.();
     const streamingBehavior = mode === "steer" ? "steer" : "followUp";
-    if (msg.startsWith("/") && onPromptWithStreamingBehavior) {
-      clearInput();
-      onPromptWithStreamingBehavior(msg, streamingBehavior, attachedImages.length ? attachedImages : undefined);
+    if (!queuedReferences.length && msg.startsWith("/") && onPromptWithStreamingBehavior) {
+      if (!pending) clearInput();
+      onPromptWithStreamingBehavior(msg, streamingBehavior, images.length ? images : undefined, queuedReferences);
       return;
     }
-    clearInput();
+    if (!pending) clearInput();
     if (mode === "steer" && onSteer) {
-      onSteer(msg, attachedImages.length ? attachedImages : undefined);
+      onSteer(msg, images.length ? images : undefined, queuedReferences);
     } else if (mode === "followup" && onFollowUp) {
-      onFollowUp(msg, attachedImages.length ? attachedImages : undefined);
+      onFollowUp(msg, images.length ? images : undefined, queuedReferences);
     }
-  }, [value, attachedImages, onPromptWithStreamingBehavior, onSteer, onFollowUp, clearInput, onAudioUnlock]);
+  }, [value, attachedImages, references, onPromptWithStreamingBehavior, onSteer, onFollowUp, clearInput, onAudioUnlock]);
+
+  const stageStreamingSubmission = useCallback(() => {
+    const message = value.trim();
+    if (!message && !attachedImages.length && !references.length) return;
+
+    setPendingStreamingSubmission({ message, images: attachedImages, references });
+    valueRef.current = "";
+    attachedImagesRef.current = [];
+    referencesRef.current = [];
+    setValue("");
+    setAttachedImages(() => []);
+    setReferences([]);
+    setAtQuery(null);
+    setHistoryMenuOpen(false);
+    if (draftKey) clearDraft(draftKey);
+  }, [value, attachedImages, references, draftKey]);
+
+  const restoreStagedStreamingSubmission = useCallback(() => {
+    if (!pendingStreamingSubmission) return;
+    valueRef.current = pendingStreamingSubmission.message;
+    attachedImagesRef.current = pendingStreamingSubmission.images;
+    referencesRef.current = pendingStreamingSubmission.references;
+    setValue(pendingStreamingSubmission.message);
+    setAttachedImages(() => pendingStreamingSubmission.images);
+    setReferences(pendingStreamingSubmission.references);
+    setPendingStreamingSubmission(null);
+    requestAnimationFrame(() => textareaRef.current?.focus());
+  }, [pendingStreamingSubmission]);
+
+  const confirmStagedStreamingSubmission = useCallback((mode: "steer" | "followup") => {
+    if (!pendingStreamingSubmission) return;
+    const pending = pendingStreamingSubmission;
+    setPendingStreamingSubmission(null);
+    sendQueued(mode, pending);
+  }, [pendingStreamingSubmission, sendQueued]);
 
   const getNextSlashIndex = useCallback((direction: "up" | "down" | "left" | "right") => {
     const lastIndex = displayedSlashCommands.length - 1;
@@ -1192,22 +1312,18 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
       if (sendShortcut) {
         e.preventDefault();
         if (isStreaming && (onSteer || onFollowUp)) {
-          // Default Enter sends as steer if available, else followup
-          sendQueued(onSteer ? "steer" : "followup");
+          stageStreamingSubmission();
         } else {
           handleSend();
         }
       }
     },
-    [isMobile, isStreaming, onSteer, onFollowUp, onAbort, slashMenuOpen, slashQuery, displayedSlashCommands, slashActiveIndex, applySlashCommand, sendQueued, handleSend, getNextSlashIndex, atMenuOpen, atQuery, atMatches, atActiveIndex, applyAtCompletion, historyMenuOpen, inputHistory, historyActiveIndex, applyHistoryInput, value]
+    [isMobile, isStreaming, onSteer, onFollowUp, onAbort, slashMenuOpen, slashQuery, displayedSlashCommands, slashActiveIndex, applySlashCommand, stageStreamingSubmission, handleSend, getNextSlashIndex, atMenuOpen, atQuery, atMatches, atActiveIndex, applyAtCompletion, historyMenuOpen, inputHistory, historyActiveIndex, applyHistoryInput, value]
   );
 
   const handleInput = useCallback(() => {
-    const ta = textareaRef.current;
-    if (!ta) return;
-    ta.style.height = "auto";
-    ta.style.height = `${Math.min(ta.scrollHeight, 200)}px`;
-  }, []);
+    resizeTextarea();
+  }, [resizeTextarea]);
 
   const handlePaste = useCallback((e: React.ClipboardEvent) => {
     const items = Array.from(e.clipboardData?.items ?? []);
@@ -1346,8 +1462,11 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     else modelsByProvider.push({ provider: opt.provider, options: [opt] });
   }
 
-  const displayModelName = model
-    ? (modelOptions.find((o) => o.modelId === model.modelId && o.provider === model.provider)?.name ?? model.modelId)
+  const effectiveModel = deferredModel ?? model;
+  const effectiveThinkingLevel = deferredThinkingLevel ?? thinkingLevel;
+  const effectiveToolPreset = deferredToolPreset ?? toolPreset;
+  const displayModelName = effectiveModel
+    ? (modelOptions.find((o) => o.modelId === effectiveModel.modelId && o.provider === effectiveModel.provider)?.name ?? effectiveModel.modelId)
     : null;
   const currentName = displayModelName;
 
@@ -1357,12 +1476,13 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   const compactResultText = compactResult
     ? `${compactResult.reason && compactResult.reason !== "manual" ? `${compactResult.reason[0].toUpperCase()}${compactResult.reason.slice(1)} ` : t("chat.compacted")} ${formatTokenCount(compactResult.tokensBefore)} -> ${formatTokenCount(compactResult.estimatedTokensAfter)} tokens (${t("chat.tokensSaved", { saved: formatTokenCount(compactSavedTokens) })})`
     : null;
-  const thinkingDisplayLabel = (() => {
-    const lvl = thinkingLevel ?? "auto";
+  const capitalizeDisplayLabel = (label: string) => label ? `${label[0].toUpperCase()}${label.slice(1)}` : label;
+  const thinkingDisplayLabel = capitalizeDisplayLabel((() => {
+    const lvl = effectiveThinkingLevel ?? "auto";
     if (lvl === "auto" || !thinkingLevelMap) return lvl;
     return thinkingLevelMap[lvl] ?? lvl;
-  })();
-  const toolPresetLabel = Object.entries(TOOL_PRESET_MAP).find(([, v]) => v === (toolPreset ?? "default"))?.[0] ?? "default";
+  })());
+  const toolPresetLabel = capitalizeDisplayLabel(Object.entries(TOOL_PRESET_MAP).find(([, v]) => v === (effectiveToolPreset ?? "default"))?.[0] ?? "default");
 
   // Close dropdowns on outside click
   useEffect(() => {
@@ -1411,7 +1531,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
       style={{
         flexShrink: 0,
         background: "transparent",
-        padding: "0 16px 8px",
+        padding: isMobile ? "0 16px 8px" : "0 16px 30px",
         paddingRight: isMobile ? 16 : 52, // desktop: 16px base + 36px for ChatMinimap alignment
       }}
     >
@@ -1515,6 +1635,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
           </div>
         )}
         <NotificationNotice type="success" message={compactResultText} />
+        {compactBlockedNotice && <NotificationNotice type="warning" message={t("chat.compactWhileRunning")} />}
         {compactError && (
           <NotificationNotice message={compactError} type="error" />
         )}
@@ -1605,7 +1726,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                       {planModeMatches && <CommandItem value="plan-mode" title="计划模式 · 开启只读规划与评审流程" onSelect={() => {
                         setAddMenuOpen(false); setAddMenuQuery(""); onPlanModeChange?.(true);
                       }} className="cursor-pointer py-1.5 text-[color:var(--text)] data-[selected=true]:bg-[var(--bg-hover)]">
-                        <span className="flex size-5 shrink-0 items-center justify-center text-[color:var(--text-muted)]">☼</span>
+                        <span className="flex size-5 shrink-0 items-center justify-center text-[color:var(--text-muted)]"><CommandPaletteIcon kind="plan" /></span>
                         <span className="flex min-w-0 items-baseline gap-2"><span className="shrink-0 text-[13px] font-medium">计划模式</span><span className="truncate text-[11px]" style={{ color: commandDescriptionColor }}>开启只读规划与评审流程</span></span>
                       </CommandItem>}
                     </CommandGroup>
@@ -1847,22 +1968,99 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
               </div>
             );
           })()}
+          {composerDrawerVisible && (
+            <div
+              aria-label="输入框状态抽屉"
+              style={{
+                position: "absolute",
+                left: isMobile ? 8 : 18,
+                right: isMobile ? 8 : 18,
+                bottom: "calc(100% - 16px)",
+                zIndex: 0,
+                background: "var(--input-bg)",
+                border: `1px solid ${bashMode ? "var(--tool-bg)" : "color-mix(in srgb, var(--border) 70%, transparent)"}`,
+                borderRadius: 16,
+                boxShadow: "var(--shadow-soft)",
+                overflow: "hidden",
+                paddingBottom: 16,
+              }}
+            >
+              {pendingStreamingSubmission && (
+                <div style={{
+                  display: "flex",
+                  alignItems: "center",
+                  flexWrap: isMobile ? "wrap" : "nowrap",
+                  gap: 8,
+                  minHeight: 48,
+                  padding: "8px 12px 8px 14px",
+                }}>
+                  <div style={{ minWidth: isMobile ? "100%" : 0, flex: 1 }}>
+                    <div style={{ marginBottom: 2, color: "var(--text-dim)", fontSize: 10, fontWeight: 600, letterSpacing: "0.4px" }}>{t("chat.pendingSend")}</div>
+                    <div style={{ overflow: "hidden", color: "var(--text)", fontSize: 13, textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {pendingStreamingSubmission.message || t("chat.attachedImageCount", { count: pendingStreamingSubmission.images.length })}
+                    </div>
+                  </div>
+                  <button type="button" onClick={restoreStagedStreamingSubmission} style={{ flexShrink: 0, padding: "5px 8px", border: "1px solid var(--border)", borderRadius: 7, background: "transparent", color: "var(--text-muted)", cursor: "pointer", fontSize: 12 }}>
+                    {t("chat.moveToInput")}
+                  </button>
+                  {onFollowUp && <button type="button" onClick={() => confirmStagedStreamingSubmission("followup")} style={{ flexShrink: 0, padding: "5px 9px", border: "1px solid var(--border)", borderRadius: 7, background: "var(--bg-hover)", color: "var(--text)", cursor: "pointer", fontSize: 12, fontWeight: 550 }}>
+                    {t("chat.queueSend")}
+                  </button>}
+                  {onSteer && <button type="button" onClick={() => confirmStagedStreamingSubmission("steer")} style={{ flexShrink: 0, padding: "5px 9px", border: "1px solid transparent", borderRadius: 7, background: isDark ? "#ffffff" : "#080707", color: isDark ? "#080707" : "#fff", cursor: "pointer", fontSize: 12, fontWeight: 600 }}>
+                    {t("chat.immediateSteer")}
+                  </button>}
+                </div>
+              )}
+            </div>
+          )}
           <div
+            className={planModeActive ? `plan-mode-composer${planModeGlowReady ? " plan-mode-composer-active" : ""}` : undefined}
             style={{
+              position: "relative",
+              // The bottom control bar deliberately overlaps the lower part of
+              // the composer.  Keeping this container as a stacking context
+              // made that otherwise transparent bar sit above the absolute
+              // send button, so mouse clicks never reached it.  Only raise the
+              // composer as a whole while the streaming drawer is present;
+              // otherwise the send button's own z-index can sit above the bar.
+              zIndex: composerDrawerVisible ? 1 : "auto",
               minWidth: 0,
               display: "flex",
+              flexDirection: "column",
               gap: 8,
-              alignItems: "center",
+              alignItems: "flex-start",
               background: "var(--input-bg)",
-              border: `1px solid ${bashMode ? "var(--tool-bg)" : isStreaming && (onSteer || onFollowUp)
-                ? "rgba(234,179,8,0.4)"
-                : "color-mix(in srgb, var(--border) 70%, transparent)"}`,
-              borderRadius: "var(--radius-popover)",
+              border: `1px solid ${planModeActive && planModeGlowReady ? "color-mix(in srgb, #3b82f6 18%, var(--border))" : bashMode ? "var(--tool-bg)" : "color-mix(in srgb, var(--border) 70%, transparent)"}`,
+              borderRadius: 16,
               padding: "10px 10px 10px 14px",
-              boxShadow: "var(--shadow-soft)",
-              transition: "border-color var(--transition-ui), background var(--transition-ui), box-shadow var(--transition-ui)",
+              boxShadow: planModeActive && planModeGlowReady
+                ? "0 7px 20px rgba(59, 130, 246, 0.12), 0 0 0 1px rgba(59, 130, 246, 0.1)"
+                : "var(--shadow-soft)",
+              transition: planModeActive
+                ? "border-color 860ms cubic-bezier(0.16, 1, 0.3, 1), background var(--transition-ui), box-shadow 860ms cubic-bezier(0.16, 1, 0.3, 1)"
+                : "border-color var(--transition-ui), background var(--transition-ui), box-shadow var(--transition-ui)",
             } as React.CSSProperties}
           >
+          {references.length > 0 && (
+            <div aria-label={t("chat.referencedFiles")} style={{ display: "flex", flexWrap: "wrap", gap: 6, width: "100%" }}>
+              {references.map((reference) => {
+                const segments = reference.path.replace(/\\/g, "/").split("/");
+                const baseName = segments.at(-1) ?? reference.path;
+                const name = `${referenceNameCounts.get(baseName)! > 1 ? reference.path : baseName}${reference.isDir ? "/" : ""}`;
+                return (
+                  <div key={`${reference.isDir ? "dir" : "file"}:${reference.path}`} title={reference.path} style={{ display: "inline-flex", alignItems: "center", maxWidth: "100%", height: 26, border: "1px solid var(--border)", borderRadius: 7, background: "var(--bg-panel)", color: "var(--text-muted)", overflow: "hidden" }}>
+                    <button type="button" onClick={() => onOpenReference?.(reference)} aria-label={t("chat.openReference", { path: reference.path })} style={{ display: "inline-flex", alignItems: "center", gap: 5, minWidth: 0, height: "100%", border: 0, background: "transparent", color: "inherit", padding: "0 6px 0 8px", cursor: "pointer" }}>
+                      <span style={{ display: "inline-flex", flexShrink: 0 }}>{reference.isDir ? <FolderIcon size={14} /> : getFileIcon(name, 14)}</span>
+                      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 12 }}>{name}</span>
+                    </button>
+                    <button type="button" onClick={() => setReferences((current) => { const next = current.filter((item) => item.path !== reference.path || item.isDir !== reference.isDir); referencesRef.current = next; return next; })} aria-label={t("chat.removeReference", { path: reference.path })} title={t("chat.removeReference", { path: reference.path })} style={{ width: 24, height: "100%", display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0, border: 0, borderLeft: "1px solid var(--border)", background: "transparent", color: "var(--text-dim)", cursor: "pointer" }}>
+                      <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"><path d="m2 2 6 6M8 2 2 8" /></svg>
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
           <textarea
             ref={textareaRef}
             value={value}
@@ -1910,84 +2108,92 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
               fontSize: 15,
               lineHeight: 1.6,
               fontFamily: "inherit",
-              minHeight: 24,
+              minHeight: isMobile ? 52 : 82,
               maxHeight: 200,
-              overflow: "auto",
+              overflowY: "hidden",
+              boxSizing: "border-box",
+              paddingRight: isStreaming && canQueueStreamingMessage ? 260 : 112,
+              paddingBottom: isMobile ? 0 : 40,
             }}
           />
 
-          {isStreaming ? (
-            <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0, alignSelf: "flex-end" }}>
-              {onSteer && (
-                <button
-                  onClick={() => sendQueued("steer")}
-                  disabled={!canQueueStreamingMessage}
-                  title="Interrupt the current run and inject this message now"
+          {isStreaming && canQueueStreamingMessage ? (
+            <div style={{ position: "absolute", right: 24, bottom: 10, display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+              <Tooltip>
+              <TooltipTrigger render={<button
+                  onClick={stageStreamingSubmission}
+                  aria-label={t("chat.send")}
                   style={{
                     display: "flex", alignItems: "center", gap: 5,
-                    padding: "7px 12px",
-                    background: canQueueStreamingMessage ? "rgba(234,179,8,0.12)" : "none",
-                    border: "1px solid rgba(234,179,8,0.35)",
-                    borderRadius: 8,
-                    color: canQueueStreamingMessage ? "rgba(180,130,0,1)" : "var(--text-dim)",
-                    cursor: canQueueStreamingMessage ? "pointer" : "not-allowed",
+                    padding: "7px 14px", height: 32,
+                    background: isDark ? "#ffffff" : "#080707",
+                    border: "1px solid transparent",
+                    borderRadius: 16,
+                    color: isDark ? "#080707" : "#fff",
+                    cursor: "pointer",
                     fontSize: 14, fontWeight: 550, letterSpacing: "-0.01em",
-                    transition: "background var(--transition-ui)",
+                    boxShadow: "0 4px 12px rgba(0,0,0,0.25)",
+                    transition: "background var(--transition-ui), box-shadow var(--transition-ui)",
                   }}
+                  onMouseEnter={(event) => { event.currentTarget.style.opacity = "0.86"; }}
+                  onMouseLeave={(event) => { event.currentTarget.style.opacity = "1"; }}
                 >
                   <svg width="12" height="12" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M5 1 L9 5 L5 9" /><line x1="1" y1="5" x2="9" y2="5" />
                   </svg>
-                  {t("chat.steer")}
-                </button>
-              )}
-              {onFollowUp && (
-                <button
-                  onClick={() => sendQueued("followup")}
-                  disabled={!canQueueStreamingMessage}
-                  title="Queue this message after the agent finishes"
-                  style={{
-                    display: "flex", alignItems: "center", gap: 5,
-                    padding: "7px 12px",
-                    background: canQueueStreamingMessage ? "rgba(129,140,248,0.12)" : "none",
-                    border: "1px solid rgba(129,140,248,0.35)",
-                    borderRadius: 8,
-                    color: canQueueStreamingMessage ? "rgba(99,102,241,1)" : "var(--text-dim)",
-                    cursor: canQueueStreamingMessage ? "pointer" : "not-allowed",
-                    fontSize: 14, fontWeight: 550, letterSpacing: "-0.01em",
-                    transition: "background var(--transition-ui)",
-                  }}
-                >
-                  <svg width="12" height="12" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                    <line x1="5" y1="1" x2="5" y2="6" /><polyline points="2.5 3.5 5 1 7.5 3.5" />
-                    <line x1="2" y1="9" x2="8" y2="9" />
-                  </svg>
-                  {t("chat.followUp")}
-                </button>
-              )}
+                  {t("chat.send")}
+                </button>} />
+                <TooltipContent>{t("chat.send")}</TooltipContent>
+                </Tooltip>
             </div>
-          ) : (
-            <button
-              onClick={handleSend}
-              disabled={inputLocked || (!value.trim() && !attachedImages.length)}
+          ) : isStreaming ? (
+            <Tooltip>
+            <TooltipTrigger render={<button
+              onClick={onAbort}
+              aria-label={t("chat.stopAgent")}
               style={{
-                flexShrink: 0,
-                alignSelf: "flex-end",
+                position: "absolute", right: 24, bottom: 10,
                 display: "flex", alignItems: "center", gap: 6,
-                padding: "7px 14px",
-                background: (value.trim() || attachedImages.length) ? (isDark ? "#ffffff" : "#080707") : "var(--bg-panel)",
+                padding: "7px 14px", height: 32,
+                background: isDark ? "#ffffff" : "#080707",
+                border: "none", borderRadius: 16,
+                color: isDark ? "#080707" : "#fff",
+                cursor: "pointer", fontSize: 14, fontWeight: 550,
+                letterSpacing: "-0.01em", boxShadow: "0 4px 12px rgba(0,0,0,0.25)",
+              }}
+            >
+              <svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true"><rect x="1.5" y="1.5" width="7" height="7" rx="1.5" fill="currentColor" /></svg>
+              {t("chat.stop")}
+            </button>} />
+            <TooltipContent>{t("chat.stopAgent")}</TooltipContent>
+            </Tooltip>
+          ) : !isStreaming && (
+            <button
+              type="button"
+              onClick={handleSend}
+              disabled={inputLocked || (!value.trim() && !attachedImages.length && !references.length)}
+              style={{
+                position: "absolute",
+                zIndex: 3,
+                right: 24,
+                bottom: 10,
+                pointerEvents: "auto",
+                flexShrink: 0,
+                display: "flex", alignItems: "center", gap: 6,
+                padding: "7px 14px", height: 32,
+                background: (value.trim() || attachedImages.length || references.length) ? (isDark ? "#ffffff" : "#080707") : "var(--bg-panel)",
                 border: "none",
-                borderRadius: "var(--radius-control)",
-                color: (value.trim() || attachedImages.length) ? (isDark ? "#080707" : "#fff") : "var(--text-dim)",
-                cursor: (value.trim() || attachedImages.length) ? "pointer" : "not-allowed",
+                borderRadius: 16,
+                color: (value.trim() || attachedImages.length || references.length) ? (isDark ? "#080707" : "#fff") : "var(--text-dim)",
+                cursor: (value.trim() || attachedImages.length || references.length) ? "pointer" : "not-allowed",
                 fontSize: 14,
                 fontWeight: 550,
                 letterSpacing: "-0.01em",
-                boxShadow: (value.trim() || attachedImages.length) ? "0 4px 12px rgba(0,0,0,0.25)" : "none",
+                boxShadow: (value.trim() || attachedImages.length || references.length) ? "0 4px 12px rgba(0,0,0,0.25)" : "none",
                 transition: "background var(--transition-ui), box-shadow var(--transition-ui)",
               }}
             >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
                 <path d="M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z" />
                 <path d="m21.854 2.147-10.94 10.939" />
               </svg>
@@ -2006,17 +2212,25 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
 
         {/* Bottom bar: left | center (context) | right */}
         <div style={{
+          // Keep this bar in normal flow. It used to overlap the textarea via
+          // a negative margin, which let multi-line content sit under controls.
           marginTop: 8,
-          display: isMobile ? "grid" : "flex",
-          gridTemplateColumns: isMobile ? "minmax(0, 1fr) auto" : undefined,
+          padding: isMobile ? undefined : "0 112px 0 6px",
+          position: "relative",
+          zIndex: 1,
+          // Keep the model and reasoning selectors in one continuous row.  The
+          // former mobile grid stretched the model column to the available
+          // width, which visually detached "Auto" from the selected model.
+          display: "flex",
           alignItems: "center",
           gap: 6,
         }}>
 
           {/* LEFT: attach + model selector (idle) or steer/followup toggle (streaming) */}
-          <div style={{ flex: isMobile ? "1 1 auto" : "0 0 auto", minWidth: 0, display: "flex", alignItems: "center", gap: 2 }}>
+          <div style={{ flex: "0 0 auto", minWidth: 0, display: "flex", alignItems: "center", gap: 2 }}>
             <div ref={addMenuAnchorRef} style={{ flexShrink: 0 }}>
-              <button
+              <Tooltip>
+              <TooltipTrigger render={<button
                 type="button"
                 onClick={() => {
                   setSlashMenuOpen(false);
@@ -2027,7 +2241,6 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                 }}
                 aria-label={t("chat.openAddMenu")}
                 aria-expanded={addMenuOpen}
-                title={t("chat.openAddMenu")}
                 style={{
                   display: "flex", alignItems: "center", justifyContent: "center",
                   width: 32, height: 32, padding: 0,
@@ -2049,13 +2262,16 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                 <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
                   <path d="M12 5v14M5 12h14" />
                 </svg>
-              </button>
+              </button>} />
+              <TooltipContent>{t("chat.openAddMenu")}</TooltipContent>
+              </Tooltip>
 
             </div>
             {/* Model selector — visible always, disabled while the session or switch is busy */}
             {(modelOptions.length > 0 || currentName || modelError) && onModelChange && (
-                <div ref={dropdownRef} style={{ position: "relative", flex: isMobile ? "1 1 auto" : undefined, minWidth: 0 }}>
-                  <button
+                <div ref={dropdownRef} style={{ position: "relative", flex: "0 0 auto", minWidth: 0 }}>
+                  <Tooltip>
+                  <TooltipTrigger render={<button
                     onClick={(e) => {
                       const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
                       setModelDropdownRect({ top: rect.top, left: rect.left, width: rect.width });
@@ -2064,27 +2280,25 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                         return !open;
                       });
                     }}
-                    disabled={isStreaming || modelSwitching}
+                    disabled={modelSwitching}
                     aria-busy={modelSwitching || undefined}
                     style={{
                       display: "flex", alignItems: "center", gap: 6,
-                      justifyContent: isMobile ? "flex-start" : undefined,
-                      padding: isMobile ? "8px 10px" : "8px 12px",
+                      padding: "8px 4px 8px 12px",
                       height: 32,
-                      width: isMobile ? "100%" : undefined,
-                      maxWidth: isMobile ? "100%" : 220,
+                      maxWidth: 220,
                       overflow: "hidden",
                       background: modelDropdownOpen ? "var(--bg-hover)" : "none",
                       border: "none",
                       borderRadius: 9,
                       color: "var(--text-muted)",
-                      cursor: isStreaming || modelSwitching ? "not-allowed" : "pointer",
+                      cursor: modelSwitching ? "not-allowed" : "pointer",
                       fontSize: 12,
-                      opacity: isStreaming ? 0.5 : 1,
+                      opacity: modelSwitching ? 0.5 : 1,
                       transition: "background 0.12s, color 0.12s",
                     }}
                     onMouseEnter={(e) => {
-                      if (isStreaming || modelSwitching) return;
+                      if (modelSwitching) return;
                       e.currentTarget.style.background = "var(--bg-hover)";
                       e.currentTarget.style.color = "var(--text)";
                     }}
@@ -2092,26 +2306,24 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                       e.currentTarget.style.background = modelDropdownOpen ? "var(--bg-hover)" : "none";
                       e.currentTarget.style.color = "var(--text-muted)";
                     }}
-                    title={modelSwitching ? "Switching model" : modelOptions.length > 0 ? "Change model" : "No available models"}
                   >
                     {modelSwitching ? (
                       <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" style={{ animation: "spin 0.8s linear infinite", flexShrink: 0 }} aria-hidden="true">
                         <path d="M21 12a9 9 0 1 1-2.64-6.36" />
                       </svg>
                     ) : (
-                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                         <rect x="4" y="4" width="16" height="16" rx="2" />
                         <rect x="9" y="9" width="6" height="6" />
-                        <line x1="9" y1="1" x2="9" y2="4" /><line x1="15" y1="1" x2="15" y2="4" />
-                        <line x1="9" y1="20" x2="9" y2="23" /><line x1="15" y1="20" x2="15" y2="23" />
-                        <line x1="20" y1="9" x2="23" y2="9" /><line x1="20" y1="14" x2="23" y2="14" />
-                        <line x1="1" y1="9" x2="4" y2="9" /><line x1="1" y1="14" x2="4" y2="14" />
+                        <path d="M9 1v3M15 1v3M9 20v3M15 20v3M20 9h3M20 14h3M1 9h3M1 14h3" />
                       </svg>
                     )}
                     <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>
                       {currentName ?? (modelOptions.length > 0 ? "Select model" : "No models")}
                     </span>
-                  </button>
+                  </button>} />
+                  <TooltipContent>{modelSwitching ? "Switching model" : modelOptions.length > 0 ? "Change model" : "No available models"}</TooltipContent>
+                  </Tooltip>
                   {modelDropdownOpen && modelDropdownRect && (() => {
                     const viewportHeight = window.visualViewport?.height ?? window.innerHeight;
                     const bottom = viewportHeight - modelDropdownRect.top + 6;
@@ -2167,7 +2379,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                         ) : modelsByProvider.map((group) => (
                           <CommandGroup key={group.provider} heading={modelsByProvider.length > 1 ? group.provider.toUpperCase() : undefined}>
                             {group.options.map((opt) => {
-                              const isActive = opt.modelId === model?.modelId && opt.provider === model?.provider;
+                              const isActive = opt.modelId === effectiveModel?.modelId && opt.provider === effectiveModel?.provider;
                               return (
                                 <CommandItem
                                   key={`${opt.provider}:${opt.modelId}`}
@@ -2175,7 +2387,10 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                                   onSelect={() => {
                                     setModelDropdownOpen(false);
                                     setModelFilter("");
-                                    if (!isActive || isAutoModelSelection) onModelChange(opt.provider, opt.modelId);
+                                    if (!isActive || isAutoModelSelection) {
+                                      if (isStreaming) setDeferredModel({ provider: opt.provider, modelId: opt.modelId });
+                                      else onModelChange(opt.provider, opt.modelId);
+                                    }
                                   }}
                                   style={{
                                     minHeight: 32,
@@ -2204,25 +2419,16 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                   })()}
                 </div>
             )}
-            {planMode?.planModeActive && (
-              <button type="button" onClick={() => onPlanModeChange?.(false)} disabled={isStreaming || planMode.phase === "reviewing"}
-                title={planMode.phase === "reviewing" ? "请先完成计划评审" : "退出计划模式"}
-                style={{ height: 28, padding: "0 9px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg-hover)", color: "var(--text)", fontSize: 12, cursor: isStreaming || planMode.phase === "reviewing" ? "default" : "pointer", opacity: isStreaming || planMode.phase === "reviewing" ? 0.55 : 1 }}
-              >☼ 计划模式 ×</button>
-            )}
           </div>
 
-          {/* spacer */}
-          {!isMobile && <div style={{ flex: 1 }} />}
-
-          {/* RIGHT: thinking + tools preset + compact + sound (idle) | Stop + sound (streaming) */}
+          {/* Reasoning and tool controls follow the model selector on desktop. */}
           <div ref={controlsMenuRef} style={{
-            flex: "0 0 auto",
+            flex: "1 1 auto",
             display: "flex",
             alignItems: "center",
             justifyContent: "flex-end",
             position: "relative",
-            marginLeft: isMobile ? 0 : "auto",
+            marginLeft: 0,
           }}>
             {isMobile && (
               <button
@@ -2238,7 +2444,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                   setControlsMenuOpen(true);
                 }}
                 style={{
-                  display: "flex",
+                  display: "none",
                   alignItems: "center",
                   justifyContent: "center",
                   width: "100%",
@@ -2270,51 +2476,35 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
               </button>
             )}
             <div style={{
-              display: isMobile ? (controlsMenuOpen ? "flex" : "none") : "flex",
+              display: "flex",
+              width: "100%",
               alignItems: "center",
-              gap: isMobile ? 1 : 2,
-              ...(isMobile ? {
-                position: "absolute",
-                right: 0,
-                bottom: 0,
-                zIndex: 60,
-                padding: 1,
-                width: "max-content",
-                maxWidth: "calc(100vw - 32px)",
-                flexWrap: "nowrap",
-                justifyContent: "flex-end",
-                border: "1px solid color-mix(in srgb, var(--border) 72%, transparent)",
-                borderRadius: 10,
-                background: "color-mix(in srgb, var(--bg-panel) 92%, var(--bg))",
-                boxShadow: "0 8px 24px rgba(0,0,0,0.14)",
-                backdropFilter: "blur(10px)",
-              } : null),
+              gap: 2,
             }}>
-            {!isStreaming && onThinkingLevelChange && (
+            {onThinkingLevelChange && (
               <DropdownMenu open={thinkingDropdownOpen} onOpenChange={setThinkingDropdownOpen}>
+                <Tooltip>
                 <DropdownMenuTrigger
                   render={
-                <button
+                <TooltipTrigger render={<button
                   type="button"
-                  disabled={isStreaming}
-                   title={t("chat.changeReasoning", { level: thinkingDisplayLabel })}
+                  disabled={false}
                    aria-label={t("chat.changeReasoningLabel")}
                   style={{
                     display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
-                    padding: isMobile ? "0 6px" : "8px 12px",
+                    padding: isMobile ? "0 6px" : "8px 12px 8px 2px",
                     width: isMobile ? "auto" : undefined,
                     height: 32,
                     background: thinkingDropdownOpen ? "var(--bg-hover)" : "none",
                     border: "none",
                     borderRadius: 9,
                     color: "var(--text-muted)",
-                    cursor: isStreaming ? "not-allowed" : "pointer",
+                    cursor: "pointer",
                     fontSize: 12,
-                    opacity: isStreaming ? 0.5 : 1,
+                    opacity: 1,
                     transition: "background 0.12s, color 0.12s",
                   }}
                   onMouseEnter={(e) => {
-                    if (isStreaming) return;
                     e.currentTarget.style.background = "var(--bg-hover)";
                     e.currentTarget.style.color = "var(--text)";
                   }}
@@ -2323,15 +2513,16 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                     e.currentTarget.style.color = "var(--text-muted)";
                   }}
                 >
-                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5" />
-                    <path d="M9 18h6" />
-                    <path d="M10 22h4" />
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="m 17.2986 11.6413 c -0.6036 4.7 -4.5831 5.4245 -8.7144 4.7904" />
+                    <path d="m 3.6667 20.3333 S 5.416 4.972 20.3333 3.6667 c -0.7467 1.3013 -0.764 3.4733 -1.2613 5.652 -0.6987 2.6813 -3.1133 3.0147 -6.072 3.0147" />
                   </svg>
-                  {(!isMobile || controlsMenuOpen) && <span style={{ whiteSpace: "nowrap" }}>{thinkingDisplayLabel}</span>}
-                </button>
+                  <span style={{ whiteSpace: "nowrap" }}>{thinkingDisplayLabel}</span>
+                </button>} />
                   }
                 />
+                <TooltipContent>{t("chat.changeReasoning", { level: thinkingDisplayLabel })}</TooltipContent>
+                </Tooltip>
                 <DropdownMenuContent
                   align={isMobile ? "start" : "end"}
                   side="top"
@@ -2355,17 +2546,20 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                       if (lvl === "auto") return true;
                       return availableThinkingLevels.includes(lvl);
                     }).map((lvl) => {
-                      const isActive = (thinkingLevel ?? "auto") === lvl;
+                      const isActive = (effectiveThinkingLevel ?? "auto") === lvl;
                        const desc = t(THINKING_LEVEL_DESC_KEYS[lvl]);
                       const mappedVal = (lvl !== "auto" && thinkingLevelMap) ? thinkingLevelMap[lvl] : undefined;
-                      const displayLabel = (mappedVal != null && mappedVal !== lvl) ? mappedVal : lvl;
+                      const displayLabel = capitalizeDisplayLabel((mappedVal != null && mappedVal !== lvl) ? mappedVal : lvl);
                       const showOriginal = mappedVal != null && mappedVal !== lvl;
                       return (
                         <DropdownMenuCheckboxItem
                           key={lvl}
                           checked={isActive}
                           onCheckedChange={(checked) => {
-                            if (checked && !isActive) onThinkingLevelChange(lvl);
+                            if (checked && !isActive) {
+                              if (isStreaming) setDeferredThinkingLevel(lvl);
+                              else onThinkingLevelChange(lvl);
+                            }
                             setThinkingDropdownOpen(false);
                           }}
                           style={{
@@ -2395,31 +2589,65 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                 </DropdownMenuContent>
               </DropdownMenu>
             )}
-            {!isStreaming && onToolPresetChange && !planMode?.planModeActive && (
+            {planMode?.planModeActive && (
+              <>
+              <span aria-hidden="true" style={{ width: 1, height: 16, margin: "0 4px", background: "var(--border)", flexShrink: 0 }} />
+              <Tooltip>
+                <TooltipTrigger render={<button
+                  type="button"
+                  onClick={() => onPlanModeChange?.(false)}
+                  disabled={isStreaming || planMode.phase === "reviewing"}
+                  aria-label="退出计划模式"
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 5,
+                    height: 28,
+                    marginLeft: 2,
+                    padding: "0 7px",
+                    border: "none",
+                    borderRadius: 7,
+                    background: "transparent",
+                    color: "var(--text-muted)",
+                    cursor: isStreaming || planMode.phase === "reviewing" ? "default" : "pointer",
+                    fontSize: 12,
+                    opacity: isStreaming || planMode.phase === "reviewing" ? 0.55 : 1,
+                  }}
+                >
+                  <span className="flex size-4 shrink-0 items-center justify-center"><CommandPaletteIcon kind="plan" /></span>
+                  <span style={{ whiteSpace: "nowrap" }}>计划模式</span>
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="m18 6-12 12M6 6l12 12" /></svg>
+                </button>} />
+                <TooltipContent>退出计划模式</TooltipContent>
+              </Tooltip>
+              </>
+            )}
+            {/* Reserve the middle space so the tool preset remains right-aligned. */}
+            <div style={{ flex: 1 }} />
+            {onToolPresetChange && !planMode?.planModeActive && (
               <DropdownMenu open={toolDropdownOpen} onOpenChange={setToolDropdownOpen}>
+                <Tooltip>
                 <DropdownMenuTrigger
                   render={
-                <button
+                <TooltipTrigger render={<button
                   type="button"
-                  disabled={isStreaming}
-                   title={t("chat.changeToolPreset") + `: ${toolPresetLabel}`}
+                  disabled={false}
                    aria-label={t("chat.changeToolPreset")}
                   style={{
                     display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
-                    padding: isMobile ? "0 6px" : "8px 12px",
-                    width: isMobile ? "auto" : undefined,
+                    padding: "8px 12px",
+                    width: undefined,
                     height: 32,
                     background: toolDropdownOpen ? "var(--bg-hover)" : "none",
                     border: "none",
                     borderRadius: 9,
                     color: "var(--text-muted)",
-                    cursor: isStreaming ? "not-allowed" : "pointer",
+                    cursor: "pointer",
                     fontSize: 12,
-                    opacity: isStreaming ? 0.5 : 1,
+                    opacity: 1,
                     transition: "background 0.12s, color 0.12s",
                   }}
                   onMouseEnter={(e) => {
-                    if (isStreaming) return;
                     e.currentTarget.style.background = "var(--bg-hover)";
                     e.currentTarget.style.color = "var(--text)";
                   }}
@@ -2428,13 +2656,20 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                     e.currentTarget.style.color = "var(--text-muted)";
                   }}
                 >
-                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.106-3.105c.32-.322.863-.22.983.218a6 6 0 0 1-8.259 7.057l-7.91 7.91a1 1 0 0 1-2.999-3l7.91-7.91a6 6 0 0 1 7.057-8.259c.438.12.54.662.219.984z" />
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                    <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" strokeLinecap="round" strokeLinejoin="round" />
+                    <circle cx="12" cy="12" r="4" />
+                    <g display="none">
+                    <path fillRule="evenodd" clipRule="evenodd" d="M12 8.25C9.92893 8.25 8.25 9.92893 8.25 12C8.25 14.0711 9.92893 15.75 12 15.75C14.0711 15.75 15.75 14.0711 15.75 12C15.75 9.92893 14.0711 8.25 12 8.25ZM9.75 12C9.75 10.7574 10.7574 9.75 12 9.75C13.2426 9.75 14.25 10.7574 14.25 12C14.25 13.2426 13.2426 14.25 12 14.25C10.7574 14.25 9.75 13.2426 9.75 12Z" fill="currentColor" />
+                    <path fillRule="evenodd" clipRule="evenodd" d="M12 1.25C11.2954 1.25 10.6519 1.44359 9.94858 1.77037C9.26808 2.08656 8.48039 2.55304 7.49457 3.13685L6.74148 3.58283C5.75533 4.16682 4.96771 4.63324 4.36076 5.07944C3.73315 5.54083 3.25177 6.01311 2.90334 6.63212C2.55548 7.25014 2.39841 7.91095 2.32306 8.69506C2.24999 9.45539 2.24999 10.3865 2.25 11.556V12.444C2.24999 13.6135 2.24999 14.5446 2.32306 15.3049C2.39841 16.0891 2.55548 16.7499 2.90334 17.3679C3.25177 17.9869 3.73315 18.4592 4.36076 18.9206C4.96771 19.3668 5.75533 19.8332 6.74148 20.4172L7.4946 20.8632C8.48038 21.447 9.2681 21.9135 9.94858 22.2296C10.6519 22.5564 11.2954 22.75 12 22.75C12.7046 22.75 13.3481 22.5564 14.0514 22.2296C14.7319 21.9134 15.5196 21.447 16.5054 20.8632L17.2585 20.4172C18.2446 19.8332 19.0323 19.3668 19.6392 18.9206C20.2669 18.4592 20.7482 17.9869 21.0967 17.3679C21.4445 16.7499 21.6016 16.0891 21.6769 15.3049C21.75 14.5446 21.75 13.6135 21.75 12.4441V11.556C21.75 10.3866 21.75 9.45538 21.6769 8.69506C21.6016 7.91095 21.4445 7.25014 21.0967 6.63212C20.7482 6.01311 20.2669 5.54083 19.6392 5.07944C19.0323 4.63324 18.2447 4.16683 17.2585 3.58285L16.5054 3.13685C15.5196 2.55303 14.7319 2.08656 14.0514 1.77037C13.3481 1.44359 12.7046 1.25 12 1.25ZM8.22524 4.44744C9.25238 3.83917 9.97606 3.41161 10.5807 3.13069C11.1702 2.85676 11.5907 2.75 12 2.75C12.4093 2.75 12.8298 2.85676 13.4193 3.13069C14.0239 3.41161 14.7476 3.83917 15.7748 4.44744L16.4609 4.85379C17.4879 5.46197 18.2109 5.89115 18.7508 6.288C19.2767 6.67467 19.581 6.99746 19.7895 7.36788C19.9986 7.73929 20.1199 8.1739 20.1838 8.83855C20.2492 9.51884 20.25 10.378 20.25 11.5937V12.4063C20.25 13.622 20.2492 14.4812 20.1838 15.1614C20.1199 15.8261 19.9986 16.2607 19.7895 16.6321C19.581 17.0025 19.2767 17.3253 18.7508 17.712C18.2109 18.1089 17.4879 18.538 16.4609 19.1462L15.7748 19.5526C14.7476 20.1608 14.0239 20.5884 13.4193 20.8693C12.8298 21.1432 12.4093 21.25 12 21.25C11.5907 21.25 11.1702 21.1432 10.5807 20.8693C9.97606 20.5884 9.25238 20.1608 8.22524 19.5526L7.53909 19.1462C6.5121 18.538 5.78906 18.1089 5.24923 17.712C4.72326 17.3253 4.419 17.0025 4.2105 16.6321C4.00145 16.2607 3.88005 15.8261 3.81618 15.1614C3.7508 14.4812 3.75 13.622 3.75 12.4063V11.5937C3.75 10.378 3.7508 9.51884 3.81618 8.83855C3.88005 8.1739 4.00145 7.73929 4.2105 7.36788C4.419 6.99746 4.72326 6.67467 5.24923 6.288C5.78906 5.89115 6.5121 5.46197 7.53909 4.85379L8.22524 4.44744Z" fill="currentColor" />
+                    </g>
                   </svg>
-                  {(!isMobile || controlsMenuOpen) && <span style={{ whiteSpace: "nowrap" }}>{toolPresetLabel}</span>}
-                </button>
+                  <span style={{ whiteSpace: "nowrap" }}>{toolPresetLabel}</span>
+                </button>} />
                   }
                 />
+                <TooltipContent>{t("chat.changeToolPreset") + `: ${toolPresetLabel}`}</TooltipContent>
+                </Tooltip>
                 <DropdownMenuContent
                   align={isMobile ? "start" : "end"}
                   side="top"
@@ -2455,7 +2690,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                     </DropdownMenuLabel>
                     {TOOL_PRESETS.map((lvl) => {
                       const preset = TOOL_PRESET_MAP[lvl];
-                      const isActive = (toolPreset ?? "default") === preset;
+                      const isActive = (effectiveToolPreset ?? "default") === preset;
                       let desc: string;
                       if (lvl === "off") desc = t("chat.noTools");
                       else if (lvl === "read-only") desc = t("chat.readOnlyTools", { count: 4 });
@@ -2466,7 +2701,10 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                           key={lvl}
                           checked={isActive}
                           onCheckedChange={(checked) => {
-                            if (checked && !isActive) onToolPresetChange(preset);
+                            if (checked && !isActive) {
+                              if (isStreaming) setDeferredToolPreset(preset);
+                              else onToolPresetChange(preset);
+                            }
                             setToolDropdownOpen(false);
                           }}
                           style={{
@@ -2483,7 +2721,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                           onMouseLeave={(event) => { event.currentTarget.style.background = "transparent"; }}
                         >
                           <span style={{ display: "flex", minWidth: 0, flex: 1, flexDirection: "column", alignItems: "flex-start", gap: 2 }}>
-                            <span style={{ color: "var(--text)", lineHeight: 1.2 }}>{lvl}</span>
+                            <span style={{ color: "var(--text)", lineHeight: 1.2 }}>{capitalizeDisplayLabel(lvl)}</span>
                             <span style={{ color: commandDescriptionColor, fontSize: 11, fontWeight: 400, lineHeight: 1.2, whiteSpace: "normal" }}>{desc}</span>
                           </span>
                         </DropdownMenuCheckboxItem>
@@ -2494,26 +2732,26 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
               </DropdownMenu>
             )}
 
-            {!isStreaming && onCompact && (
-              <div>
-                <button
-                  onClick={isCompacting ? onAbortCompaction : onCompact}
-                  disabled={isStreaming && !isCompacting}
+            {onCompact && (
+              <div style={{ marginLeft: 6 }}>
+                <Tooltip>
+                <TooltipTrigger render={<button
+                  onClick={isStreaming && !isCompacting ? () => setCompactBlockedNotice(true) : isCompacting ? onAbortCompaction : onCompact}
+                  disabled={false}
                   style={{
-                    display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
-                    padding: isMobile ? "0 6px" : "8px 12px",
-                    width: isMobile ? "auto" : undefined,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    padding: 0,
+                    width: 32,
                     height: 32,
                     background: isCompacting ? "rgba(239,68,68,0.08)" : "none",
                     border: "none",
                     borderRadius: 9,
                     color: isCompacting ? "#ef4444" : "var(--text-muted)",
-                    cursor: (isStreaming && !isCompacting) ? "not-allowed" : "pointer",
-                    fontSize: 12, opacity: (isStreaming && !isCompacting) ? 0.5 : 1,
+                    cursor: "pointer",
+                    fontSize: 12, opacity: 1,
                     transition: "background 0.12s, color 0.12s",
                   }}
                   onMouseEnter={(e) => {
-                    if (isStreaming && !isCompacting) return;
                     e.currentTarget.style.background = isCompacting ? "rgba(239,68,68,0.16)" : "var(--bg-hover)";
                     e.currentTarget.style.color = isCompacting ? "#ef4444" : "var(--text)";
                   }}
@@ -2521,48 +2759,28 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                     e.currentTarget.style.background = isCompacting ? "rgba(239,68,68,0.08)" : "none";
                     e.currentTarget.style.color = isCompacting ? "#ef4444" : "var(--text-muted)";
                   }}
-                   title={isCompacting ? t("chat.stopCompaction") : t("chat.compactContext")}
                    aria-label={isCompacting ? t("chat.stopCompaction") : t("chat.compactContext")}
                 >
                   {isCompacting ? (
-                    <><svg width="10" height="10" viewBox="0 0 10 10" fill="none"><rect x="2" y="2" width="6" height="6" rx="1" fill="currentColor" /></svg>{(!isMobile || controlsMenuOpen) && <span style={{ whiteSpace: "nowrap" }}>{t("chat.compacting")}</span>}</>
+                    <svg width="14" height="14" viewBox="0 0 10 10" fill="none" aria-hidden="true"><rect x="2" y="2" width="6" height="6" rx="1" fill="currentColor" /></svg>
                   ) : (
-                    <><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="m14 10 7-7" /><path d="M20 10h-6V4" /><path d="m3 21 7-7" /><path d="M4 14h6v6" />
-                    </svg>{(!isMobile || controlsMenuOpen) && <span style={{ whiteSpace: "nowrap" }}>{t("chat.compact")}</span>}</>
+                    <>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.0" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <path d="m15 15 6 6m-6-6v4.8m0-4.8h4.8" />
+                      <path d="M9 19.8V15m0 0H4.2M9 15l-6 6" />
+                      <path d="M15 4.2V9m0 0h4.8M15 9l6-6" />
+                      <path d="M9 4.2V9m0 0H4.2M9 9 3 3" />
+                    </svg>
+                    </>
                   )}
-                </button>
+                </button>} />
+                <TooltipContent>{isCompacting ? t("chat.stopCompaction") : t("chat.compactContext")}</TooltipContent>
+                </Tooltip>
               </div>
             )}
 
-            {isStreaming && (
-              <button
-                onClick={onAbort}
-                 title={t("chat.stopAgent")}
-                style={{
-                  display: "flex", alignItems: "center", gap: 6,
-                  padding: "8px 14px",
-                  height: 32,
-                  background: "rgba(239,68,68,0.08)",
-                  border: "1px solid rgba(239,68,68,0.3)",
-                  borderRadius: 9,
-                  color: "#ef4444",
-                  cursor: "pointer",
-                  fontSize: 12, fontWeight: 600,
-                  whiteSpace: "nowrap", letterSpacing: "-0.01em",
-                  transition: "background 0.12s",
-                }}
-                onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(239,68,68,0.16)"; }}
-                onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(239,68,68,0.08)"; }}
-              >
-                <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-                  <rect x="1.5" y="1.5" width="7" height="7" rx="1.5" fill="currentColor" />
-                </svg>
-                 {t("chat.stop")}
-              </button>
-            )}
 
-            {onSoundToggle !== undefined && (
+            {false && onSoundToggle !== undefined && (
               <button
                 onClick={onSoundToggle}
                  title={soundEnabled ? t("chat.disableSound") : t("chat.enableSound")}
@@ -2592,14 +2810,12 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                 }}
               >
                 {soundEnabled ? (
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                     <path d="M10.268 21a2 2 0 0 0 3.464 0" />
-                    <path d="M22 8c0-2.3-.8-4.3-2-6" />
                     <path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326" />
-                    <path d="M4 2C2.8 3.7 2 5.7 2 8" />
                   </svg>
                 ) : (
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                     <path d="M10.268 21a2 2 0 0 0 3.464 0" />
                     <path d="M17 17H4a1 1 0 0 1-.74-1.673C4.59 13.956 6 12.499 6 8a6 6 0 0 1 .258-1.742" />
                     <path d="m2 2 20 20" />

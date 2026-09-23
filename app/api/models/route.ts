@@ -11,6 +11,7 @@ import {
 import { resolveVisibleModels, selectInitialModelScope } from "@/lib/model-scope";
 import { getAllowedFileRoots, isExistingFilePathAllowed } from "@/lib/file-access";
 import { projectTrustReloadOptions } from "@/lib/project-trust";
+import { refreshDueModelDiscoveries } from "@/lib/model-discovery-refresh";
 
 export const dynamic = "force-dynamic";
 
@@ -98,6 +99,11 @@ const EMPTY_MODELS: ModelsData = {
 };
 
 export async function GET(req: Request) {
+  // Request-driven background refresh: never delays opening a chat, and only
+  // contacts providers the user explicitly enabled in discovery state.
+  void refreshDueModelDiscoveries().catch(() => {
+    // Background discovery must never make the model selector unavailable.
+  });
   const requestedCwd = new URL(req.url).searchParams.get("cwd") || process.cwd();
   const cwd = resolve(requestedCwd);
 

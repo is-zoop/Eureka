@@ -2,7 +2,7 @@ import { inflateRawSync } from "node:zlib";
 import { existsSync } from "node:fs";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join, relative, resolve, sep } from "node:path";
-import { getAgentDir } from "@earendil-works/pi-coding-agent";
+import { getAgentDir, parseFrontmatter } from "@earendil-works/pi-coding-agent";
 import { getAuthConfig } from "@/lib/auth/config";
 import { getIdentityProvider } from "@/lib/auth/provider";
 import { readRuntimeHazeSession, writeRuntimeHazeSession } from "@/lib/auth/runtime-session";
@@ -10,6 +10,8 @@ import type { AuthSession } from "@/lib/auth/types";
 
 export type HazeInstallScope = "global" | "project";
 export type HazeCapabilityType = "Skill" | "MCP";
+export type HazeMcpLifecycle = "lazy" | "eager" | "keep-alive";
+export type HazeMcpRuntimeOptions = { lifecycle: HazeMcpLifecycle; idleTimeout: number };
 
 export type HazeManagedInstall = {
   capabilityId: string;
@@ -21,10 +23,23 @@ export type HazeManagedInstall = {
   disabled?: boolean;
   skillPath?: string;
   serverUrl?: string;
+  lifecycle?: HazeMcpLifecycle;
+  idleTimeout?: number;
 };
 
 type Registry = { version: 1; installs: HazeManagedInstall[] };
 export type HazeCapabilityInput = { id: string; name: string; slug?: string | null; type: HazeCapabilityType; version: string; serverUrl?: string | null; connectType?: string | null };
+
+export function hazeMcpRuntimeOptions(lifecycle: unknown, idleTimeout: unknown): HazeMcpRuntimeOptions {
+  if (lifecycle !== "lazy" && lifecycle !== "eager" && lifecycle !== "keep-alive") throw new Error("无效的生命周期");
+  if (typeof idleTimeout !== "number" || !Number.isFinite(idleTimeout) || idleTimeout < 1 || idleTimeout > 1440) throw new Error("空闲断开时间必须为 1–1440 分钟");
+  return { lifecycle, idleTimeout };
+}
+
+function storedMcpRuntimeOptions(record: Partial<HazeManagedInstall>): HazeMcpRuntimeOptions {
+  try { return hazeMcpRuntimeOptions(record.lifecycle ?? "lazy", record.idleTimeout ?? 10); }
+  catch { return { lifecycle: "lazy", idleTimeout: 10 }; }
+}
 
 function registryPath(cwd: string, scope: HazeInstallScope) {
   return scope === "global"
@@ -44,7 +59,8 @@ async function readRegistry(cwd: string, scope: HazeInstallScope): Promise<Regis
         if (!item || typeof item !== "object") return [];
         const record = item as Partial<HazeManagedInstall>;
         if (typeof record.capabilityId !== "string" || typeof record.name !== "string" || (record.type !== "Skill" && record.type !== "MCP") || typeof record.version !== "string" || (record.scope !== "global" && record.scope !== "project") || typeof record.installedAt !== "string") return [];
-        return [{ capabilityId: record.capabilityId, name: record.name, type: record.type, version: record.version, scope: record.scope, installedAt: record.installedAt, disabled: record.disabled === true || undefined, skillPath: typeof record.skillPath === "string" ? record.skillPath : undefined, serverUrl: typeof record.serverUrl === "string" ? record.serverUrl : undefined }];
+        const runtime = record.type === "MCP" ? storedMcpRuntimeOptions(record) : undefined;
+        return [{ capabilityId: record.capabilityId, name: record.name, type: record.type, version: record.version, scope: record.scope, installedAt: record.installedAt, disabled: record.disabled === true || undefined, skillPath: typeof record.skillPath === "string" ? record.skillPath : undefined, serverUrl: typeof record.serverUrl === "string" ? record.serverUrl : undefined, ...(runtime ?? {}) }];
       });
       return { version: 1, installs };
     }
@@ -121,6 +137,30 @@ async function extractSkillZip(buffer: Buffer, target: string) {
   }
 }
 
+/** Mirrors the marketplace Skill toggle while keeping the Haze registry in sync. */
+async function setSkillModelInvocationDisabled(cwd: string, scope: HazeInstallScope, install: HazeManagedInstall, disabled: boolean) {
+  if (!install.skillPath) throw new Error("该 Skill 缺少安装目录");
+  const root = resolve(skillRoot(cwd, scope));
+  const directory = resolve(install.skillPath);
+  const relativePath = relative(root, directory);
+  if (relativePath === "" || relativePath === ".." || relativePath.startsWith(`..${sep}`)) throw new Error("Skill 安装目录无效");
+  const skillFile = join(directory, "SKILL.md");
+  if (!existsSync(skillFile)) throw new Error("Skill 文件不存在");
+
+  const content = await readFile(skillFile, "utf8");
+  const key = "disable-model-invocation";
+  const { frontmatter } = parseFrontmatter<Record<string, unknown>>(content);
+  const alreadyDisabled = Boolean(frontmatter[key]);
+  let updated = content;
+  if (disabled && !alreadyDisabled) {
+    updated = content.replace(/^---\r?\n/, `---\n${key}: true\n`);
+    if (updated === content) updated = `---\n${key}: true\n---\n${content}`;
+  } else if (!disabled && alreadyDisabled) {
+    updated = content.replace(new RegExp(`^${key}\\s*:.*\\r?\\n`, "m"), "");
+  }
+  if (updated !== content) await writeFile(skillFile, updated, "utf8");
+}
+
 async function hazeAccessToken() {
   const config = getAuthConfig();
   const session = readRuntimeHazeSession();
@@ -148,7 +188,7 @@ async function downloadSkill(id: string, activeAccessToken?: string) {
   return Buffer.from(await packageResponse.arrayBuffer());
 }
 
-export async function installHazeCapability(cwd: string, scope: HazeInstallScope, capability: HazeCapabilityInput, activeAccessToken?: string) {
+export async function installHazeCapability(cwd: string, scope: HazeInstallScope, capability: HazeCapabilityInput, runtimeOptions?: HazeMcpRuntimeOptions, activeAccessToken?: string) {
   if (!/^\d+$/.test(capability.id)) throw new Error("无效的 Haze 能力 ID");
   const registry = await readRegistry(cwd, scope);
   const previous = registry.installs.find((item) => item.capabilityId === capability.id && item.type === capability.type);
@@ -169,10 +209,12 @@ export async function installHazeCapability(cwd: string, scope: HazeInstallScope
       await rm(temporary, { recursive: true, force: true });
       throw error;
     }
-    install = { capabilityId: capability.id, name: capability.name, type: "Skill", version: capability.version, scope, installedAt: new Date().toISOString(), skillPath: destination };
+    install = { capabilityId: capability.id, name: capability.name, type: "Skill", version: capability.version, scope, installedAt: new Date().toISOString(), skillPath: destination, disabled: previous?.disabled };
+    if (install.disabled) await setSkillModelInvocationDisabled(cwd, scope, install, true);
   } else {
     if (capability.connectType?.toUpperCase() !== "HTTP" || !capability.serverUrl) throw new Error("该组织 MCP 未提供可用的 HTTP 服务地址");
-    install = { capabilityId: capability.id, name: capability.name, type: "MCP", version: capability.version, scope, installedAt: new Date().toISOString(), serverUrl: capability.serverUrl, disabled: previous?.disabled };
+    const runtime = runtimeOptions ?? storedMcpRuntimeOptions(previous ?? {});
+    install = { capabilityId: capability.id, name: capability.name, type: "MCP", version: capability.version, scope, installedAt: new Date().toISOString(), serverUrl: capability.serverUrl, disabled: previous?.disabled, ...runtime };
   }
   registry.installs = [...registry.installs.filter((item) => !(item.capabilityId === capability.id && item.type === capability.type)), install];
   await writeRegistry(cwd, scope, registry);
@@ -188,11 +230,22 @@ export async function uninstallHazeCapability(cwd: string, scope: HazeInstallSco
   await writeRegistry(cwd, scope, registry);
 }
 
-export async function setHazeMcpDisabled(cwd: string, scope: HazeInstallScope, capabilityId: string, disabled: boolean) {
+export async function setHazeCapabilityDisabled(cwd: string, scope: HazeInstallScope, capabilityId: string, type: HazeCapabilityType, disabled: boolean) {
+  const registry = await readRegistry(cwd, scope);
+  const install = registry.installs.find((item) => item.capabilityId === capabilityId && item.type === type);
+  if (!install) throw new Error("该范围未安装此能力");
+  if (type === "Skill") await setSkillModelInvocationDisabled(cwd, scope, install, disabled);
+  install.disabled = disabled;
+  await writeRegistry(cwd, scope, registry);
+  return install;
+}
+
+export async function configureHazeManagedMcp(cwd: string, scope: HazeInstallScope, capabilityId: string, options: HazeMcpRuntimeOptions) {
   const registry = await readRegistry(cwd, scope);
   const install = registry.installs.find((item) => item.capabilityId === capabilityId && item.type === "MCP");
   if (!install) throw new Error("该范围未安装此 MCP");
-  install.disabled = disabled;
+  install.lifecycle = options.lifecycle;
+  install.idleTimeout = options.idleTimeout;
   await writeRegistry(cwd, scope, registry);
   return install;
 }

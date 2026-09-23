@@ -3,6 +3,7 @@
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { SidebarFooter, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar";
 import { useI18n } from "@/hooks/useI18n";
+import { Skeleton } from "./ui/skeleton";
 
 export type SidebarUser = {
   name: string;
@@ -26,7 +27,7 @@ function LogoutIcon() {
   return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path d="m16 17 5-5-5-5" /><path d="M21 12H9" /></svg>;
 }
 
-export function SidebarUserMenu({ user, onOpenSettings, onOpenModels }: { user: SidebarUser | null; onOpenSettings?: () => void; onOpenModels?: () => void }) {
+export function SidebarUserMenu({ user, loading = false, onOpenSettings, onOpenModels }: { user: SidebarUser | null; loading?: boolean; onOpenSettings?: () => void; onOpenModels?: () => void }) {
   const { t } = useI18n();
   const name = user?.name || t("account.loading");
   const email = user?.email || t("account.emailUnavailable");
@@ -43,15 +44,20 @@ export function SidebarUserMenu({ user, onOpenSettings, onOpenModels }: { user: 
       <SidebarMenu>
         <SidebarMenuItem>
           <DropdownMenu>
-            <DropdownMenuTrigger render={<SidebarMenuButton type="button" aria-label={name}>
-              <span className="flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[var(--bg-hover)] text-[var(--text-muted)]">
-                {user?.avatarUrl ? <img src={user.avatarUrl} alt="" className="size-full object-cover" /> : <DefaultUserIcon />}
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block truncate font-medium leading-5">{name}</span>
-                <span className="block truncate text-xs leading-4 text-[var(--text-muted)]">{email}</span>
-              </span>
-              <svg className="size-4 shrink-0 text-[var(--text-muted)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9" /></svg>
+            <DropdownMenuTrigger render={<SidebarMenuButton type="button" aria-label={name} disabled={loading} aria-busy={loading}>
+              {loading ? <>
+                <Skeleton className="size-8 shrink-0 rounded-full" />
+                <span className="flex min-w-0 flex-1 flex-col gap-1.5"><Skeleton className="h-3.5 w-24" /><Skeleton className="h-3 w-32" /></span>
+              </> : <>
+                <span className="flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[var(--bg-hover)] text-[var(--text-muted)]">
+                  {user?.avatarUrl ? <img src={user.avatarUrl} alt="" className="size-full object-cover" /> : <DefaultUserIcon />}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-medium leading-5">{name}</span>
+                  <span className="block truncate text-xs leading-4 text-[var(--text-muted)]">{email}</span>
+                </span>
+                <svg className="size-4 shrink-0 text-[var(--text-muted)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9" /></svg>
+              </>}
             </SidebarMenuButton>} />
             <DropdownMenuContent side="top" align="start" sideOffset={8} className="w-[var(--anchor-width)] min-w-52 bg-[var(--bg-panel)] text-[var(--text)]">
               <div className="flex items-center gap-2 px-2 py-2">

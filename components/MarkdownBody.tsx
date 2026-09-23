@@ -82,7 +82,7 @@ export function MarkdownBody({ children, className, isStreaming, cwd, onOpenFile
     table({ children }) {
       return (
         <div className="markdown-table-wrap">
-          <table>{children}</table>
+          <table className="markdown-table">{children}</table>
         </div>
       );
     },

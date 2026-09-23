@@ -8,6 +8,7 @@ import type { SessionInfo } from "@/lib/types";
 import { loadExplorerOpen, saveExplorerOpen } from "@/lib/file-explorer-state";
 import { dispatchSessionRowContextMenu } from "@/lib/session-row-context-menu";
 import { skillExpansionToCommand } from "@/lib/slash-display";
+import { clearLastSelectedProject, getLastSelectedProject, setLastSelectedProject } from "@/lib/workspace-memory";
 import { useI18n } from "@/hooks/useI18n";
 import { DirectoryPicker } from "./DirectoryPicker";
 import { FileExplorer, type FileExplorerHandle } from "./FileExplorer";
@@ -25,6 +26,8 @@ import {
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
+import { Skeleton } from "./ui/skeleton";
+import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogTitle } from "./ui/alert-dialog";
 import { CheckIcon, ChevronDownIcon, FolderGit2Icon, FolderIcon, FolderPlusIcon, GitBranchIcon, PlusIcon, Trash2Icon } from "lucide-react";
 
 declare global {
@@ -116,7 +119,6 @@ interface Props {
   onNewSession?: (sessionId: string, cwd: string) => void;
   initialSessionId?: string | null;
   skipInitialProjectSelection?: boolean;
-  onInitialRestoreDone?: () => void;
   refreshKey?: number;
   onSessionDeleted?: (sessionId: string) => void;
   selectedCwd?: string | null;
@@ -126,6 +128,7 @@ interface Props {
   onExplorerRefresh?: () => void;
   onAtMention?: (relativePath: string, isDir: boolean) => void;
   onAtMentions?: (relativePaths: string[]) => void;
+  revealDirectoryPath?: string | null;
   /** Fired when a session that is not currently selected finishes running.
    *  Lets the app play a cross-workspace completion tone. */
   onBackgroundTaskDone?: () => void;
@@ -385,7 +388,7 @@ function EurekaTitle() {
   );
 }
 
-export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSession, initialSessionId, skipInitialProjectSelection, onInitialRestoreDone, refreshKey, onSessionDeleted, selectedCwd: selectedCwdProp, onCwdChange, onOpenFile, explorerRefreshKey, onExplorerRefresh, onAtMention, onAtMentions, onBackgroundTaskDone, onRunningSessionIdsChange, onRequestHide, onOpenExtensionsCenter }: Props) {
+export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSession, initialSessionId, skipInitialProjectSelection, refreshKey, onSessionDeleted, selectedCwd: selectedCwdProp, onCwdChange, onOpenFile, explorerRefreshKey, onExplorerRefresh, onAtMention, onAtMentions, revealDirectoryPath, onBackgroundTaskDone, onRunningSessionIdsChange, onRequestHide, onOpenExtensionsCenter }: Props) {
   const { t } = useI18n();
   const [allSessions, setAllSessions] = useState<SessionInfo[]>([]);
   const [loading, setLoading] = useState(true);
@@ -676,13 +679,29 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
           onSelectSession(target, true);
           return;
         }
-        // Session not found — notify parent so it can show the placeholder
-        onInitialRestoreDone?.();
+        // Session not found — fall through to the default workspace below.
       }
       const projects = getRecentProjects(allSessions);
-      if (projects.length > 0) setSelectedCwd(projects[0]);
+      if (projects.length > 0) {
+        const rememberedProject = getLastSelectedProject();
+        setSelectedCwd(rememberedProject && projects.includes(rememberedProject) ? rememberedProject : projects[0]);
+      }
     }
-  }, [allSessions, selectedCwd, initialSessionId, skipInitialProjectSelection, onSelectSession, onInitialRestoreDone]);
+  }, [allSessions, selectedCwd, initialSessionId, skipInitialProjectSelection, onSelectSession]);
+
+  const defaultCwdRequestedRef = useRef(false);
+  useEffect(() => {
+    if (loading || error || selectedCwd !== null || allSessions.length > 0 || skipInitialProjectSelection || defaultCwdRequestedRef.current) return;
+    defaultCwdRequestedRef.current = true;
+    void fetch("/api/default-cwd", { method: "POST" })
+      .then((response) => response.json() as Promise<{ cwd?: string }>)
+      .then((data) => {
+        if (data.cwd) setSelectedCwd(data.cwd);
+      })
+      .catch(() => {
+        // Keep the selector usable if the default workspace cannot be created.
+      });
+  }, [allSessions.length, error, loading, selectedCwd, skipInitialProjectSelection]);
 
   // Prefer an exact UI selection while a refetch is in flight. Once the
   // response catches up, the server-resolved path handles Windows case and
@@ -816,7 +835,6 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
     setDropdownOpen(open);
     if (!open) {
       setProjectFilter("");
-      setProjectDeleteConfirm(null);
       setHoveredProject(null);
     }
   }, []);
@@ -859,6 +877,13 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
 
   // Sessions of every worktree in the selected project are shown together
   const selectedProject = projectRootFor(selectedCwd);
+  const projectDeleteSessionCount = projectDeleteConfirm
+    ? allSessions.filter((session) => (session.projectRoot ?? session.cwd) === projectDeleteConfirm && !session.transient).length
+    : 0;
+
+  useEffect(() => {
+    if (selectedProject) setLastSelectedProject(selectedProject);
+  }, [selectedProject]);
 
   // Per-project activity counts (running / unread) for the workspace selector.
   // Keyed the same way as getRecentProjects (projectRoot ?? cwd) so the counts
@@ -915,6 +940,8 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
       const deletedIds = new Set(sessionsToDelete.map((session) => session.id));
       setAllSessions((previous) => previous.filter((session) => !deletedIds.has(session.id)));
       setProjectDeleteConfirm(null);
+      clearLastSelectedProject(project);
+      if (selectedProject === project) setSelectedCwd(null);
       if (selectedSessionId && deletedIds.has(selectedSessionId)) {
         onSessionDeleted?.(selectedSessionId);
       }
@@ -926,7 +953,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
     } finally {
       setProjectDeleting(null);
     }
-  }, [allSessions, loadSessions, onSessionDeleted, projectDeleting, selectedSessionId, t]);
+  }, [allSessions, loadSessions, onSessionDeleted, projectDeleting, selectedProject, selectedSessionId, t]);
   const normalizedSessionSearch = sessionSearchQuery.trim().toLocaleLowerCase();
   const filteredSessions = normalizedSessionSearch
     ? projectSessions.filter((session) => {
@@ -1076,6 +1103,36 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
           onSelect={(path) => void commitCustomPath(path)}
         />
       )}
+      <AlertDialog
+        open={Boolean(projectDeleteConfirm)}
+        onOpenChange={(open) => {
+          if (!open && !projectDeleting) setProjectDeleteConfirm(null);
+        }}
+      >
+        <AlertDialogContent>
+          <div className="flex flex-col items-center px-6 pb-5 pt-6 text-center">
+            <div className="mb-4 grid size-10 place-items-center rounded-lg bg-[var(--danger-hover)] text-[var(--danger)]">
+              <Trash2Icon size={20} strokeWidth={2} aria-hidden="true" />
+            </div>
+            <AlertDialogTitle>{t("sidebar.deleteProject")}？</AlertDialogTitle>
+            <AlertDialogDescription className="mt-2 max-w-64">
+              {t("sidebar.deleteProjectConfirm", { count: projectDeleteSessionCount })}
+            </AlertDialogDescription>
+          </div>
+          <div className="flex gap-2 border-t border-[var(--border)] bg-[var(--bg)] px-4 py-3">
+            <AlertDialogCancel disabled={Boolean(projectDeleting)}>{t("sidebar.cancel")}</AlertDialogCancel>
+            <Button
+              type="button"
+              size="sm"
+              disabled={Boolean(projectDeleting) || !projectDeleteConfirm}
+              onClick={() => { if (projectDeleteConfirm) void handleDeleteProject(projectDeleteConfirm); }}
+              className="flex-1 bg-[var(--danger-hover)] text-[var(--danger)] hover:bg-[var(--danger-hover)]/80"
+            >
+              {projectDeleting ? t("sidebar.deleting") : t("sidebar.delete")}
+            </Button>
+          </div>
+        </AlertDialogContent>
+      </AlertDialog>
       {/* Header */}
       <div
         style={{
@@ -1114,8 +1171,8 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
               display: "flex",
               alignItems: "center",
               padding: "8px 10px",
-              background: selectedCwd ? "var(--bg-panel)" : "rgba(37,99,235,0.06)",
-              border: selectedCwd ? "1px solid var(--border)" : "1px solid rgba(37,99,235,0.4)",
+              background: "var(--bg-panel)",
+              border: "1px solid var(--border)",
               borderRadius: 8,
               cursor: "pointer",
               fontSize: 13,
@@ -1213,11 +1270,6 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
               )}
               <div style={{ maxHeight: 204, overflowY: "auto", paddingTop: 2 }}>
                 {visibleProjects.map((project) => {
-                  const isConfirmingDelete = projectDeleteConfirm === project;
-                  const isDeletingProject = projectDeleting === project;
-                  const sessionCount = allSessions.filter(
-                    (session) => (session.projectRoot ?? session.cwd) === project && !session.transient,
-                  ).length;
                   return (
                     <div
                       key={project}
@@ -1225,22 +1277,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
                       onMouseLeave={() => setHoveredProject((current) => current === project ? null : current)}
                       style={{ margin: "0 6px" }}
                     >
-                      {isConfirmingDelete ? (
-                        <div style={{ padding: "6px 5px", borderRadius: 5, background: "var(--bg-hover)" }}>
-                          <div style={{ padding: "0 5px 6px", color: "var(--text)", fontSize: 11, lineHeight: 1.35 }}>
-                            {t("sidebar.deleteProjectConfirm", { count: sessionCount })}
-                          </div>
-                          <div style={{ display: "flex", gap: 5 }}>
-                            <Button size="sm" disabled={isDeletingProject} onClick={() => void handleDeleteProject(project)} className="h-7 flex-1 text-xs" style={{ background: "var(--danger)", color: "white" }}>
-                              {isDeletingProject ? t("sidebar.deleting") : t("sidebar.delete")}
-                            </Button>
-                            <Button size="sm" variant="outline" disabled={isDeletingProject} onClick={() => setProjectDeleteConfirm(null)} className="h-7 flex-1 text-xs">
-                              {t("sidebar.cancel")}
-                            </Button>
-                          </div>
-                        </div>
-                      ) : (
-                        <div
+                      <div
                           style={{
                             display: "flex",
                             alignItems: "center",
@@ -1294,6 +1331,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
                                   onClick={(event) => {
                                     event.stopPropagation();
                                     setProjectDeleteConfirm(project);
+                                    setDropdownOpen(false);
                                   }}
                                   style={{
                                     display: "flex",
@@ -1326,7 +1364,6 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
                             <TooltipContent side="right">{t("sidebar.deleteProject")}</TooltipContent>
                           </Tooltip>
                         </div>
-                      )}
                     </div>
                   );
                 })}
@@ -1529,7 +1566,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
                             </button>
                             <button
                               onClick={() => setWtConfirmRemove(null)}
-                              style={{ padding: "3px 9px", background: "var(--bg-hover)", border: "1px solid var(--border)", borderRadius: 5, color: "var(--text-muted)", fontSize: 11, cursor: "pointer", flexShrink: 0 }}
+                              style={{ padding: "3px 9px", background: "var(--bg-hover)", borderRadius: 5, color: "var(--text-muted)", fontSize: 11, cursor: "pointer", flexShrink: 0 }}
                             >
                               {t("sidebar.cancel")}
                             </button>
@@ -1785,27 +1822,8 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
 
       {/* Session list */}
       <div style={{ flex: explorerOpen && (selectedCwdProp || selectedCwd) ? "1 1 0" : "1 1 auto", overflowY: "auto", padding: "0", minHeight: 80 }}>
-        <div style={{ position: "relative", height: 32, margin: "0 10px" }}>
-          <div
-            aria-hidden={sessionSearchOpen}
-            style={{
-              position: "absolute", inset: "0", display: "flex", alignItems: "center", justifyContent: "space-between",
-              opacity: sessionSearchOpen ? 0 : 1, transform: sessionSearchOpen ? "translateX(-6px)" : "none",
-              pointerEvents: sessionSearchOpen ? "none" : "auto", transition: "opacity 180ms ease, transform 180ms ease",
-            }}
-          >
-            <span style={{ fontSize: 12, fontWeight: 600, letterSpacing: "0.02em", color: "var(--text-muted)" }}>{t("sidebar.tasks")}</span>
-            <ToolbarIconButton onClick={() => setSessionSearchOpen(true)} title={t("sidebar.searchTasks")} color="var(--text-muted)">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="6" /><path d="m20 20-4-4" /></svg>
-            </ToolbarIconButton>
-          </div>
-          <div style={{
-            position: "absolute", top: 0, right: 0, height: 28, display: "flex", alignItems: "center", overflow: "hidden",
-            width: sessionSearchOpen ? "100%" : 26, opacity: sessionSearchOpen ? 1 : 0, pointerEvents: sessionSearchOpen ? "auto" : "none",
-            borderRadius: "var(--radius-control)", background: "var(--bg-hover)", border: "1px solid var(--border)",
-            transition: "width 180ms cubic-bezier(0.16, 1, 0.3, 1), opacity 180ms ease",
-          }}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" style={{ marginLeft: 8, flexShrink: 0, color: "var(--text-muted)" }}><circle cx="11" cy="11" r="6" /><path d="m20 20-4-4" /></svg>
+        {sessionSearchOpen ? <div style={{ height: 32, display: "flex", alignItems: "center", overflow: "hidden", background: "var(--bg-panel)", padding: "0 10px" }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" style={{ marginLeft: 2, flexShrink: 0, color: "var(--text-muted)" }}><circle cx="11" cy="11" r="6" /><path d="m20 20-4-4" /></svg>
             <input
               ref={sessionSearchRef}
               value={sessionSearchQuery}
@@ -1818,11 +1836,21 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
             <ToolbarIconButton onClick={() => { setSessionSearchOpen(false); setSessionSearchQuery(""); }} title={t("chat.close")} color="var(--text-muted)">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="m6 6 12 12M18 6 6 18" /></svg>
             </ToolbarIconButton>
-          </div>
-        </div>
+        </div> : <div style={{ height: 32, margin: "0 10px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <span style={{ fontSize: 12, fontWeight: 600, letterSpacing: "0.02em", color: "var(--text-muted)" }}>{t("sidebar.tasks")}</span>
+          <ToolbarIconButton onClick={() => setSessionSearchOpen(true)} title={t("sidebar.searchTasks")} color="var(--text-muted)" ariaPressed={false}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="6" /><path d="m20 20-4-4" /></svg>
+          </ToolbarIconButton>
+        </div>}
         {loading && (
-          <div style={{ padding: "16px 14px", color: "var(--text-muted)", fontSize: 12 }}>
-            {t("sidebar.loading")}
+          <div aria-busy="true" aria-label={t("sidebar.loading")} className="space-y-3 px-3 py-3">
+            {["session-1", "session-2", "session-3", "session-4", "session-5"].map((id, index) => (
+              <div key={id} className="flex items-center gap-3">
+                <Skeleton className="size-3 shrink-0 rounded-full" />
+                <Skeleton className={`h-3.5 ${index % 2 === 0 ? "w-32" : "w-44"}`} />
+                <Skeleton className="ml-auto h-3 w-8" />
+              </div>
+            ))}
           </div>
         )}
         {error && (
@@ -1838,7 +1866,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
             {t("sidebar.noMatchingTasks")}
           </div>
         )}
-        {sessionTree.map((node) => (
+        {!loading && sessionTree.map((node) => (
           <SessionTreeItem
             key={node.session.id}
             node={node}
@@ -1967,6 +1995,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
                 refreshKey={explorerKey}
                 onAtMention={onAtMention}
                 onAtMentions={onAtMentions}
+                revealDirectoryPath={revealDirectoryPath}
                 onUploadBusyChange={setExplorerUploadBusy}
                 changesCollapsed={changesCollapsed}
                 onChangesCountChange={setChangesCount}
@@ -2246,10 +2275,11 @@ function SessionItem({
 
   const performDelete = useCallback(async () => {
     if (session.transient) return;
-    setConfirmDelete(false);
     setDeleting(true);
     try {
-      await fetch(`/api/sessions/${encodeURIComponent(session.id)}`, { method: "DELETE" });
+      const response = await fetch(`/api/sessions/${encodeURIComponent(session.id)}`, { method: "DELETE" });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      setConfirmDelete(false);
       onDeleted?.(session.id);
     } catch {
       setDeleting(false);
@@ -2264,16 +2294,6 @@ function SessionItem({
       setConfirmDelete(true);
     }
   }, [performDelete]);
-
-  const handleDeleteConfirm = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
-    void performDelete();
-  }, [performDelete]);
-
-  const handleDeleteCancel = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
-    setConfirmDelete(false);
-  }, []);
 
   const handleContextMenu = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     const handled = dispatchSessionRowContextMenu({
@@ -2301,6 +2321,31 @@ function SessionItem({
   const ITEM_HEIGHT = 32;
 
   return (
+    <>
+      <AlertDialog
+        open={confirmDelete}
+        onOpenChange={(open) => {
+          if (!open && !deleting) setConfirmDelete(false);
+        }}
+      >
+        <AlertDialogContent>
+          <div className="flex flex-col items-center px-6 pb-5 pt-6 text-center">
+            <div className="mb-4 grid size-10 place-items-center rounded-lg bg-[var(--danger-hover)] text-[var(--danger)]">
+              <Trash2Icon size={20} strokeWidth={2} aria-hidden="true" />
+            </div>
+            <AlertDialogTitle>{t("sidebar.deleteSession", { title: title.slice(0, 28) + (title.length > 28 ? "…" : "") })}</AlertDialogTitle>
+            <AlertDialogDescription className="mt-2 max-w-64">
+              {t("sidebar.deleteSessionDescription")}
+            </AlertDialogDescription>
+          </div>
+          <div className="flex gap-2 border-t border-[var(--border)] bg-[var(--bg)] px-4 py-3">
+            <AlertDialogCancel disabled={deleting}>{t("sidebar.cancel")}</AlertDialogCancel>
+            <Button type="button" size="sm" disabled={deleting} onClick={() => void performDelete()} className="flex-1 bg-[var(--danger-hover)] text-[var(--danger)] hover:bg-[var(--danger-hover)]/80">
+              {deleting ? t("sidebar.deleting") : t("sidebar.delete")}
+            </Button>
+          </div>
+        </AlertDialogContent>
+      </AlertDialog>
     <div
       ref={sessionRowRef}
       onClick={confirmDelete || renaming ? undefined : (event) => {
@@ -2318,12 +2363,8 @@ function SessionItem({
         paddingLeft: depth > 0 ? depth * 12 + 14 : 14,
         paddingRight: 8,
         cursor: confirmDelete || renaming ? "default" : "pointer",
-        background: confirmDelete
-          ? "rgba(239,68,68,0.06)"
-          : isSelected || hovered ? "color-mix(in srgb, var(--text) 4%, var(--sidebar-bg))" : "transparent",
-        borderLeft: confirmDelete
-          ? "2px solid #ef4444"
-          : isSelected ? "2px solid var(--accent)" : "2px solid transparent",
+        background: isSelected || hovered ? "color-mix(in srgb, var(--text) 4%, var(--sidebar-bg))" : "transparent",
+        borderLeft: isSelected ? "2px solid var(--accent)" : "2px solid transparent",
         transition: "background 0.1s",
         opacity: deleting ? 0.5 : 1,
         gap: 6,
@@ -2332,48 +2373,7 @@ function SessionItem({
         zIndex: actionMenuOpen ? 2 : 0,
       }}
     >
-      {confirmDelete ? (
-        /* ── Delete confirmation: same height, two flat buttons ── */
-        <>
-          <div style={{ flex: 1, minWidth: 0, fontSize: 12, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {t("sidebar.deleteSession", { title: title.slice(0, 22) + (title.length > 22 ? "…" : "") })}
-          </div>
-          <div style={{ display: "flex", gap: 5, flexShrink: 0 }}>
-            <button
-              onClick={handleDeleteConfirm}
-              style={{
-                display: "flex", alignItems: "center", justifyContent: "center", gap: 4,
-                height: 30, padding: "0 11px",
-                background: "#ef4444", border: "none",
-                borderRadius: 6, color: "#fff",
-                cursor: "pointer", fontSize: 12, fontWeight: 600,
-                whiteSpace: "nowrap",
-              }}
-            >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="3 6 5 6 21 6" />
-                <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-                <path d="M10 11v6M14 11v6" />
-                <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
-              </svg>
-              {t("sidebar.delete")}
-            </button>
-            <button
-              onClick={handleDeleteCancel}
-              style={{
-                display: "flex", alignItems: "center", justifyContent: "center",
-                height: 30, padding: "0 11px",
-                background: "var(--bg)", border: "1px solid var(--border)",
-                borderRadius: 6, color: "var(--text-muted)",
-                cursor: "pointer", fontSize: 12, fontWeight: 500,
-                whiteSpace: "nowrap",
-              }}
-            >
-              {t("sidebar.cancel")}
-            </button>
-          </div>
-        </>
-      ) : renaming ? (
+      {renaming ? (
         /* ── Rename: input fills the same row ── */
         <input
           ref={inputRef}
@@ -2389,7 +2389,7 @@ function SessionItem({
             flex: 1,
             fontSize: 12,
             padding: "5px 8px",
-            border: "1px solid var(--accent)",
+            border: "1px solid var(--border)",
             borderRadius: 5,
             outline: "none",
             background: "var(--bg)",
@@ -2569,7 +2569,7 @@ function SessionItem({
                 <div
                   role="menu"
                   onClick={(event) => event.stopPropagation()}
-                  style={{ position: "absolute", top: "calc(100% + 4px)", right: 0, zIndex: 20, width: 120, padding: 3, border: "1px solid var(--border)", borderRadius: "var(--radius-card)", background: "var(--bg-panel)", boxShadow: "var(--shadow-soft)" }}
+                  style={{ position: "absolute", top: "calc(100% + 4px)", right: 0, zIndex: 20, width: 120, padding: 3, border: "1px solid var(--border)", borderRadius: 8, background: "var(--bg-panel)", boxShadow: "var(--shadow-soft)" }}
                 >
                   <button role="menuitem" onClick={(event) => { startRename(event); setActionMenuOpen(false); }} style={{ display: "flex", alignItems: "center", gap: 7, width: "100%", height: 24, padding: "0 8px", background: "transparent", border: "none", borderRadius: 5, color: "var(--text)", cursor: "pointer", textAlign: "left", fontSize: 11, fontWeight: 600 }} onMouseEnter={(event) => { event.currentTarget.style.background = "var(--bg-hover)"; }} onMouseLeave={(event) => { event.currentTarget.style.background = "transparent"; }}>
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path stroke="var(--text)" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" d="M12 20h9M3 20h1.675c.489 0 .733 0 .964-.055q.308-.075.578-.24c.201-.123.374-.296.72-.642L19.5 6.5a2.121 2.121 0 0 0-3-3L3.937 16.063c-.346.346-.519.519-.642.72a2 2 0 0 0-.24.578c-.055.23-.055.475-.055.965z" /></svg>
@@ -2589,7 +2589,7 @@ function SessionItem({
                 style={{
                   display: "flex", alignItems: "center", justifyContent: "center",
                   width: 32, height: 32, padding: 0,
-                  background: "var(--bg-hover)", border: "1px solid var(--border)",
+                  background: "var(--bg-hover)",
                   borderRadius: 7, color: "var(--text-muted)",
                   cursor: "pointer", flexShrink: 0,
                   transition: "background 0.12s, color 0.12s, border-color 0.12s",
@@ -2615,7 +2615,7 @@ function SessionItem({
                 style={{
                   display: "flex", alignItems: "center", justifyContent: "center",
                   width: 32, height: 32, padding: 0,
-                  background: "var(--bg-hover)", border: "1px solid var(--border)",
+                  background: "var(--bg-hover)",
                   borderRadius: 7, color: "var(--text-muted)",
                   cursor: "pointer", flexShrink: 0,
                   transition: "background 0.12s, color 0.12s, border-color 0.12s",
@@ -2644,5 +2644,6 @@ function SessionItem({
         </>
       )}
     </div>
+    </>
   );
 }

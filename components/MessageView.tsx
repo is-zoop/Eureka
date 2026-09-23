@@ -11,6 +11,7 @@ import { getAssistantErrorMessage, isEmptyThinkingBlock } from "@/lib/message-di
 import { parseUnifiedPatch, type SplitDiffCell } from "@/lib/patch";
 import { isEditToolName } from "@/lib/tool-names";
 import { TurnWrittenFiles } from "./TurnWrittenFiles";
+import { FolderIcon, getFileIcon } from "./FileIcons";
 import type { WrittenFile } from "@/lib/turn-written-files";
 import { skillExpansionToCommand } from "@/lib/slash-display";
 import type {
@@ -183,6 +184,7 @@ interface Props {
   modelNames?: Record<string, string>;
   cwd?: string;
   onOpenFile?: (filePath: string) => void;
+  onOpenReference?: (reference: { path: string; isDir: boolean }) => void;
   entryId?: string;
   onFork?: (entryId: string) => void;
   forking?: boolean;
@@ -247,9 +249,9 @@ function haveSameRelevantToolResults(
   return true;
 }
 
-export const MessageView = memo(function MessageView({ message, isStreaming, toolResults, modelNames, cwd, onOpenFile, entryId, onFork, forking, onNavigate, prevAssistantEntryId, onEditContent, showTimestamp, prevTimestamp, sessionId, writtenFiles }: Props) {
+export const MessageView = memo(function MessageView({ message, isStreaming, toolResults, modelNames, cwd, onOpenFile, onOpenReference, entryId, onFork, forking, onNavigate, prevAssistantEntryId, onEditContent, showTimestamp, prevTimestamp, sessionId, writtenFiles }: Props) {
   if (message.role === "user") {
-    return <UserMessageView message={message as UserMessage} cwd={cwd} onOpenFile={onOpenFile} entryId={entryId} onFork={onFork} forking={forking} onNavigate={onNavigate} prevAssistantEntryId={prevAssistantEntryId} onEditContent={onEditContent} />;
+    return <UserMessageView message={message as UserMessage} cwd={cwd} onOpenFile={onOpenFile} onOpenReference={onOpenReference} entryId={entryId} onFork={onFork} forking={forking} onNavigate={onNavigate} prevAssistantEntryId={prevAssistantEntryId} onEditContent={onEditContent} />;
   }
   if (message.role === "assistant") {
     return <AssistantMessageView message={message as AssistantMessage} isStreaming={isStreaming} toolResults={toolResults} modelNames={modelNames} cwd={cwd} onOpenFile={onOpenFile} showTimestamp={showTimestamp} prevTimestamp={prevTimestamp} sessionId={sessionId} entryId={entryId} writtenFiles={writtenFiles} />;
@@ -261,6 +263,11 @@ export const MessageView = memo(function MessageView({ message, isStreaming, too
   if (message.role === "custom") {
     if ((message as CustomMessage).customType === "compaction") {
       return <CompactionMessageView message={message as CustomMessage} />;
+    }
+    // These messages only frame the runtime's plan-mode behavior. They must
+    // remain in the session for the agent, but add no user-facing content.
+    if (["eureka-plan-mode-exit", "eureka-plan-framing", "eureka-plan-execution-framing"].includes((message as CustomMessage).customType)) {
+      return null;
     }
     return <CustomMessageView message={message as CustomMessage} cwd={cwd} onOpenFile={onOpenFile} />;
   }
@@ -275,6 +282,7 @@ export const MessageView = memo(function MessageView({ message, isStreaming, too
     && prev.modelNames === next.modelNames
     && prev.cwd === next.cwd
     && prev.onOpenFile === next.onOpenFile
+    && prev.onOpenReference === next.onOpenReference
     && prev.entryId === next.entryId
     && prev.onFork === next.onFork
     && prev.forking === next.forking
@@ -286,10 +294,36 @@ export const MessageView = memo(function MessageView({ message, isStreaming, too
     && prev.sessionId === next.sessionId;
 });
 
-function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, onNavigate, prevAssistantEntryId, onEditContent }: {
+interface DisplayReference { path: string; isDir: boolean; }
+
+/** Only consumes consecutive leading @path tokens. This keeps prose, code and
+ * historical inline mentions untouched while supporting both old and new turns. */
+export function parseLeadingFileReferences(content: string): { references: DisplayReference[]; body: string } {
+  const references: DisplayReference[] = [];
+  let offset = 0;
+  while (offset < content.length) {
+    const whitespace = content.slice(offset).match(/^\s*/)?.[0] ?? "";
+    const start = offset + whitespace.length;
+    if (content[start] !== "@") break;
+    const quoted = content[start + 1] === '"';
+    const end = quoted
+      ? content.indexOf('"', start + 2)
+      : (() => { const match = content.slice(start + 1).match(/^\S+/); return match ? start + 1 + match[0].length : -1; })();
+    if (end < 0) break;
+    const path = quoted ? content.slice(start + 2, end) : content.slice(start + 1, end);
+    if (!path || path.includes(":")) break; // line references stay as ordinary text
+    const isDir = path.endsWith("/");
+    references.push({ path: isDir ? path.slice(0, -1) : path, isDir });
+    offset = quoted ? end + 1 : end;
+  }
+  return references.length ? { references, body: content.slice(offset).trimStart() } : { references: [], body: content };
+}
+
+function UserMessageView({ message, cwd, onOpenFile, onOpenReference, entryId, onFork, forking, onNavigate, prevAssistantEntryId, onEditContent }: {
   message: UserMessage;
   cwd?: string;
   onOpenFile?: (filePath: string) => void;
+  onOpenReference?: (reference: DisplayReference) => void;
   entryId?: string;
   onFork?: (entryId: string) => void;
   forking?: boolean;
@@ -314,6 +348,8 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
     typeof message.content === "string"
       ? []
       : message.content.filter((b): b is ImageContent => b.type === "image");
+
+  const { references, body: displayContent } = parseLeadingFileReferences(content);
 
   const commandText = skillExpansionToCommand(content);
   const commandSeparator = commandText?.search(/\s/) ?? -1;
@@ -449,7 +485,21 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
           ) : (
           <>
           {imageBlocksNode}
-          {content && <SafeMarkdownBody className="markdown-user-message" cwd={cwd} onOpenFile={onOpenFile}>{content}</SafeMarkdownBody>}
+          {references.length > 0 && (
+            <div aria-label="已引用文件" style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: displayContent || imageBlocks.length ? 8 : 0 }}>
+              {references.map((reference) => {
+                const fileName = reference.path.replace(/\\/g, "/").split("/").at(-1) ?? reference.path;
+                const label = `${fileName}${reference.isDir ? "/" : ""}`;
+                return (
+                  <button key={`${reference.isDir ? "dir" : "file"}:${reference.path}`} type="button" title={reference.path} onClick={() => onOpenReference?.(reference)} style={{ display: "inline-flex", alignItems: "center", gap: 5, maxWidth: "100%", height: 26, padding: "0 8px", border: "1px solid color-mix(in srgb, var(--accent) 25%, var(--border))", borderRadius: 7, background: "var(--bg-panel)", color: "var(--text-muted)", cursor: "pointer" }}>
+                    <span style={{ display: "inline-flex", flexShrink: 0 }}>{reference.isDir ? <FolderIcon size={14} /> : getFileIcon(fileName, 14)}</span>
+                    <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 12 }}>{label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+          {displayContent && <SafeMarkdownBody className="markdown-user-message" cwd={cwd} onOpenFile={onOpenFile}>{displayContent}</SafeMarkdownBody>}
           </>
           )}
         </div>

@@ -92,8 +92,19 @@ export function getSessionPlans(state: EurekaPlanState): EurekaPlanState[] {
 
 export function parsePlanTodos(content: string): EurekaPlanTodo[] {
   const todos: EurekaPlanTodo[] = [];
+  let inExecutableSection = false;
   for (const line of content.split(/\r?\n/)) {
-    const match = line.match(/^\s*[-*+]\s+(?:\[([ xX])\]\s+)?(.+)$/);
+    const heading = line.match(/^\s{0,3}#{1,6}\s+(.+?)\s*#*\s*$/);
+    if (heading) {
+      const title = heading[1].trim().replace(/[：:]$/, "");
+      inExecutableSection = /^(?:实施(?:步骤|清单)?|实现(?:步骤|清单)?|implementation steps?|验证(?:方式)?|verification)$/i.test(title);
+      continue;
+    }
+    if (!inExecutableSection) continue;
+    // A plan may contain bullets for affected areas and risks.  Those describe
+    // context, not work the agent can complete, so only explicit task-list
+    // items from executable sections become progress entries.
+    const match = line.match(/^\s*[-*+]\s+\[([ xX])\]\s+(.+)$/);
     if (!match) continue;
     todos.push({ index: todos.length + 1, text: match[2].trim(), done: /x/i.test(match[1] ?? "") });
   }
@@ -105,7 +116,8 @@ export function isReviewablePlan(content: string): boolean {
   const hasGoal = /(?:^|\n)#{1,6}\s*(?:目标|Goal)(?:\s|$)/im.test(content);
   const hasSteps = /(?:^|\n)#{1,6}\s*(?:实施(?:步骤|清单)?|实现(?:步骤|清单)?|Implementation steps?)(?:\s|$)/im.test(content)
     && /^\s*[-*+]\s+\[ \]\s+.+$/m.test(content);
-  const hasVerification = /(?:^|\n)#{1,6}\s*(?:验证(?:方式)?|Verification)(?:\s|$)/im.test(content);
+  const hasVerification = /(?:^|\n)#{1,6}\s*(?:验证(?:方式)?|Verification)(?:\s|$)/im.test(content)
+    && /^\s*[-*+]\s+\[ \]\s+.+$/m.test(content.slice(content.search(/(?:^|\n)#{1,6}\s*(?:验证(?:方式)?|Verification)(?:\s|$)/im)));
   return hasGoal && hasSteps && hasVerification;
 }
 
@@ -115,6 +127,23 @@ export function markPlanTodosDone(todos: EurekaPlanTodo[], assistantText: string
   );
   if (completed.size === 0) return todos;
   return todos.map((todo) => completed.has(todo.index) ? { ...todo, done: true } : todo);
+}
+
+function normalizeStoredPlanTodos(state: EurekaPlanState): EurekaPlanState {
+  const normalizeOne = (plan: EurekaPlanState): EurekaPlanState => {
+    const parsed = parsePlanTodos(plan.content);
+    if (parsed.length === 0) return plan;
+    const completedTexts = new Set(plan.todos.filter((todo) => todo.done).map((todo) => todo.text));
+    return {
+      ...plan,
+      todos: parsed.map((todo) => ({ ...todo, done: todo.done || completedTexts.has(todo.text) })),
+    };
+  };
+  const current = normalizeOne(state);
+  return {
+    ...current,
+    plans: current.plans.map((plan) => normalizeOne(plan)),
+  };
 }
 
 export function getPendingPlanQuestion(state: EurekaPlanState): EurekaPlanQuestion | null {
@@ -178,12 +207,12 @@ export function readPlanState(entries: SessionEntry[]): EurekaPlanState {
           plans: state.activePlanId ? [...state.plans, planSnapshot(state)] : state.plans,
         };
       }
-      return state;
+      return normalizeStoredPlanTodos(state);
     }
   }
   return EMPTY_PLAN_STATE;
 }
 
-export const PLAN_MODE_SYSTEM_PROMPT = `You are in Eureka planning mode. Explore and analyze only. You must not edit files, write files, run shell commands, install packages, invoke MCP/extension tools, commit, or otherwise change the workspace. Do not output implementation source code, complete scripts, patches, or commands that perform the task. First inspect the available context. If a material requirement is missing, call request_user_input exactly once with one question and 2–4 mutually exclusive options; never ask a clarification in normal text. If the information is sufficient, state your assumptions instead. Then provide one concise Markdown implementation plan only, with headings exactly equivalent to: Goal, Affected areas, Implementation steps, Risks, and Verification. Implementation steps must use unchecked checklist items (- [ ]). Do not start implementation until the user explicitly approves the submitted plan.`;
+export const PLAN_MODE_SYSTEM_PROMPT = `You are in Eureka planning mode. Explore and analyze only. You must not edit files, write files, run shell commands, install packages, invoke MCP/extension tools, commit, or otherwise change the workspace. Do not output implementation source code, complete scripts, patches, or commands that perform the task. First inspect the available context. If a material requirement is missing, call request_user_input exactly once with one question and 2–4 mutually exclusive options; never ask a clarification in normal text. If the information is sufficient, state your assumptions instead. Then provide one concise Markdown implementation plan only, with headings exactly equivalent to: Goal, Affected areas, Implementation steps, Risks, and Verification. Every actionable implementation and verification item must use an unchecked checklist item (- [ ]). Affected areas and risks must be ordinary bullets, never checklist items. Do not start implementation until the user explicitly approves the submitted plan.`;
 
-export const PLAN_EXECUTION_SYSTEM_PROMPT = `You are executing a native Eureka plan that the user explicitly approved. The approved plan is included below in this session context; it is not a PLAN.md, plan.md, TODO.md, or any other project file. Do not search for a plan document and do not invoke Plannotator planning commands. Implement the approved checklist in order. After completing a checklist item, include [DONE:n] in your response, where n is that item's 1-based number. If the approved plan is no longer sufficient, stop making changes and ask the user to return to planning mode.`;
+export const PLAN_EXECUTION_SYSTEM_PROMPT = `You are executing a native Eureka plan that the user explicitly approved. The approved plan is included below in this session context; it is not a PLAN.md, plan.md, TODO.md, or any other project file. Do not search for a plan document and do not invoke Plannotator planning commands. Implement the approved checklist in order. After completing a checklist item, include [DONE:n] in your response, where n is that item's 1-based number. Do not claim the plan is complete while any checklist item remains. If the approved plan is no longer sufficient, stop making changes and ask the user to return to planning mode.`;

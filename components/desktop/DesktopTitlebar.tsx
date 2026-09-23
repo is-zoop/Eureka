@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { UnlistenFn } from "@tauri-apps/api/event";
+import { useTheme } from "@/hooks/useTheme";
 
 function isTauriDesktop(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -30,6 +31,7 @@ function CloseGlyph() {
  * Windows 11 maximize-button Snap Layout popup.
  */
 export function DesktopTitlebar() {
+  const { isDark } = useTheme();
   const [desktop, setDesktop] = useState(false);
   const [maximized, setMaximized] = useState(false);
   const [focused, setFocused] = useState(true);
@@ -89,7 +91,7 @@ export function DesktopTitlebar() {
       style={{ display: "flex", position: "fixed", zIndex: 1000, inset: "0 0 auto", height: 32, minHeight: 32, color: "var(--text)", background: "var(--sidebar-bg)", userSelect: "none" }}
     >
       <div className="desktop-titlebar-drag" data-tauri-drag-region onDoubleClick={toggleMaximize} style={{ display: "flex", flex: 1, alignItems: "center", minWidth: 0, paddingLeft: 10 }}>
-        <img className="desktop-titlebar-icon" src="/icons/icon-192.png" alt="" draggable={false} data-tauri-drag-region style={{ width: 16, height: 16, marginRight: 6, flex: "0 0 16px" }} />
+        <img className="desktop-titlebar-icon" src={isDark ? "/icons/logo-white-transparent.png" : "/icons/logo-black-transparent.png"} alt="" draggable={false} data-tauri-drag-region style={{ width: 16, height: 16, marginRight: 6, flex: "0 0 16px" }} />
         <span className="desktop-titlebar-name" data-tauri-drag-region>Eureka</span>
       </div>
       <div className="desktop-titlebar-controls" aria-label="Window controls" style={{ display: "flex", flex: "0 0 auto", height: 32 }}>

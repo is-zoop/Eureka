@@ -11,10 +11,10 @@ const AUTO_DISMISS_MS = 3_000;
 const tones = {
   // Keep the container neutral; severity is conveyed by the icon and copy,
   // matching the shadcn Alert examples supplied for this screen.
-  error: { title: "错误", icon: AlertCircleIcon, color: "#ff0000", descriptionColor: "#ff0000" },
-  warning: { title: "警告", icon: AlertTriangleIcon, color: "#9a4f00", descriptionColor: "#6b7280" },
-  success: { title: "成功", icon: CheckCircle2Icon, color: "#111827", descriptionColor: "#6b7280" },
-  info: { title: "提示", icon: InfoIcon, color: "#111827", descriptionColor: "#6b7280" },
+  error: { title: "错误", icon: AlertCircleIcon, color: "#f87171", descriptionColor: "var(--text-muted)" },
+  warning: { title: "警告", icon: AlertTriangleIcon, color: "#fbbf24", descriptionColor: "var(--text-muted)" },
+  success: { title: "成功", icon: CheckCircle2Icon, color: "var(--text)", descriptionColor: "var(--text-muted)" },
+  info: { title: "提示", icon: InfoIcon, color: "var(--text)", descriptionColor: "var(--text-muted)" },
 };
 
 /** Bridge existing state-based feedback to the global layer without a layout box. */
@@ -117,7 +117,7 @@ function NotificationCard({ item }: { item: NotificationItem }) {
   return <Alert
     role={item.type === "error" || item.type === "warning" ? "alert" : "status"}
     className="notification-card"
-    style={{ flexShrink: 0, pointerEvents: "auto", borderColor: "#e5e7eb", boxShadow: "0 4px 16px rgb(0 0 0 / 12%)" }}
+    style={{ flexShrink: 0, pointerEvents: "auto", borderColor: "var(--border)", boxShadow: "0 4px 16px rgb(0 0 0 / 24%)" }}
     onMouseEnter={clearTimer}
     onMouseLeave={startTimer}
   >

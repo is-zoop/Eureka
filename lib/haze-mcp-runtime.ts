@@ -7,7 +7,7 @@ type McpAdapter = { registerMcpServer: (options: { pi: unknown; name: string; de
 
 let adapterModule: Promise<McpAdapter> | null = null;
 
-type ManagedMcp = { capabilityId: string; name: string; serverUrl?: string; type: "MCP" | "Skill"; disabled?: boolean };
+type ManagedMcp = { capabilityId: string; name: string; serverUrl?: string; type: "MCP" | "Skill"; disabled?: boolean; lifecycle?: "lazy" | "eager" | "keep-alive"; idleTimeout?: number };
 
 function adapter() {
   adapterModule ??= createJiti(import.meta.url, { interopDefault: true }).import("pi-mcp-adapter") as Promise<McpAdapter>;
@@ -51,8 +51,8 @@ export async function installHazeManagedMcpRuntime(pi: ExtensionAPI) {
             // inside the local process, so credential reset is picked up on
             // the next connection without storing a token in env or config.
             requestHeadersCommand: { command: process.execPath, args: [headerHook], timeoutMs: 10_000 },
-            lifecycle: "lazy",
-            idleTimeout: 10,
+            lifecycle: install.lifecycle ?? "lazy",
+            idleTimeout: install.idleTimeout ?? 10,
           },
         });
       } catch (error) {

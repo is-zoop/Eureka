@@ -670,29 +670,23 @@ a {
   appearance: none;
   position: absolute;
   left: 0;
-  top: 0.35em;
-  width: 14px;
-  height: 14px;
+  top: 0.22em;
+  width: 16px;
+  height: 16px;
   margin: 0;
   border: 1px solid var(--border);
   border-radius: 4px;
-  background: var(--bg);
-  display: inline-grid;
-  place-content: center;
+  background: var(--bg-panel);
+  pointer-events: none;
 }
 .markdown-body .task-list-item > input[type="checkbox"]:checked,
 .markdown-body .task-list-item > p:first-child > input[type="checkbox"]:first-child:checked {
-  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
-  background: color-mix(in srgb, var(--accent) 10%, var(--bg));
-}
-.markdown-body .task-list-item > input[type="checkbox"]:checked::before,
-.markdown-body .task-list-item > p:first-child > input[type="checkbox"]:first-child:checked::before {
-  content: "";
-  width: 4px;
-  height: 8px;
-  border: solid var(--accent);
-  border-width: 0 1.5px 1.5px 0;
-  transform: rotate(45deg) translateY(-1px);
+  border-color: var(--text);
+  background-color: var(--text);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23fff' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m5 12 4 4L19 6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 12px;
 }
 .markdown-body blockquote {
   border-left: 3px solid color-mix(in srgb, var(--border) 75%, var(--text-muted));
@@ -703,43 +697,90 @@ a {
   color: var(--text-muted);
 }
 .markdown-table-wrap {
+  position: relative;
   width: 100%;
-  margin: 8px 0;
+  margin: 12px 0;
   overflow-x: auto;
   overflow-y: hidden;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-card);
-  background: var(--bg-panel);
-  box-shadow: 0 2px 8px color-mix(in srgb, var(--text) 8%, transparent);
+  background: transparent;
 }
-.markdown-body table {
-  border-collapse: separate;
-  border-spacing: 0;
-  min-width: max(100%, 480px);
+
+/* Plan mode remains visually calm, but its composer carries a subtle blue wave. */
+@property --plan-flow-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+
+.plan-mode-composer.plan-mode-composer-active::before {
+  content: "";
+  position: absolute;
+  inset: -4px;
+  z-index: 2;
+  padding: 1.5px;
+  border-radius: 20px;
+  background: conic-gradient(
+    from var(--plan-flow-angle),
+    transparent 0deg,
+    transparent 210deg,
+    rgba(96, 165, 250, 0.2) 244deg,
+    #3b82f6 282deg,
+    rgba(147, 197, 253, 0.86) 310deg,
+    transparent 350deg
+  );
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+  animation: plan-composer-border-flow 2.8s linear 720ms infinite;
+}
+
+@keyframes plan-composer-border-flow {
+  to { --plan-flow-angle: 1turn; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .plan-mode-composer.plan-mode-composer-active::before {
+    animation: none;
+    opacity: 0.7;
+    --plan-flow-angle: 282deg;
+  }
+}
+.markdown-body .markdown-table {
+  width: 100%;
+  min-width: max-content;
+  border-collapse: collapse;
   font-size: 13px;
   line-height: 1.45;
 }
-.markdown-body th, .markdown-body td {
-  border: 0;
+.markdown-body .markdown-table thead tr {
   border-bottom: 1px solid var(--border);
-  padding: 7px 10px;
-  vertical-align: top;
 }
-.markdown-body th:not(:last-child),
-.markdown-body td:not(:last-child) {
-  border-right: 1px solid var(--border);
-}
-.markdown-body tr:last-child td { border-bottom: 0; }
-.markdown-body th {
-  background: color-mix(in srgb, var(--bg-panel) 88%, var(--bg));
-  color: color-mix(in srgb, var(--text) 88%, var(--text-muted));
-  font-weight: 600;
-}
-.markdown-body tbody tr {
+.markdown-body .markdown-table tbody tr {
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
   transition: background-color var(--transition-ui);
 }
-.markdown-body tbody tr:hover td {
-  background: color-mix(in srgb, var(--bg-hover) 72%, transparent);
+.markdown-body .markdown-table tbody tr:last-child { border-bottom: 0; }
+.markdown-body .markdown-table th {
+  height: 40px;
+  padding: 8px 12px;
+  vertical-align: middle;
+  background: color-mix(in srgb, var(--bg-subtle) 78%, var(--bg-panel));
+  color: var(--text-muted);
+  font-weight: 500;
+  text-align: left;
+  white-space: nowrap;
+}
+.markdown-body .markdown-table td {
+  padding: 10px 12px;
+  vertical-align: middle;
+}
+.markdown-body .markdown-table th[align="center"],
+.markdown-body .markdown-table td[align="center"] { text-align: center; }
+.markdown-body .markdown-table th[align="right"],
+.markdown-body .markdown-table td[align="right"] { text-align: right; }
+.markdown-body .markdown-table tbody tr:hover {
+  background: color-mix(in srgb, var(--bg-hover) 68%, transparent);
 }
 .markdown-body hr {
   border: none;
@@ -1645,6 +1686,10 @@ span.linenumber {
   /* The panel itself owns the visible border. The resize handle is only a
      wider transparent pointer target, so it cannot create a second line. */
   content: none;
+}
+
+html.dark [data-slot="switch-thumb"] {
+  background: #fff;
 }
 .right-panel-overlay-backdrop {
   display: none;

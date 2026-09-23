@@ -14,12 +14,13 @@ export async function POST(
   try {
     const body = await req.json() as { type: string; [key: string]: unknown };
     commandType = typeof body.type === "string" ? body.type : undefined;
+    const isPromptCommand = body.type === "prompt" || body.type === "execute_plan";
 
     // Fast path: already-running session
     const existing = getRpcSession(id);
     if (existing?.isAlive()) {
       const result = await existing.send(body);
-      promptAccepted = body.type === "prompt";
+      promptAccepted = isPromptCommand;
       return NextResponse.json({ success: true, data: result });
     }
 
@@ -27,7 +28,7 @@ export async function POST(
     if (!filePath) {
       return NextResponse.json({
         error: "Session not found",
-        ...(body.type === "prompt"
+        ...(isPromptCommand
           ? { code: "prompt_rejected", accepted: false }
           : {}),
       }, { status: 404 });
@@ -35,14 +36,14 @@ export async function POST(
 
     const { session } = await startRpcSession(id, filePath, undefined);
     const result = await session.send(body);
-    promptAccepted = body.type === "prompt";
+    promptAccepted = isPromptCommand;
 
     return NextResponse.json({ success: true, data: result });
   } catch (error) {
     console.error(`[agent/${id}] Failed to command AgentSession:`, error);
     return NextResponse.json({
       error: error instanceof Error ? error.message : String(error),
-      ...(commandType === "prompt" && !promptAccepted
+      ...((commandType === "prompt" || commandType === "execute_plan") && !promptAccepted
         ? { code: "prompt_rejected", accepted: false }
         : {}),
     }, { status: 500 });
