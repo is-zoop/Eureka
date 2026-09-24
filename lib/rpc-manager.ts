@@ -10,6 +10,7 @@ import { existsSync, realpathSync, writeFileSync } from "fs";
 import { dirname, relative, resolve, sep } from "path";
 import { validateAgentImages } from "./image-attachments";
 import { invalidateModelsCache } from "./models-cache";
+import { schedulePiCatalogSync } from "./pi-catalog-sync";
 import { resolveVisibleModels, selectInitialModelScope } from "./model-scope";
 import { cacheSessionPath, invalidateSessionListCache } from "./session-reader";
 import { getProjectTrustStatus, projectTrustReloadOptions } from "./project-trust";
@@ -22,12 +23,15 @@ import {
   parsePlanTodos,
   planSnapshot,
   PLAN_EXECUTION_SYSTEM_PROMPT,
+  PLAN_MODE_COMPLETE_TOOL,
   PLAN_MODE_QUESTION_TOOL,
   PLAN_MODE_READ_TOOLS,
   PLAN_MODE_SYSTEM_PROMPT,
   readPlanState,
+  validatePlanQuestionResponse,
   type EurekaPlanAnnotation,
   type EurekaPlanPhase,
+  type EurekaPlanQuestionResponse,
   type EurekaPlanState,
 } from "./plan-mode";
 import type { InlineExtension, SlashCommandInfo } from "@earendil-works/pi-coding-agent";
@@ -119,7 +123,7 @@ const RUNNING_STATE_EVENT_TYPES = new Set([
 
 const PLAN_MODE_EXIT_FRAMING = "[EUREKA NATIVE PLAN MODE OFF]\nPlanning mode has been exited. Any earlier Eureka planning-only instructions in this session are no longer active. Resume normal conversation and follow the user's current request.";
 const PLAN_EXECUTION_TRIGGER = "执行计划";
-const PLAN_EXECUTION_CONTINUE = "Continue the approved plan from the first remaining checklist item. Do not repeat completed work; report each newly completed item with its [DONE:n] marker.";
+const PLAN_EXECUTION_CONTINUE = "Continue the approved plan from the first remaining checklist item. Do not repeat completed work. Immediately call mark_plan_done with an item's number after you have actually completed and verified that item, before beginning the next item.";
 const MAX_PLAN_EXECUTION_TURNS = 4;
 
 // The execution state is persisted so the plan card can show progress, but the
@@ -218,6 +222,7 @@ function planReviewContext(state: EurekaPlanState): string {
   return `\n\n## 已批准的评审反馈\n${state.generalNote ? `总体说明：${state.generalNote}\n` : ""}${notes}`;
 }
 
+
 /**
  * Plan mode needs a turn-local framing message, rather than only a mutable
  * system-prompt field. This mirrors Pi/Plannotator's lifecycle: extensions
@@ -229,23 +234,80 @@ const EUREKA_NATIVE_PLAN_EXTENSION: InlineExtension = {
   hidden: true,
   factory: (pi) => {
     pi.registerTool({
+      name: PLAN_MODE_COMPLETE_TOOL,
+      label: "Mark plan task complete",
+      description: "Persist completion of the current approved Eureka plan task. Available only while an approved plan is executing.",
+      promptSnippet: "Mark the just-completed approved plan task",
+      promptGuidelines: [
+        "Call mark_plan_done immediately after actually completing and verifying the current plan task.",
+        "Pass the task's 1-based checklist number. Tasks must be marked in order and only once.",
+        "Never mark work as complete before it is actually finished.",
+      ],
+      parameters: Type.Object({
+        taskIndex: Type.Integer({ minimum: 1, description: "The completed task's 1-based checklist number" }),
+      }),
+      execute: async (_toolCallId, params, _signal, _onUpdate, ctx) => {
+        const state = readPlanState(ctx.sessionManager.getEntries() as SessionEntry[]);
+        if (state.phase !== "executing") {
+          return { content: [{ type: "text" as const, text: "Plan tasks can only be completed while an approved plan is executing." }], details: { accepted: false } };
+        }
+        const taskIndex = params.taskIndex;
+        const todo = state.todos.find((item) => item.index === taskIndex);
+        if (!todo) {
+          return { content: [{ type: "text" as const, text: `Plan task ${taskIndex} does not exist.` }], details: { accepted: false } };
+        }
+        if (todo.done) {
+          return { content: [{ type: "text" as const, text: `Plan task ${taskIndex} is already complete.` }], details: { accepted: false } };
+        }
+        const expected = state.todos.find((item) => !item.done);
+        if (!expected || expected.index !== taskIndex) {
+          return { content: [{ type: "text" as const, text: `Complete plan task ${expected?.index ?? "the next"} before task ${taskIndex}.` }], details: { accepted: false } };
+        }
+        const now = new Date().toISOString();
+        const next = {
+          ...state,
+          todos: state.todos.map((item) => item.index === taskIndex ? { ...item, done: true } : item),
+          updatedAt: now,
+        };
+        pi.appendEntry("eureka_plan", next);
+        invalidateSessionListCache();
+        return {
+          content: [{ type: "text" as const, text: `Plan task ${taskIndex} is recorded as complete. Continue with the next remaining task.` }],
+          details: { accepted: true, taskIndex },
+        };
+      },
+    });
+
+    pi.registerTool({
       name: PLAN_MODE_QUESTION_TOOL,
       label: "Request user input",
-      description: "Ask exactly one material planning question with 2 to 4 mutually exclusive choices. The user answers it inside Eureka before planning continues.",
-      promptSnippet: "Ask one planning clarification question with selectable choices",
+      description: "Ask one to four material planning questions with 2 to 4 choices each. The user answers the whole group inside Eureka before planning continues.",
+      promptSnippet: "Ask a compact group of planning clarification questions with selectable choices",
       promptGuidelines: [
         "Use request_user_input only when information that materially changes the plan is missing.",
-        "Ask exactly one question at a time, with 2 to 4 mutually exclusive choices. Do not ask it in ordinary text.",
+        "Ask 1 to 4 focused questions at a time. Each question needs 2 to 4 choices and may be single-select or multi-select.",
         "After calling request_user_input, stop and wait for the user's response.",
       ],
       parameters: Type.Object({
-        title: Type.String({ description: "Short question title" }),
-        question: Type.String({ description: "One planning question" }),
-        options: Type.Array(Type.Object({
+        // title/question/options remain accepted so existing extensions and
+        // older model prompts keep producing a valid one-question group.
+        title: Type.Optional(Type.String({ description: "Short question title (legacy single-question form)" })),
+        question: Type.Optional(Type.String({ description: "One planning question (legacy single-question form)" })),
+        options: Type.Optional(Type.Array(Type.Object({
           id: Type.String({ description: "Stable short option id" }),
           label: Type.String({ description: "Option label" }),
           description: Type.String({ description: "Short impact or trade-off" }),
-        }), { minItems: 2, maxItems: 4 }),
+        }), { minItems: 2, maxItems: 4 })),
+        questions: Type.Optional(Type.Array(Type.Object({
+          title: Type.String({ description: "Short question title" }),
+          question: Type.String({ description: "One planning question" }),
+          selection: Type.Optional(Type.Union([Type.Literal("single"), Type.Literal("multiple")])),
+          options: Type.Array(Type.Object({
+            id: Type.String({ description: "Stable short option id" }),
+            label: Type.String({ description: "Option label" }),
+            description: Type.String({ description: "Short impact or trade-off" }),
+          }), { minItems: 2, maxItems: 4 }),
+        }), { minItems: 1, maxItems: 4 })),
       }),
       execute: async (toolCallId, params, _signal, _onUpdate, ctx) => {
         const state = readPlanState(ctx.sessionManager.getEntries() as SessionEntry[]);
@@ -255,28 +317,41 @@ const EUREKA_NATIVE_PLAN_EXTENSION: InlineExtension = {
         if (getPendingPlanQuestion(state)) {
           return { content: [{ type: "text" as const, text: "A planning question is already awaiting the user's answer. Stop and wait." }], details: { accepted: false } };
         }
-        const title = params.title.trim();
-        const question = params.question.trim();
-        const options = params.options.map((option) => ({ id: option.id.trim(), label: option.label.trim(), description: option.description.trim() }));
-        const valid = title.length > 0 && question.length > 0
-          && options.length >= 2 && options.length <= 4
-          && options.every((option) => option.id && option.label && option.description)
-          && new Set(options.map((option) => option.id)).size === options.length;
+        const sourceQuestions = Array.isArray(params.questions)
+          ? params.questions
+          : [{ title: params.title, question: params.question, options: params.options, selection: "single" }];
+        const questions = sourceQuestions.map((item) => ({
+          title: typeof item.title === "string" ? item.title.trim() : "",
+          question: typeof item.question === "string" ? item.question.trim() : "",
+          selection: item.selection === "multiple" ? "multiple" as const : "single" as const,
+          options: Array.isArray(item.options)
+            ? item.options.map((option) => ({
+              id: typeof option.id === "string" ? option.id.trim() : "",
+              label: typeof option.label === "string" ? option.label.trim() : "",
+              description: typeof option.description === "string" ? option.description.trim() : "",
+            }))
+            : [],
+        }));
+        const valid = questions.length >= 1 && questions.length <= 4
+          && questions.every((item) => item.title.length > 0 && item.question.length > 0
+            && item.options.length >= 2 && item.options.length <= 4
+            && item.options.every((option) => option.id && option.label && option.description)
+            && new Set(item.options.map((option) => option.id)).size === item.options.length);
         if (!valid) {
-          return { content: [{ type: "text" as const, text: "Provide one non-empty question and 2 to 4 choices with unique ids, labels, and descriptions." }], details: { accepted: false } };
+          return { content: [{ type: "text" as const, text: "Provide 1 to 4 non-empty questions, each with 2 to 4 choices with unique ids, labels, and descriptions." }], details: { accepted: false } };
         }
         const now = new Date().toISOString();
         const next = {
           ...state,
-          questions: [...state.questions, {
-            id: randomUUID(), toolCallId, title, question, options, status: "pending" as const, askedAt: now,
-          }],
+          questions: [...state.questions, ...questions.map((item) => ({
+            id: randomUUID(), toolCallId, ...item, status: "pending" as const, askedAt: now,
+          }))],
           updatedAt: now,
         };
         pi.appendEntry("eureka_plan", next);
         invalidateSessionListCache();
         return {
-          content: [{ type: "text" as const, text: "The question is now displayed in Eureka. Stop this turn and wait for the user's answer." }],
+          content: [{ type: "text" as const, text: "The question group is now displayed in Eureka. Stop this turn and wait for the user's answers." }],
           details: { accepted: true },
         };
       },
@@ -290,7 +365,7 @@ const EUREKA_NATIVE_PLAN_EXTENSION: InlineExtension = {
           message: {
             customType: "eureka-plan-framing",
             display: false,
-            content: `[EUREKA NATIVE PLAN MODE — MANDATORY]\nYou are planning, not implementing. Do not output source code, scripts, patches, commands, or a completed solution. Do not create or modify files. Use read-only investigation only. If a requirement that materially changes the plan is missing, call request_user_input with exactly one question and 2–4 selectable choices. Never write clarifying questions as ordinary text. Calling that tool ends the turn: do not add a prose answer after it. Otherwise, reply only with a Markdown plan containing these headings: Goal, Affected areas, Implementation steps, Risks, Verification. Every implementation step must be an unchecked checklist item (- [ ]). End after the plan and wait for the user to submit it for review.`,
+            content: `[EUREKA NATIVE PLAN MODE — MANDATORY]\nYou are planning, not implementing. Do not output source code, scripts, patches, commands, or a completed solution. Do not create or modify files. Use read-only investigation only. If a requirement that materially changes the plan is missing, call request_user_input once with a compact group of 1 to 4 questions. Each question needs 2 to 4 selectable choices and may be single-select or multi-select. Never write clarifying questions as ordinary text. Calling that tool ends the turn: do not add a prose answer after it. Otherwise, reply only with a Markdown plan containing these headings: Goal, Affected areas, Implementation steps, Risks, Verification. Every implementation step must be an unchecked checklist item (- [ ]). End after the plan and wait for the user to submit it for review.`,
           },
         };
       }
@@ -396,7 +471,7 @@ function withExtensionTools(session: AgentSessionLike, toolNames: string[]): str
   const extensionToolNames = session
     .getAllTools()
     .map((t) => t.name)
-    .filter((name) => !codingToolNames.has(name) && name !== PLAN_MODE_QUESTION_TOOL);
+    .filter((name) => !codingToolNames.has(name) && name !== PLAN_MODE_QUESTION_TOOL && name !== PLAN_MODE_COMPLETE_TOOL);
 
   return [...new Set([...toolNames, ...extensionToolNames])];
 }
@@ -439,7 +514,7 @@ export class AgentSessionWrapper {
       this.finishPlanExecution();
     }
     if (this.planModeState.phase === "idle") {
-      const activeTools = this.inner.getActiveToolNames().filter((name) => name !== PLAN_MODE_QUESTION_TOOL);
+      const activeTools = this.inner.getActiveToolNames().filter((name) => name !== PLAN_MODE_QUESTION_TOOL && name !== PLAN_MODE_COMPLETE_TOOL);
       this.inner.setActiveToolsByName(activeTools);
     }
     this.applyPlanModeRuntime();
@@ -504,9 +579,19 @@ export class AgentSessionWrapper {
 
   private applyPlanModeRuntime(): void {
     const state = this.planModeState;
+    if (state.phase === "executing") {
+      this.inner.setActiveToolsByName([
+        ...state.originalToolNames.filter((name) => name !== PLAN_MODE_QUESTION_TOOL && name !== PLAN_MODE_COMPLETE_TOOL),
+        PLAN_MODE_COMPLETE_TOOL,
+      ]);
+      if (this.baseSystemPrompt !== null && this.inner.agent.state) {
+        this.inner.agent.state.systemPrompt = this.baseSystemPrompt;
+      }
+      return;
+    }
     if (!state.planModeActive) {
       if (state.originalToolNames.length > 0) {
-        this.inner.setActiveToolsByName(state.originalToolNames.filter((name) => name !== PLAN_MODE_QUESTION_TOOL));
+        this.inner.setActiveToolsByName(state.originalToolNames.filter((name) => name !== PLAN_MODE_QUESTION_TOOL && name !== PLAN_MODE_COMPLETE_TOOL));
       }
       if (this.baseSystemPrompt !== null && this.inner.agent.state) {
         this.inner.agent.state.systemPrompt = this.baseSystemPrompt;
@@ -534,17 +619,17 @@ export class AgentSessionWrapper {
     return this.planModeState;
   }
 
-  private finishPlanExecution(): EurekaPlanState {
-    this.refreshPlanModeState();
-    if (this.planModeState.phase !== "executing") return this.planModeState;
-
+  private archiveActivePlan(includeExecutionProgress: boolean): EurekaPlanState {
     const entries = this.inner.sessionManager.getEntries() as SessionEntry[];
-    const assistantText = this.planExecutionEntryOffset === null
-      ? ""
-      : executionAssistantText(entries, this.planExecutionEntryOffset);
+    const assistantText = includeExecutionProgress && this.planExecutionEntryOffset !== null
+      ? executionAssistantText(entries, this.planExecutionEntryOffset)
+      : "";
     const completedPlan = {
       ...this.planModeState,
-      todos: markPlanTodosDone(this.planModeState.todos, assistantText),
+      planModeActive: false,
+      todos: includeExecutionProgress
+        ? markPlanTodosDone(this.planModeState.todos, assistantText)
+        : this.planModeState.todos,
     };
     this.planModeState = {
       ...EMPTY_PLAN_STATE,
@@ -565,6 +650,12 @@ export class AgentSessionWrapper {
     planExecutionTurnCounts.delete(manager);
     this.planExecutionEntryOffset = null;
     return this.planModeState;
+  }
+
+  private finishPlanExecution(): EurekaPlanState {
+    this.refreshPlanModeState();
+    if (this.planModeState.phase !== "executing") return this.planModeState;
+    return this.archiveActivePlan(true);
   }
 
   beginExtensionBinding(options: ExtensionBindingOptions = {}): void {
@@ -890,6 +981,22 @@ export class AgentSessionWrapper {
         await this.withFinalRunningNotification(() => this.inner.abort());
         return null;
 
+      case "cancel_plan": {
+        this.refreshPlanModeState();
+        if (this.planModeState.phase === "idle") return this.planModeState;
+        const wasExecuting = this.planModeState.phase === "executing";
+        if (wasExecuting && this.isRunning()) {
+          const manager = this.inner.sessionManager as object;
+          if (activePlanExecutionManagers.has(manager)) abortedPlanExecutionManagers.add(manager);
+          await this.withFinalRunningNotification(() => this.inner.abort());
+          // The prompt completion callback may have archived the plan while
+          // abort() was settling. Do not append a duplicate history snapshot.
+          const refreshedPlan = this.refreshPlanModeState();
+          if (refreshedPlan.phase === "idle") return refreshedPlan;
+        }
+        return this.archiveActivePlan(wasExecuting);
+      }
+
       case "get_state": {
         this.refreshPlanModeState();
         const model = this.inner.model;
@@ -933,20 +1040,28 @@ export class AgentSessionWrapper {
           if (this.planModeState.planModeActive) return this.planModeState;
           const previous = this.planModeState;
           const originalToolNames = previous.phase === "idle"
-            ? this.inner.getActiveToolNames().filter((name) => name !== PLAN_MODE_QUESTION_TOOL)
+            ? this.inner.getActiveToolNames().filter((name) => name !== PLAN_MODE_QUESTION_TOOL && name !== PLAN_MODE_COMPLETE_TOOL)
             : previous.originalToolNames.length > 0
               ? previous.originalToolNames
-              : this.inner.getActiveToolNames().filter((name) => name !== PLAN_MODE_QUESTION_TOOL);
+              : this.inner.getActiveToolNames().filter((name) => name !== PLAN_MODE_QUESTION_TOOL && name !== PLAN_MODE_COMPLETE_TOOL);
           const originalToolPreset = typeof command.originalToolPreset === "string"
             ? command.originalToolPreset
             : previous.originalToolPreset;
           const plans = previous.phase === "idle" || !previous.activePlanId
             ? previous.plans
             : [...previous.plans, planSnapshot(previous)];
+          // Record the conversation boundary before writing the plan-mode
+          // state. The UI may only offer a newly generated assistant reply
+          // after this point as a draft plan.
+          const draftBoundaryEntryId = [...(this.inner.sessionManager.getEntries() as SessionEntry[])]
+            .reverse()
+            .find((entry) => entry.type === "message")?.id ?? null;
           this.planModeState = {
             ...EMPTY_PLAN_STATE,
             phase: "planning",
             planModeActive: true,
+            draftBoundaryEntryId,
+            draftBoundaryRecorded: true,
             activePlanId: `plan_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
             plans,
             originalToolNames,
@@ -1028,19 +1143,51 @@ export class AgentSessionWrapper {
         const questionId = typeof command.questionId === "string" ? command.questionId : "";
         const question = this.planModeState.questions.find((item) => item.id === questionId);
         if (!question || question.status !== "pending") throw new Error("This planning question is no longer waiting for an answer");
+        const group = this.planModeState.questions.filter((item) => item.status === "pending" && item.toolCallId === question.toolCallId);
+        if (group.length !== 1) throw new Error("Submit all questions in this group together");
         const optionId = typeof command.optionId === "string" ? command.optionId : undefined;
-        const customAnswer = typeof command.customAnswer === "string" ? command.customAnswer.trim() : "";
-        const option = optionId ? question.options.find((item) => item.id === optionId) : undefined;
-        if (!option && !customAnswer) throw new Error("Choose an option or provide a custom answer");
-        if (optionId && !option) throw new Error("The selected option is not available for this question");
+        const answer = validatePlanQuestionResponse(question, {
+          questionId,
+          optionIds: optionId ? [optionId] : [],
+          customAnswer: typeof command.customAnswer === "string" ? command.customAnswer : undefined,
+        });
         const now = new Date().toISOString();
         return this.setPlanPhase("planning", {
           questions: this.planModeState.questions.map((item) => item.id === questionId ? {
             ...item,
             status: "answered" as const,
-            answer: { optionId: option?.id, text: option?.label ?? customAnswer, custom: !option },
+            answer,
             answeredAt: now,
           } : item),
+        });
+      }
+
+      case "answer_plan_questions": {
+        this.refreshPlanModeState();
+        if (!this.planModeState.planModeActive || this.planModeState.phase !== "planning") throw new Error("Planning questions can only be answered while planning");
+        const toolCallId = typeof command.toolCallId === "string" ? command.toolCallId : "";
+        const group = this.planModeState.questions.filter((item) => item.status === "pending" && item.toolCallId === toolCallId);
+        if (group.length === 0) throw new Error("This planning question group is no longer waiting for answers");
+        const responses = Array.isArray(command.responses) ? command.responses as EurekaPlanQuestionResponse[] : [];
+        if (responses.length !== group.length) throw new Error("Answer or skip every question in this group");
+        const responseByQuestionId = new Map<string, EurekaPlanQuestionResponse>();
+        for (const response of responses) {
+          if (!response || typeof response.questionId !== "string" || responseByQuestionId.has(response.questionId)) {
+            throw new Error("Each question in the group needs one valid response");
+          }
+          responseByQuestionId.set(response.questionId, response);
+        }
+        const answers = new Map(group.map((question) => {
+          const response = responseByQuestionId.get(question.id);
+          if (!response) throw new Error("Answer or skip every question in this group");
+          return [question.id, validatePlanQuestionResponse(question, response)] as const;
+        }));
+        const now = new Date().toISOString();
+        return this.setPlanPhase("planning", {
+          questions: this.planModeState.questions.map((item) => {
+            const answer = answers.get(item.id);
+            return answer ? { ...item, status: "answered" as const, answer, answeredAt: now } : item;
+          }),
         });
       }
 
@@ -1208,8 +1355,8 @@ export class AgentSessionWrapper {
       }
 
       case "set_tools": {
-        if (this.planModeState.planModeActive) {
-          throw new Error("Tool permissions are fixed while planning");
+        if (this.planModeState.planModeActive || this.planModeState.phase === "executing") {
+          throw new Error("Tool permissions are fixed while a plan is active");
         }
         const toolNames = command.toolNames as string[];
         this.setForceEmptySystemPrompt(toolNames.length === 0);
@@ -2100,6 +2247,7 @@ export async function startRpcSession(
   const sessionCwd = sessionManager.getCwd();
   const finishStartingSession = trackStartingSession(sessionCwd);
   const starting = (async () => {
+    schedulePiCatalogSync();
     // Some extensions access the SDK's global theme even outside the terminal UI.
     initTheme();
     const agentDir = getAgentDir();

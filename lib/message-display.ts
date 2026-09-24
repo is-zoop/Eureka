@@ -1,5 +1,9 @@
 import type { AssistantContentBlock, AssistantMessage, ThinkingContent, ToolCallContent } from "./types";
 
+// Kept local so this display-only module remains directly runnable in the
+// lightweight Node tests without pulling in the session-state module.
+const INTERNAL_PLAN_COMPLETION_TOOL = "mark_plan_done";
+
 interface DisplayOptions {
   isStreaming?: boolean;
 }
@@ -12,7 +16,10 @@ export function getDisplayableAssistantBlocks(
   message: AssistantMessage,
   options: DisplayOptions = {},
 ): AssistantContentBlock[] {
-  return (message.content ?? []).filter((block) => !isEmptyThinkingBlock(block, options));
+  return (message.content ?? []).filter((block) => (
+    !isEmptyThinkingBlock(block, options)
+    && !(block.type === "toolCall" && block.toolName === INTERNAL_PLAN_COMPLETION_TOOL)
+  ));
 }
 
 export function getAssistantErrorMessage(

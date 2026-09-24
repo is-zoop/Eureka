@@ -3,9 +3,26 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 const source = (await readFile(new URL("./useAgentSession.ts", import.meta.url), "utf8")).replace(/\r\n/g, "\n");
+const sessionRouteSource = (await readFile(new URL("../app/api/sessions/[id]/route.ts", import.meta.url), "utf8")).replace(/\r\n/g, "\n");
 const chatWindowSource = (await readFile(new URL("../components/ChatWindow.tsx", import.meta.url), "utf8")).replace(/\r\n/g, "\n");
 const chatInputSource = (await readFile(new URL("../components/ChatInput.tsx", import.meta.url), "utf8")).replace(/\r\n/g, "\n");
 const appShellSource = (await readFile(new URL("../components/AppShell.tsx", import.meta.url), "utf8")).replace(/\r\n/g, "\n");
+
+test("restores persisted plan snapshots when opening a closed session", () => {
+  assert.match(sessionRouteSource, /const planMode = readPlanState\(entries as never\)/);
+  assert.match(sessionRouteSource, /context,\n\s*planMode,/);
+  assert.match(source, /if \(d\.planMode !== undefined\) setPlanMode\(d\.planMode\)/);
+});
+
+test("syncs plan progress from the live streaming assistant message", () => {
+  const planProgressSource = source.slice(
+    source.indexOf("  useEffect(() => {\n    if (planMode.phase !== \"executing\")"),
+    source.indexOf("\n  return {", source.indexOf("  useEffect(() => {\n    if (planMode.phase !== \"executing\")")),
+  );
+  assert.match(planProgressSource, /streamState\.streamingMessage \?\?/);
+  assert.match(planProgressSource, /getPlanDoneIndexes\(text\)\.join\(","\)/);
+  assert.match(planProgressSource, /requestId === planProgressRequestRef\.current/);
+});
 
 test("keeps the session event stream open through the idle grace window", () => {
   const finishSource = source.slice(
@@ -51,7 +68,7 @@ test("keeps the session event stream open through the idle grace window", () => 
   assert.match(promptDoneSource, /scheduleEventStreamClose\(sid\)/);
   assert.match(sendSource, /const definitivelyRejected = !promptRequestStarted/);
   assert.match(sendSource, /if \(!definitivelyRejected && sentSessionId\) \{[\s\S]*?waitForPromptSettlement/);
-  assert.match(sendSource, /restoreSubmission\(message, images, composerDraftKey\);[\s\S]*?if \(sentSessionId\) \{[\s\S]*?reconcileAgentState\(sentSessionId\);[\s\S]*?return;[\s\S]*?\}[\s\S]*?closeEvents\(\)/);
+  assert.match(sendSource, /restoreSubmission\(message, images, (?:references, )?composerDraftKey\);[\s\S]*?if \(sentSessionId\) \{[\s\S]*?reconcileAgentState\(sentSessionId\);[\s\S]*?return;[\s\S]*?\}[\s\S]*?closeEvents\(\)/);
   assert.doesNotMatch(
     sendSource,
     /rpcPromptPendingRef\.current = false;\s*agentRunningRef\.current = false;\s*closeEvents\(\)/,
@@ -135,6 +152,24 @@ test("fresh sessions restore the preferred tool preset without overriding existi
   assert.match(changeSource, /setPreferredToolPreset\(preset\)/);
   assert.match(changeSource, /sendAgentCommand\(sid, \{ type: "set_tools", toolNames \}\)/);
   assert.doesNotMatch(loadToolsSource, /setPreferredToolPreset/);
+});
+
+test("planning's temporary read-only tools never replace the normal preset", () => {
+  const loadToolsSource = source.slice(
+    source.indexOf("  const loadTools = useCallback"),
+    source.indexOf("  const promoteNewSession"),
+  );
+  const planControlsSource = source.slice(
+    source.indexOf("  const handlePlanModeChange = useCallback"),
+    source.indexOf("  const scrollUserMsgToTop"),
+  );
+
+  assert.match(source, /function planToolsAreTemporarilyRestricted/);
+  assert.match(loadToolsSource, /options: \{ preservePreset\?: boolean \} = \{\}/);
+  assert.match(loadToolsSource, /tools && !options\.preservePreset/);
+  assert.match(source, /preservePreset: planToolsAreTemporarilyRestricted\(agentState\.state\?\.planMode\)/);
+  assert.match(planControlsSource, /cancel_plan[\s\S]*?setPlanMode\(next\);\s*await loadTools\(sid\)/);
+  assert.match(planControlsSource, /approve_plan[\s\S]*?setPlanMode\(next\);\s*await loadTools\(sid\)/);
 });
 
 test("submission recovery updates live refs before a possible session rekey", () => {

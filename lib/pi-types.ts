@@ -4,6 +4,7 @@ import type {
   SettingsManager,
   SlashCommandInfo,
   Theme,
+  ModelRuntime,
 } from "@earendil-works/pi-coding-agent";
 import type { AgentMessage as PiAgentMessage } from "@earendil-works/pi-agent-core";
 
@@ -125,10 +126,7 @@ export interface AgentSessionLike {
   readonly autoCompactionEnabled: boolean;
   readonly autoRetryEnabled: boolean;
   readonly model: ModelLike | undefined;
-  readonly modelRuntime: {
-    getModel: (provider: string, modelId: string) => ModelLike | undefined;
-    refresh: (options?: { allowNetwork?: boolean }) => Promise<unknown>;
-  };
+  readonly modelRuntime: ModelRuntime;
   readonly sessionManager: SessionManager;
   readonly settingsManager: SettingsManager;
   readonly agent: {

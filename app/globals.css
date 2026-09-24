@@ -705,7 +705,7 @@ a {
   background: transparent;
 }
 
-/* Plan mode remains visually calm, but its composer carries a subtle blue wave. */
+/* Plan mode gets a clear, edge-aligned blue flow without moving the composer. */
 @property --plan-flow-angle {
   syntax: "<angle>";
   inherits: false;
@@ -715,24 +715,28 @@ a {
 .plan-mode-composer.plan-mode-composer-active::before {
   content: "";
   position: absolute;
-  inset: -4px;
+  /* Match the composer's real border and radius: an outward inset made the
+     previous effect look detached from the input instead of part of it. */
+  inset: 0;
   z-index: 2;
-  padding: 1.5px;
-  border-radius: 20px;
+  padding: 2px;
+  border-radius: 16px;
   background: conic-gradient(
     from var(--plan-flow-angle),
-    transparent 0deg,
-    transparent 210deg,
-    rgba(96, 165, 250, 0.2) 244deg,
-    #3b82f6 282deg,
-    rgba(147, 197, 253, 0.86) 310deg,
-    transparent 350deg
+    rgba(96, 165, 250, 0.12) 0deg,
+    rgba(96, 165, 250, 0.12) 194deg,
+    rgba(96, 165, 250, 0.58) 224deg,
+    #2563eb 263deg,
+    #93c5fd 293deg,
+    rgba(59, 130, 246, 0.7) 322deg,
+    rgba(96, 165, 250, 0.12) 352deg
   );
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
   -webkit-mask-composite: xor;
   mask-composite: exclude;
   pointer-events: none;
-  animation: plan-composer-border-flow 2.8s linear 720ms infinite;
+  filter: drop-shadow(0 0 3px rgba(59, 130, 246, 0.45));
+  animation: plan-composer-border-flow 2.15s linear 180ms infinite;
 }
 
 @keyframes plan-composer-border-flow {
@@ -742,8 +746,8 @@ a {
 @media (prefers-reduced-motion: reduce) {
   .plan-mode-composer.plan-mode-composer-active::before {
     animation: none;
-    opacity: 0.7;
-    --plan-flow-angle: 282deg;
+    opacity: 0.9;
+    --plan-flow-angle: 263deg;
   }
 }
 .markdown-body .markdown-table {

@@ -3,18 +3,19 @@
 import Link from "next/link";
 import { useState } from "react";
 import { ModelsConfig } from "@/components/ModelsConfig";
+import { UsageStatisticsPage } from "@/components/UsageStatistics";
 import { Combobox, ComboboxContent, ComboboxInput, ComboboxItem, ComboboxList } from "@/components/ui/combobox";
 import { useI18n } from "@/hooks/useI18n";
 import { type ThemePreference, useTheme } from "@/hooks/useTheme";
 
-export type SettingsSection = "system" | "models";
+export type SettingsSection = "system" | "models" | "usage";
 
 function SettingsIcon({ section }: { section: SettingsSection }) {
   return section === "system" ? (
     <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915" /><circle cx="12" cy="12" r="3" /></svg>
-  ) : (
+  ) : section === "models" ? (
     <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2" /><rect x="9" y="9" width="6" height="6" /><path d="M9 1v3M15 1v3M9 20v3M15 20v3M20 9h3M20 14h3M1 9h3M1 14h3" /></svg>
-  );
+  ) : <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 3v18h18" /><path d="m7 15 4-4 3 3 5-6" /></svg>;
 }
 
 function ThemeIcon({ preference }: { preference: ThemePreference }) {
@@ -31,6 +32,7 @@ export function SettingsPage({ onBack, initialSection = "system" }: { onBack?: (
   const sections: { id: SettingsSection; label: string }[] = [
     { id: "system", label: t("settings.system") },
     { id: "models", label: t("settings.models") },
+    { id: "usage", label: t("settings.usage") },
   ];
 
   return (
@@ -63,7 +65,7 @@ export function SettingsPage({ onBack, initialSection = "system" }: { onBack?: (
               <section><h2 className="mb-3 text-base font-semibold">{t("settings.language")}</h2><div className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-panel)] px-4 py-3"><div className="flex items-center justify-between gap-5 text-sm"><div><span id="display-language-label" className="block font-medium">{t("settings.displayLanguage")}</span><span className="mt-1 block text-xs text-[var(--text-muted)]">{t("settings.languageDescription")}</span></div><Combobox items={supportedLocales.map((plugin) => plugin.label)} value={selectedLocale?.label ?? ""} onValueChange={(value) => { const nextLocale = supportedLocales.find((plugin) => plugin.label === value); if (nextLocale) setLocale(nextLocale.id as typeof locale); }}><ComboboxInput aria-labelledby="display-language-label" className="h-9 w-32 shrink-0 text-sm" placeholder={t("settings.displayLanguage")} /><ComboboxContent align="end"><ComboboxList>{(item: string) => <ComboboxItem key={item} value={item} className="text-sm">{item}</ComboboxItem>}</ComboboxList></ComboboxContent></Combobox></div></div></section>
             </div>
           </div>
-        ) : <ModelsConfig embedded onClose={() => setSection("system")} />}
+        ) : section === "models" ? <ModelsConfig embedded onClose={() => setSection("system")} /> : <UsageStatisticsPage />}
       </section>
     </main>
   );

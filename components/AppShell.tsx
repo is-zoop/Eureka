@@ -2262,6 +2262,7 @@ export function AppShell() {
             onUpdate={planReview.controls.update}
             onReturnForRevision={planReview.controls.returnForRevision}
             onApprove={planReview.controls.approve}
+            onAbandon={planReview.controls.abandon}
             readOnly={planReview.readOnly}
           />
         ) : rightPanelMode === "extension" && extensionDetails ? (

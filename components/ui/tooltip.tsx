@@ -33,7 +33,9 @@ function TooltipContent({
         alignOffset={alignOffset}
         side={side}
         sideOffset={sideOffset}
-        style={{ zIndex: 1300 }}
+        // Alert dialogs use z-index 1301. Keep tooltips above dialogs so
+        // truncated actions inside a confirmation dialog remain discoverable.
+        style={{ zIndex: 1400 }}
       >
         <TooltipPrimitive.Popup
           data-slot="tooltip-content"

@@ -17,7 +17,7 @@ import { isPromptRejectedError, sendAgentCommand } from "@/lib/agent-client";
 import { clearDraft, rekeyDraft, restoreDraftSubmission, type ChatDraftReference } from "@/lib/draft-store";
 import { getPreferredToolPreset, setPreferredToolPreset } from "@/lib/tool-preset-preference";
 import { getToolNamesForPreset, type ToolEntry, type ToolPreset } from "@/lib/tool-presets";
-import { EMPTY_PLAN_STATE, getPendingPlanQuestion, type EurekaPlanAnnotation, type EurekaPlanQuestion, type EurekaPlanState } from "@/lib/plan-mode";
+import { EMPTY_PLAN_STATE, getPendingPlanQuestion, getPlanDoneIndexes, PLAN_MODE_COMPLETE_TOOL, type EurekaPlanAnnotation, type EurekaPlanQuestion, type EurekaPlanQuestionResponse, type EurekaPlanState } from "@/lib/plan-mode";
 import type { SessionStatsInfo } from "@/lib/pi-types";
 import { userMessageKey } from "@/lib/prompt-recovery";
 import { AgentEventConnection } from "@/lib/agent-event-connection";
@@ -38,6 +38,7 @@ export interface SessionData {
   totalActiveMs: number;
   tree: SessionTreeNode[];
   leafId: string | null;
+  planMode?: EurekaPlanState;
   context: {
     messages: AgentMessage[];
     entryIds: string[];
@@ -81,6 +82,24 @@ export interface QueuedMessages {
 
 function normalizeQueuedMessages(q?: { steering?: string[]; followUp?: string[] } | null): QueuedMessages {
   return { steering: q?.steering ?? [], followUp: q?.followUp ?? [] };
+}
+
+function planToolsAreTemporarilyRestricted(plan?: EurekaPlanState): boolean {
+  return Boolean(
+    plan?.planModeActive
+    && (plan.phase === "planning" || plan.phase === "reviewing"),
+  );
+}
+
+/** Never let an older compatibility/polling snapshot move an executing plan backwards. */
+function keepNewestPlanProgress(current: EurekaPlanState, next: EurekaPlanState): EurekaPlanState {
+  if (
+    current.phase === "executing"
+    && next.phase === "executing"
+    && current.activePlanId === next.activePlanId
+    && next.todos.filter((todo) => todo.done).length < current.todos.filter((todo) => todo.done).length
+  ) return current;
+  return next;
 }
 
 type ExtensionUiDialogRequest = Extract<ExtensionUiRequest, { method: "select" | "confirm" | "input" | "editor" }>;
@@ -274,6 +293,9 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const draftKeyAliasesRef = useRef(new Map<string, string>());
   const sessionHookMountedRef = useRef(true);
   const planProgressSignatureRef = useRef("");
+  const planProgressRequestRef = useRef(0);
+  const planCompletionToolCallsRef = useRef(new Set<string>());
+  const planSnapshotRequestRef = useRef(0);
 
   sessionPropIdRef.current = session?.id ?? null;
   sessionRunningRef.current = Boolean(sessionRunning);
@@ -415,6 +437,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       setActiveLeafId(d.leafId);
       setMessages(persistedMessages);
       setEntryIds(d.context.entryIds ?? []);
+      if (d.planMode !== undefined) setPlanMode(d.planMode);
       setCurrentModelOverride((current) => modelSwitchPendingRef.current ? current : null);
       setError(null);
       if (d.context.thinkingLevel && d.context.thinkingLevel !== "off") {
@@ -471,10 +494,13 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     }
   }, []);
 
-  const loadTools = useCallback(async (sid: string) => {
+  const loadTools = useCallback(async (sid: string, options: { preservePreset?: boolean } = {}) => {
     try {
       const tools = await sendAgentCommand<ToolEntry[]>(sid, { type: "get_tools" });
-      if (tools) {
+      // Planning and review deliberately expose a reduced, read-only runtime
+      // tool set. That temporary restriction must never overwrite the user's
+      // normal composer preset.
+      if (tools && !options.preservePreset) {
         const { getPresetFromTools } = await import("@/lib/tool-presets");
         setToolPresetState(getPresetFromTools(tools));
       }
@@ -899,6 +925,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       // (wrapper destroyed) means nothing is compacting.
       setIsCompacting(state?.isCompacting ?? false);
       setQueuedMessages(normalizeQueuedMessages(state?.queuedMessages));
+      if (state?.planMode !== undefined) setPlanMode((current) => keepNewestPlanProgress(current, state.planMode!));
       const busy = data.running && state
         && (state.isStreaming || state.isPromptRunning || state.isCompacting);
       if (busy) {
@@ -1113,6 +1140,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           if (!tools.some((t) => t.id === id)) tools.push({ id, name });
           return { kind: "running_tools", tools };
         });
+        if (name === PLAN_MODE_COMPLETE_TOOL) planCompletionToolCallsRef.current.add(id);
         break;
       }
       case "tool_execution_end": {
@@ -1123,6 +1151,21 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           if (tools.length === 0) return { kind: "waiting_model" };
           return { kind: "running_tools", tools };
         });
+        if (planCompletionToolCallsRef.current.delete(id)) {
+          const sid = sessionIdRef.current;
+          const requestId = planSnapshotRequestRef.current + 1;
+          planSnapshotRequestRef.current = requestId;
+          if (sid) {
+            void fetch(`/api/agent/${encodeURIComponent(sid)}`)
+              .then((response) => response.ok ? response.json() : null)
+              .then((data: { state?: AgentStateResponse } | null) => {
+                if (requestId === planSnapshotRequestRef.current && sessionIdRef.current === sid && data?.state?.planMode !== undefined) {
+                  setPlanMode((current) => keepNewestPlanProgress(current, data.state!.planMode!));
+                }
+              })
+              .catch(() => {});
+          }
+        }
         break;
       }
       case "queue_update":
@@ -1665,15 +1708,23 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   }, [setToolPresetState, planMode.planModeActive, addNotice]);
 
   const handlePlanModeChange = useCallback(async (planning: boolean) => {
+    if (!planning && planMode.phase !== "idle") {
+      const sid = sessionIdRef.current;
+      if (!sid) return;
+      try {
+        const next = await sendAgentCommand<EurekaPlanState>(sid, { type: "cancel_plan" });
+        setPlanMode(next);
+        await loadTools(sid);
+      } catch (error) {
+        addNotice({ type: "error", message: error instanceof Error ? error.message : String(error) });
+      }
+      return;
+    }
     if (agentRunningRef.current || bashRunningRef.current) {
       addNotice({ type: "warning", message: "请等待当前任务完成后再切换规划模式。" });
       return;
     }
     if (planning === planMode.planModeActive) return;
-    if (!planning && planMode.phase === "reviewing") {
-      addNotice({ type: "warning", message: "当前计划正在评审。请先批准或退回修改。" });
-      return;
-    }
     try {
       const sid = sessionIdRef.current ?? await ensureNewSession();
       if (!sid) throw new Error("无法初始化会话");
@@ -1683,10 +1734,11 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         originalToolPreset: toolPreset,
       });
       setPlanMode(next);
+      if (!planToolsAreTemporarilyRestricted(next)) await loadTools(sid);
     } catch (error) {
       addNotice({ type: "error", message: error instanceof Error ? error.message : String(error) });
     }
-  }, [addNotice, ensureNewSession, toolPreset, planMode.phase, planMode.planModeActive]);
+  }, [addNotice, ensureNewSession, loadTools, toolPreset, planMode.phase, planMode.planModeActive]);
 
   const handleSubmitPlan = useCallback(async (content: string, sourceEntryId?: string) => {
     const sid = sessionIdRef.current;
@@ -1701,23 +1753,31 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     }
   }, [addNotice]);
 
-  const handlePlanQuestionAnswer = useCallback(async (question: EurekaPlanQuestion, answer: { optionId?: string; customAnswer?: string }) => {
+  const handlePlanQuestionAnswer = useCallback(async (questions: EurekaPlanQuestion[], answers: EurekaPlanQuestionResponse[]): Promise<boolean> => {
     const sid = sessionIdRef.current;
-    if (!sid) return;
+    if (!sid || questions.length === 0) return false;
     try {
       const next = await sendAgentCommand<EurekaPlanState>(sid, {
-        type: "answer_plan_question",
-        questionId: question.id,
-        ...(answer.optionId ? { optionId: answer.optionId } : {}),
-        ...(answer.customAnswer ? { customAnswer: answer.customAnswer } : {}),
+        type: "answer_plan_questions",
+        toolCallId: questions[0].toolCallId,
+        responses: answers,
       });
       setPlanMode(next);
-      const selected = answer.optionId
-        ? question.options.find((option) => option.id === answer.optionId)?.label ?? answer.optionId
-        : answer.customAnswer ?? "";
-      await handleSend(`已回答规划澄清“${question.title}”：${selected}`, undefined, undefined, { bypassPlanQuestionGuard: true });
+      const questionById = new Map(questions.map((question) => [question.id, question]));
+      const summary = answers.map((answer) => {
+        const question = questionById.get(answer.questionId);
+        const selected = answer.skipped
+          ? "已跳过"
+          : answer.customAnswer?.trim()
+            ? answer.customAnswer.trim()
+            : (answer.optionIds ?? []).map((optionId) => question?.options.find((option) => option.id === optionId)?.label ?? optionId).join("、");
+        return `- ${question?.title ?? answer.questionId}：${selected}`;
+      }).join("\n");
+      await handleSend(`已回答规划澄清：\n${summary}`, undefined, undefined, { bypassPlanQuestionGuard: true });
+      return true;
     } catch (error) {
       addNotice({ type: "error", message: error instanceof Error ? error.message : String(error) });
+      return false;
     }
   }, [addNotice, handleSend]);
 
@@ -1758,11 +1818,24 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     try {
       const next = await sendAgentCommand<EurekaPlanState>(sid, { type: "approve_plan" });
       setPlanMode(next);
+      await loadTools(sid);
       await handleSend("执行计划", undefined, undefined, { executePlan: true });
     } catch (error) {
       addNotice({ type: "error", message: error instanceof Error ? error.message : String(error) });
     }
-  }, [addNotice, handleSend]);
+  }, [addNotice, handleSend, loadTools]);
+
+  const handleAbandonPlan = useCallback(async () => {
+    const sid = sessionIdRef.current;
+    if (!sid) return;
+    try {
+      const next = await sendAgentCommand<EurekaPlanState>(sid, { type: "cancel_plan" });
+      setPlanMode(next);
+      await loadTools(sid);
+    } catch (error) {
+      addNotice({ type: "error", message: error instanceof Error ? error.message : String(error) });
+    }
+  }, [addNotice, loadTools]);
 
   const scrollUserMsgToTop = useCallback(() => {
     const container = scrollContainerRef.current;
@@ -1815,7 +1888,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       sessionIdRef.current = session.id;
       loadSession(session.id, true, true).then((agentState) => {
         if (agentState?.running) {
-          loadTools(session.id);
+          void loadTools(session.id, { preservePreset: planToolsAreTemporarilyRestricted(agentState.state?.planMode) });
           if (agentState.state?.isStreaming || agentState.state?.isPromptRunning) {
             sdkAgentActiveRef.current = Boolean(agentState.state.isStreaming);
             rpcPromptPendingRef.current = Boolean(agentState.state.isPromptRunning);
@@ -1919,6 +1992,24 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     return () => controller.abort();
   }, [loadModels, modelsRefreshKey]);
 
+  // Background catalog updates invalidate the server cache. Refresh visible
+  // selectors without remounting the conversation or changing its active model.
+  useEffect(() => {
+    const controller = new AbortController();
+    const refresh = () => {
+      if (document.visibilityState === "visible") void loadModels(controller.signal).catch(() => {});
+    };
+    const timer = window.setInterval(refresh, 60_000);
+    window.addEventListener("eureka-models-updated", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      controller.abort();
+      window.clearInterval(timer);
+      window.removeEventListener("eureka-models-updated", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  }, [loadModels]);
+
 
 
   useEffect(() => {
@@ -1928,22 +2019,33 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   useEffect(() => {
     if (planMode.phase !== "executing") {
       planProgressSignatureRef.current = "";
+      planProgressRequestRef.current += 1;
       return;
     }
-    const lastAssistant = [...messages].reverse().find((message) => message.role === "assistant");
-    if (!lastAssistant || lastAssistant.role !== "assistant") return;
-    const text = lastAssistant.content
+    const assistant = streamState.streamingMessage ?? [...messages].reverse().find((message) => message.role === "assistant");
+    if (!assistant || assistant.role !== "assistant") return;
+    const text = assistant.content
       .filter((block) => block.type === "text")
       .map((block) => block.text)
       .join("\n");
-    if (!/\[DONE:\d+\]/.test(text) || text === planProgressSignatureRef.current) return;
+    const progressSignature = getPlanDoneIndexes(text).join(",");
+    if (!progressSignature || progressSignature === planProgressSignatureRef.current) return;
     const sid = sessionIdRef.current;
     if (!sid) return;
-    planProgressSignatureRef.current = text;
+    planProgressSignatureRef.current = progressSignature;
+    const requestId = planProgressRequestRef.current + 1;
+    planProgressRequestRef.current = requestId;
     void sendAgentCommand<EurekaPlanState>(sid, { type: "sync_plan_progress", assistantText: text })
-      .then(setPlanMode)
-      .catch(() => { /* progress sync is retried after the next agent response */ });
-  }, [messages, planMode.phase]);
+      .then((next) => {
+        // A later streaming marker may have already produced a newer state.
+        if (requestId === planProgressRequestRef.current && sessionIdRef.current === sid) {
+          setPlanMode((current) => keepNewestPlanProgress(current, next));
+        }
+      })
+      .catch(() => {
+        if (requestId === planProgressRequestRef.current) planProgressSignatureRef.current = "";
+      });
+  }, [messages, planMode.phase, streamState.streamingMessage]);
 
   return {
     // State
@@ -1966,7 +2068,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     handleRecallQueue,
     handleBuiltinSlashCommand,
     handleToolPresetChange, handleThinkingLevelChange, loadTools, loadSlashCommands, setActiveLeafId, setData, setMessages,
-    handlePlanModeChange, handleSubmitPlan, handlePlanQuestionAnswer, handlePlanReviewUpdate, handleReturnPlanForRevision, handleApprovePlan,
+    handlePlanModeChange, handleSubmitPlan, handlePlanQuestionAnswer, handlePlanReviewUpdate, handleReturnPlanForRevision, handleApprovePlan, handleAbandonPlan,
     scrollToBottom, scrollUserMsgToTop,
     dispatch, setAgentRunning, setForkingEntryId,
     bashRunning, pendingBash,

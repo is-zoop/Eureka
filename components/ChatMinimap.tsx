@@ -22,7 +22,6 @@ interface Props {
 const MINIMAP_WIDTH = 36;
 const MAX_NODE_GAP = 50;
 const MINIMAP_PADDING = 12;
-const PREVIEW_HIDE_DELAY = 250;
 const NAVIGATION_ACTIVE_LOCK_MS = 1600;
 
 interface AssistantPreview {
@@ -249,7 +248,6 @@ export function ChatMinimap({
   });
   const previewBoxRef = useRef<HTMLDivElement>(null);
   const previewItemRefs = useRef(new Map<number, HTMLDivElement>());
-  const previewHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const activeNodeLockRef = useRef<{ index: number; until: number } | null>(null);
   const pendingNavigationRef = useRef<{
     nodeIndex: number;
@@ -526,33 +524,10 @@ export function ChatMinimap({
     scrollEl.scrollTo({ top: Math.max(0, targetTop), behavior: "smooth" });
   }, [lockActiveNode, onRevealHistory, scrollContainer]);
 
-  const cancelPreviewHide = useCallback(() => {
-    if (!previewHideTimerRef.current) return;
-    clearTimeout(previewHideTimerRef.current);
-    previewHideTimerRef.current = null;
-  }, []);
-
-  const showPreview = useCallback(() => {
-    cancelPreviewHide();
-    setMinimapHovered(true);
-  }, [cancelPreviewHide]);
-
-  const schedulePreviewHide = useCallback(() => {
-    cancelPreviewHide();
-    previewHideTimerRef.current = setTimeout(() => {
-      previewHideTimerRef.current = null;
-      setMinimapHovered(false);
-      setMouseYRatio(null);
-    }, PREVIEW_HIDE_DELAY);
-  }, [cancelPreviewHide]);
-
-  useEffect(() => () => cancelPreviewHide(), [cancelPreviewHide]);
-
   const handleMouseDown = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
     if (!visible) return;
 
     draggingRef.current = true;
-    showPreview();
     const rect = event.currentTarget.getBoundingClientRect();
     const pointerRatio = Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height));
     setMouseYRatio(pointerRatio);
@@ -576,7 +551,7 @@ export function ChatMinimap({
     };
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
-  }, [findNearestNode, scrollToNode, showPreview, visible]);
+  }, [findNearestNode, scrollToNode, visible]);
 
   const nearestNode = mouseYRatio === null ? null : findNearestNode(mouseYRatio);
   const nearestNodeIndex = nearestNode?.index ?? null;
@@ -602,8 +577,6 @@ export function ChatMinimap({
     <div
       ref={containerRef}
       onMouseDown={handleMouseDown}
-      onMouseEnter={showPreview}
-      onMouseLeave={schedulePreviewHide}
       onMouseMove={(event) => {
         const rect = event.currentTarget.getBoundingClientRect();
         setMouseYRatio((event.clientY - rect.top) / rect.height);
@@ -654,19 +627,42 @@ export function ChatMinimap({
               zIndex: 2,
             }}
           >
-            <div
+            <button
+              type="button"
               style={{
-                width: 6,
-                height: 6,
-                borderRadius: "50%",
-                background: isActive ? "var(--minimap-node-active)" : "var(--minimap-node)",
+                width: 14,
+                height: 14,
+                padding: 0,
+                display: "grid",
+                placeItems: "center",
                 border: "none",
-                boxShadow: "none",
-                animation: isActive ? "minimap-breathe 2.2s ease-in-out infinite" : "none",
-                transition: "transform 0.1s, background 0.1s",
-                transform: isNearest ? "scale(1.25)" : "scale(1)",
+                borderRadius: "50%",
+                background: "transparent",
+                cursor: "pointer",
+                pointerEvents: "auto",
               }}
-            />
+              aria-label="Open history preview"
+              aria-expanded={minimapHovered}
+              onMouseDown={(event) => event.stopPropagation()}
+              onClick={() => {
+                setMouseYRatio(node.topRatio);
+                setMinimapHovered((open) => open && nearestNodeIndex === node.index ? false : true);
+              }}
+            >
+              <span
+                aria-hidden="true"
+                style={{
+                  width: 6,
+                  height: 6,
+                  borderRadius: "50%",
+                  background: isActive ? "var(--minimap-node-active)" : "var(--minimap-node)",
+                  boxShadow: "none",
+                  animation: isActive ? "minimap-breathe 2.2s ease-in-out infinite" : "none",
+                  transition: "transform 0.1s, background 0.1s",
+                  transform: isNearest ? "scale(1.25)" : "scale(1)",
+                }}
+              />
+            </button>
           </div>
         );
       })}
@@ -676,7 +672,6 @@ export function ChatMinimap({
           ref={previewBoxRef}
           className={styles.preview}
           data-minimap-preview-box=""
-          onMouseEnter={showPreview}
           onMouseDown={(event) => event.stopPropagation()}
           onMouseMove={(event) => event.stopPropagation()}
         >

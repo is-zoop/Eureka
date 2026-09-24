@@ -2,6 +2,7 @@ import { resolveModelDiscoveryAuth } from "./model-discovery-auth";
 import { buildModelsListUrl, parseDiscoveredModels, type DiscoveredModel } from "./model-discovery";
 
 const DISCOVERY_TIMEOUT_MS = 20_000;
+const MAX_DISCOVERY_RESPONSE_BYTES = 2 * 1024 * 1024;
 
 function hasHeader(headers: Headers, name: string): boolean {
   return headers.has(name);
@@ -34,6 +35,38 @@ function buildHeaders(api: string, apiKey: string | undefined, configured: Recor
   return headers;
 }
 
+export async function readBoundedText(response: Response): Promise<string> {
+  const declaredLength = Number(response.headers.get("content-length"));
+  if (Number.isFinite(declaredLength) && declaredLength > MAX_DISCOVERY_RESPONSE_BYTES) {
+    throw new Error("Upstream model list was too large");
+  }
+  if (!response.body) return "";
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > MAX_DISCOVERY_RESPONSE_BYTES) {
+        await reader.cancel();
+        throw new Error("Upstream model list was too large");
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const body = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    body.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return new TextDecoder().decode(body);
+}
+
 export async function discoverModelsFromProvider(
   providerName: string,
   provider: Record<string, unknown>,
@@ -61,7 +94,7 @@ export async function discoverModelsFromProvider(
     headers: buildHeaders(api, auth.apiKey, auth.headers),
     signal: AbortSignal.timeout(DISCOVERY_TIMEOUT_MS),
   });
-  const responseText = await response.text();
+  const responseText = await readBoundedText(response);
   if (!response.ok) throw new Error(responseText.slice(0, 500) || `Upstream returned HTTP ${response.status}`);
 
   let payload: unknown;

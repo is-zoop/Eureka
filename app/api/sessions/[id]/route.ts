@@ -14,6 +14,7 @@ import { sessionPathKey } from "@/lib/session-path";
 import { getRpcSession } from "@/lib/rpc-manager";
 import { projectTreeForResponse } from "@/lib/project-tree";
 import { computeSessionTotalActiveMs } from "@/lib/session-timing";
+import { readPlanState } from "@/lib/plan-mode";
 
 export async function GET(
   req: Request,
@@ -37,6 +38,9 @@ export async function GET(
     const deferThinking = searchParams.has("deferThinking");
     const deferToolResultImages = searchParams.has("deferMedia");
     const context = buildSessionContext(entries as never, leafId, { deferThinking, deferToolResultImages });
+    // A closed session has no live AgentSession state endpoint. Restore its
+    // persisted plan snapshots here so historical plan cards remain available.
+    const planMode = readPlanState(entries as never);
     const totalActiveMs = computeSessionTotalActiveMs(entries);
 
     const header = sm.getHeader();
@@ -71,6 +75,7 @@ export async function GET(
       leafId,
       tree,
       context,
+      planMode,
       totalActiveMs,
     });
   } catch (error) {

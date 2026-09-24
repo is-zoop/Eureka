@@ -50,6 +50,9 @@ import {
   CommandList,
 } from "./ui/command";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
+import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogTitle } from "./ui/alert-dialog";
+import { Button } from "./ui/button";
+import { PlanTaskRows } from "./PlanTaskRows";
 
 export interface AttachedImage {
   data: string;   // base64, no prefix
@@ -89,6 +92,7 @@ interface Props {
   onToolPresetChange?: (preset: ToolPreset) => void;
   planMode?: EurekaPlanState;
   onPlanModeChange?: (planning: boolean) => void;
+  onCancelPlan?: () => Promise<unknown> | unknown;
   onOpenPlanReview?: () => void;
   thinkingLevel?: "auto" | "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
   onThinkingLevelChange?: (level: "auto" | "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max") => void;
@@ -407,7 +411,7 @@ export function ModelScopeWarningBanner({ warnings }: { warnings?: string[] }) {
 export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   onSend, onAbort, onSteer, onFollowUp, isStreaming, inputLocked = false, model, isAutoModelSelection, modelNames, modelList, modelError, modelScopeWarnings, onModelChange, modelSwitching,
   onCompact, onAbortCompaction, isCompacting, compactError, compactResult, toolPreset, onToolPresetChange,
-  planMode, onPlanModeChange, onOpenPlanReview,
+  planMode, onPlanModeChange, onCancelPlan, onOpenPlanReview,
   thinkingLevel, onThinkingLevelChange, availableThinkingLevels, thinkingLevelMap,
   retryInfo, queuedMessages, inputHistory = [], onRecallQueue,
   slashCommands, slashCommandsLoading, onLoadSlashCommands,
@@ -434,6 +438,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   const [deferredToolPreset, setDeferredToolPreset] = useState<ToolPreset | null>(null);
   const [compactBlockedNotice, setCompactBlockedNotice] = useState(false);
   const [planModeGlowReady, setPlanModeGlowReady] = useState(false);
+  const [stopPlanConfirmOpen, setStopPlanConfirmOpen] = useState(false);
   const [attachedImages, setAttachedImages] = useState<AttachedImage[]>(() => (
     draftKey ? draftImagesToAttachedImages(getDraft(draftKey)?.images) : []
   ));
@@ -510,7 +515,17 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   const resizeTextarea = useCallback((target = textareaRef.current) => {
     if (!target) return;
     const maxHeight = 200;
-    const minHeight = isMobile ? 52 : 82;
+    const minHeight = isMobile ? 52 : 56;
+    // Chromium can size a textarea from its content without retaining a
+    // previous inline height. This avoids a stale 200px measurement after a
+    // multi-line draft has been shortened. Keep the manual path for older
+    // engines that do not support field-sizing.
+    if (typeof CSS !== "undefined" && CSS.supports("field-sizing", "content")) {
+      target.style.height = "";
+      target.style.overflowY = target.scrollHeight > maxHeight ? "auto" : "hidden";
+      return;
+    }
+    // Reset before measuring so deletion can shrink the fallback layout too.
     target.style.height = "auto";
     const nextHeight = Math.max(minHeight, Math.min(target.scrollHeight, maxHeight));
     target.style.height = `${nextHeight}px`;
@@ -885,7 +900,8 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     t("chat.addImage"),
     t("chat.addImageDescription"),
   ].join(" ").toLowerCase().includes(addMenuQuery.trim().toLowerCase());
-  const planModeMatches = Boolean(onPlanModeChange) && !planMode?.planModeActive && (!addMenuQuery.trim() || "计划模式 开启计划模式 规划".includes(addMenuQuery.trim().toLowerCase()));
+  const planModeSearchText = `${t("plan.mode")} ${t("plan.enableDescription")} plan planning`;
+  const planModeMatches = Boolean(onPlanModeChange) && !planMode?.planModeActive && (!addMenuQuery.trim() || planModeSearchText.toLowerCase().includes(addMenuQuery.trim().toLowerCase()));
   const addMenuHasResults = addImageMatches || planModeMatches || filteredAddMenuCommands.length > 0;
   const commandDescriptionColor = "var(--text-muted)";
   const commandPaletteBackground = isDark ? "var(--bg-panel)" : "#ffffff";
@@ -901,6 +917,9 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     return counts;
   }, [references]);
   const canQueueStreamingMessage = hasInputText || attachedImages.length > 0 || references.length > 0;
+  // The execution stop action is wider than the normal send action. Reserve
+  // enough room in the bottom controls so tool selectors never sit under it.
+  const composerActionReservation = isStreaming && planMode?.phase === "executing" ? 148 : 112;
   const composerDrawerVisible = Boolean(pendingStreamingSubmission);
   const planModeActive = Boolean(planMode?.planModeActive);
 
@@ -1639,6 +1658,9 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
         {compactError && (
           <NotificationNotice message={compactError} type="error" />
         )}
+        {planMode?.phase === "executing" && planMode.todos.length > 0 && (
+          <PlanTaskRows todos={planMode.todos} isStreaming={isStreaming} />
+        )}
         {/* Image previews */}
         {attachedImages.length > 0 && (
           <div style={{ display: "flex", gap: 6, marginBottom: 6, flexWrap: "wrap" }}>
@@ -1723,11 +1745,11 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                           <span className="truncate text-[11px]" style={{ color: commandDescriptionColor }}>{t("chat.addImageDescription")}</span>
                         </span>
                       </CommandItem>}
-                      {planModeMatches && <CommandItem value="plan-mode" title="计划模式 · 开启只读规划与评审流程" onSelect={() => {
+                      {planModeMatches && <CommandItem value="plan-mode" title={`${t("plan.mode")} · ${t("plan.enableDescription")}`} onSelect={() => {
                         setAddMenuOpen(false); setAddMenuQuery(""); onPlanModeChange?.(true);
                       }} className="cursor-pointer py-1.5 text-[color:var(--text)] data-[selected=true]:bg-[var(--bg-hover)]">
                         <span className="flex size-5 shrink-0 items-center justify-center text-[color:var(--text-muted)]"><CommandPaletteIcon kind="plan" /></span>
-                        <span className="flex min-w-0 items-baseline gap-2"><span className="shrink-0 text-[13px] font-medium">计划模式</span><span className="truncate text-[11px]" style={{ color: commandDescriptionColor }}>开启只读规划与评审流程</span></span>
+                        <span className="flex min-w-0 items-baseline gap-2"><span className="shrink-0 text-[13px] font-medium">{t("plan.mode")}</span><span className="truncate text-[11px]" style={{ color: commandDescriptionColor }}>{t("plan.enableDescription")}</span></span>
                       </CommandItem>}
                     </CommandGroup>
                   )}
@@ -2030,11 +2052,11 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
               gap: 8,
               alignItems: "flex-start",
               background: "var(--input-bg)",
-              border: `1px solid ${planModeActive && planModeGlowReady ? "color-mix(in srgb, #3b82f6 18%, var(--border))" : bashMode ? "var(--tool-bg)" : "color-mix(in srgb, var(--border) 70%, transparent)"}`,
+              border: `1px solid ${planModeActive && planModeGlowReady ? "color-mix(in srgb, #60a5fa 54%, var(--border))" : bashMode ? "var(--tool-bg)" : "color-mix(in srgb, var(--border) 70%, transparent)"}`,
               borderRadius: 16,
               padding: "10px 10px 10px 14px",
               boxShadow: planModeActive && planModeGlowReady
-                ? "0 7px 20px rgba(59, 130, 246, 0.12), 0 0 0 1px rgba(59, 130, 246, 0.1)"
+                ? "0 9px 24px rgba(37, 99, 235, 0.16), 0 0 0 1px rgba(96, 165, 250, 0.3), 0 0 16px rgba(59, 130, 246, 0.16)"
                 : "var(--shadow-soft)",
               transition: planModeActive
                 ? "border-color 860ms cubic-bezier(0.16, 1, 0.3, 1), background var(--transition-ui), box-shadow 860ms cubic-bezier(0.16, 1, 0.3, 1)"
@@ -2061,15 +2083,23 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
               })}
             </div>
           )}
+          {/* The controls below intentionally overlap the composer. Keep their
+              reserved space outside the textarea so content sizing can never
+              consume it. */}
+          <div style={{ width: "100%", minWidth: 0, paddingBottom: isMobile ? 0 : 42 }}>
           <textarea
             ref={textareaRef}
             value={value}
             disabled={inputLocked}
             onChange={(e) => {
+              const target = e.currentTarget;
               valueRef.current = e.target.value;
               setValue(e.target.value);
               setHistoryMenuOpen(false);
               updateAtQuery(e.target.value, e.target.selectionStart);
+              // React may commit the controlled value after this handler, so
+              // schedule one final measurement against the rendered textarea.
+              requestAnimationFrame(() => resizeTextarea(target));
             }}
             onSelect={(e) => {
               const el = e.currentTarget;
@@ -2088,7 +2118,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
             onInput={handleInput}
             onPaste={handlePaste}
             placeholder={
-              inputLocked ? "请先回答当前规划澄清问题"
+              inputLocked ? t("plan.answerRequired")
                 : isStreaming && (onSteer || onFollowUp)
                 ? t("chat.steerPlaceholder")
                 : isStreaming ? t("chat.agentPlaceholder")
@@ -2096,8 +2126,8 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
             }
             rows={1}
             style={{
-              flex: 1,
               minWidth: 0,
+              display: "block",
               width: "100%",
               background: "none",
               border: "none",
@@ -2108,16 +2138,20 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
               fontSize: 15,
               lineHeight: 1.6,
               fontFamily: "inherit",
-              minHeight: isMobile ? 52 : 82,
+              minHeight: isMobile ? 52 : 56,
               maxHeight: 200,
               overflowY: "hidden",
               boxSizing: "border-box",
+              // Let modern Chromium grow and shrink this element from its
+              // content. The max height above takes over as a scroll limit.
+              fieldSizing: "content",
+              paddingBottom: 0,
               paddingRight: isStreaming && canQueueStreamingMessage ? 260 : 112,
-              paddingBottom: isMobile ? 0 : 40,
             }}
           />
+          </div>
 
-          {isStreaming && canQueueStreamingMessage ? (
+          {isStreaming && canQueueStreamingMessage && planMode?.phase !== "executing" ? (
             <div style={{ position: "absolute", right: 24, bottom: 10, display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
               <Tooltip>
               <TooltipTrigger render={<button
@@ -2149,10 +2183,12 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
           ) : isStreaming ? (
             <Tooltip>
             <TooltipTrigger render={<button
-              onClick={onAbort}
-              aria-label={t("chat.stopAgent")}
+              onClick={planMode?.phase === "executing" && onCancelPlan ? () => setStopPlanConfirmOpen(true) : onAbort}
+                  aria-label={planMode?.phase === "executing" ? t("plan.stop") : t("chat.stopAgent")}
               style={{
                 position: "absolute", right: 24, bottom: 10,
+                zIndex: 3,
+                pointerEvents: "auto",
                 display: "flex", alignItems: "center", gap: 6,
                 padding: "7px 14px", height: 32,
                 background: isDark ? "#ffffff" : "#080707",
@@ -2163,7 +2199,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
               }}
             >
               <svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true"><rect x="1.5" y="1.5" width="7" height="7" rx="1.5" fill="currentColor" /></svg>
-              {t("chat.stop")}
+              {planMode?.phase === "executing" ? t("plan.stop") : t("chat.stop")}
             </button>} />
             <TooltipContent>{t("chat.stopAgent")}</TooltipContent>
             </Tooltip>
@@ -2201,6 +2237,24 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
             </button>
           )}
           </div>
+          <AlertDialog open={stopPlanConfirmOpen} onOpenChange={setStopPlanConfirmOpen}>
+            <AlertDialogContent>
+              <div className="flex flex-col px-6 pb-5 pt-6 text-center">
+                <AlertDialogTitle>{t("plan.stopConfirmTitle")}</AlertDialogTitle>
+                <AlertDialogDescription className="mt-2">{t("plan.stopConfirmDescription")}</AlertDialogDescription>
+              </div>
+              <div className="flex gap-2 border-t border-[var(--border)] bg-[var(--bg)] px-4 py-3">
+                <Tooltip>
+                  <TooltipTrigger render={<AlertDialogCancel className="h-8 flex-1 justify-center overflow-hidden px-3.5 text-sm font-[550]"><span className="min-w-0 max-w-full truncate text-left">{t("plan.continueExecution")}</span></AlertDialogCancel>} />
+                  <TooltipContent>{t("plan.continueExecution")}</TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger render={<Button variant="destructive" size="sm" className="h-8 flex-1 justify-center overflow-hidden px-3.5 text-sm font-[550]" onClick={() => { void onCancelPlan?.(); setStopPlanConfirmOpen(false); }}><span className="min-w-0 max-w-full truncate text-left">{t("plan.stop")}</span></Button>} />
+                  <TooltipContent>{t("plan.stop")}</TooltipContent>
+                </Tooltip>
+              </div>
+            </AlertDialogContent>
+          </AlertDialog>
         </div>
 
         {/* Bash mode status label */}
@@ -2212,10 +2266,8 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
 
         {/* Bottom bar: left | center (context) | right */}
         <div style={{
-          // Keep this bar in normal flow. It used to overlap the textarea via
-          // a negative margin, which let multi-line content sit under controls.
-          marginTop: 8,
-          padding: isMobile ? undefined : "0 112px 0 6px",
+          marginTop: isMobile ? 8 : -42,
+          padding: isMobile ? undefined : `0 ${composerActionReservation}px 0 6px`,
           position: "relative",
           zIndex: 1,
           // Keep the model and reasoning selectors in one continuous row.  The
@@ -2589,15 +2641,15 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                 </DropdownMenuContent>
               </DropdownMenu>
             )}
-            {planMode?.planModeActive && (
+            {(planMode?.planModeActive || planMode?.phase === "executing") && (
               <>
               <span aria-hidden="true" style={{ width: 1, height: 16, margin: "0 4px", background: "var(--border)", flexShrink: 0 }} />
               <Tooltip>
                 <TooltipTrigger render={<button
                   type="button"
-                  onClick={() => onPlanModeChange?.(false)}
-                  disabled={isStreaming || planMode.phase === "reviewing"}
-                  aria-label="退出计划模式"
+                  onClick={() => { if (planMode?.phase !== "executing") onPlanModeChange?.(false); }}
+                  disabled={planMode?.phase === "reviewing" || planMode?.phase === "executing"}
+                  aria-label={planMode?.phase === "executing" ? t("plan.mode") : t("plan.cancelMode")}
                   style={{
                     display: "flex",
                     alignItems: "center",
@@ -2609,16 +2661,16 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                     borderRadius: 7,
                     background: "transparent",
                     color: "var(--text-muted)",
-                    cursor: isStreaming || planMode.phase === "reviewing" ? "default" : "pointer",
+                    cursor: planMode?.phase === "reviewing" || planMode?.phase === "executing" ? "default" : "pointer",
                     fontSize: 12,
-                    opacity: isStreaming || planMode.phase === "reviewing" ? 0.55 : 1,
+                    opacity: planMode?.phase === "reviewing" || planMode?.phase === "executing" ? 0.55 : 1,
                   }}
                 >
                   <span className="flex size-4 shrink-0 items-center justify-center"><CommandPaletteIcon kind="plan" /></span>
-                  <span style={{ whiteSpace: "nowrap" }}>计划模式</span>
+                  <span style={{ whiteSpace: "nowrap" }}>{t("plan.mode")}</span>
                   <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="m18 6-12 12M6 6l12 12" /></svg>
                 </button>} />
-                <TooltipContent>退出计划模式</TooltipContent>
+                <TooltipContent>{planMode?.phase === "executing" ? t("plan.mode") : t("plan.cancelMode")}</TooltipContent>
               </Tooltip>
               </>
             )}

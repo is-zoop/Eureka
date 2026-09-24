@@ -87,6 +87,18 @@ const thinkingContentCache = new Map<string, Promise<string>>();
 // log dumps) freezes the browser main thread.
 const MAX_MARKDOWN_CHARS = 100_000;
 
+/**
+ * DONE markers are persisted as part of the plan-execution protocol. Present
+ * them as ordinary checked Markdown tasks so the protocol remains invisible in
+ * the chat while `markPlanTodosDone()` can still read the original response.
+ */
+export function formatPlanCompletionMarkers(text: string): string {
+  return text.replace(
+    /^(\s*)(?:[-*+•]\s*)?\[DONE:(\d+)\]\s*(.+?)\s*$/gm,
+    "$1- [x] $2. $3",
+  );
+}
+
 function formatMessageBytes(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)} MB`;
   if (n >= 1_000) return `${Math.round(n / 1_000)} KB`;
@@ -913,7 +925,7 @@ function BlockView({ block, toolResults, isStreaming, streamingDuration, toolCal
 }
 
 function TextBlock({ block, isStreaming, cwd, onOpenFile }: { block: TextContent; isStreaming?: boolean; cwd?: string; onOpenFile?: (filePath: string) => void }) {
-  return <SafeMarkdownBody isStreaming={isStreaming} cwd={cwd} onOpenFile={onOpenFile}>{block.text}</SafeMarkdownBody>;
+  return <SafeMarkdownBody isStreaming={isStreaming} cwd={cwd} onOpenFile={onOpenFile}>{formatPlanCompletionMarkers(block.text)}</SafeMarkdownBody>;
 }
 
 function ThinkingBlock({ block, duration, sessionId, entryId, blockIndex }: {

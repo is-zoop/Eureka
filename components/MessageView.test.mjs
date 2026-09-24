@@ -8,8 +8,8 @@ const jiti = createJiti(import.meta.url, {
   jsx: { runtime: "automatic" },
   tsconfigPaths: true,
 });
-const { MessageView, replaceUserMessageText } = await jiti.import("./MessageView.tsx");
-const { I18nProvider } = await jiti.import("../hooks/useI18n.tsx");
+const { MessageView, replaceUserMessageText, formatPlanCompletionMarkers } = await jiti.import("./MessageView.tsx");
+const { I18nProvider } = await jiti.import("@/hooks/useI18n");
 
 function renderMessage(message) {
   return renderToStaticMarkup(
@@ -56,6 +56,24 @@ test("renders partial assistant content before the provider error", () => {
 
   assert.match(html, /Partial response/);
   assert.match(html, /Error: Connection closed/);
+});
+
+test("renders plan completion markers as checked numbered tasks without altering stored protocol text", () => {
+  const source = "Completed work:\n- [DONE:1] Update the component\n- [DONE:12] Verify the result";
+  const display = formatPlanCompletionMarkers(source);
+
+  assert.equal(source.includes("[DONE:1]"), true);
+  assert.equal(display, "Completed work:\n- [x] 1. Update the component\n- [x] 12. Verify the result");
+
+  const html = renderMessage({
+    role: "assistant",
+    provider: "openai",
+    model: "gpt-test",
+    content: [{ type: "text", text: source }],
+  });
+  assert.match(html, /type="checkbox"[^>]*checked/);
+  assert.match(html, /1\. Update the component/);
+  assert.doesNotMatch(html, /\[DONE:1\]|<del>/);
 });
 
 test("renders a complete SDK skill expansion as a compact command", () => {

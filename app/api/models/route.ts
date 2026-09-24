@@ -12,6 +12,7 @@ import { resolveVisibleModels, selectInitialModelScope } from "@/lib/model-scope
 import { getAllowedFileRoots, isExistingFilePathAllowed } from "@/lib/file-access";
 import { projectTrustReloadOptions } from "@/lib/project-trust";
 import { refreshDueModelDiscoveries } from "@/lib/model-discovery-refresh";
+import { schedulePiCatalogSync } from "@/lib/pi-catalog-sync";
 
 export const dynamic = "force-dynamic";
 
@@ -122,6 +123,7 @@ export async function GET(req: Request) {
   }
 
   try {
+    schedulePiCatalogSync();
     return Response.json(await loadModelsWithCache(cwd, () => loadModels(cwd)));
   } catch {
     return Response.json(withSafeModelLoadFailure(EMPTY_MODELS));
