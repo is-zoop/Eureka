@@ -55,7 +55,7 @@ function versionNotes(changelog: string | string[] | null) {
 function CapabilityIcon({ item }: { item: OrganizationExtensionDetailItem }) {
   const [failed, setFailed] = useState(false);
   const fallback = item.type === "MCP" ? <CpuIcon className="h-5 w-5" /> : <LayersIcon className="h-5 w-5" />;
-  return <span className="grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-[var(--radius-control)] bg-[var(--bg-hover)] text-[var(--text-muted)]">{item.iconUrl && !failed ? <img src={item.iconUrl} alt="" className="h-full w-full object-cover" onError={() => setFailed(true)} /> : fallback}</span>;
+  return <span className="grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-[var(--radius-control)] border border-black/5 bg-[#f7f8fa] text-slate-600 shadow-sm">{item.iconUrl && !failed ? <img src={item.iconUrl} alt="" className="h-full w-full object-contain" onError={() => setFailed(true)} /> : fallback}</span>;
 }
 
 function DetailField({ label, value }: { label: string; value: string }) {

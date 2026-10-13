@@ -5,6 +5,7 @@ import { hasMarketplaceAccess, refreshMarketplaceSession } from "@/lib/auth/mark
 import { getIdentityProvider } from "@/lib/auth/provider";
 import { readRuntimeHazeSession, writeRuntimeHazeSession } from "@/lib/auth/runtime-session";
 import type { AuthSession } from "@/lib/auth/types";
+import { readGuestSession } from "@/lib/auth/session";
 
 export type OrganizationExtensionType = "skill" | "mcp";
 
@@ -79,6 +80,7 @@ async function refreshRuntimeMarketplaceSession(): Promise<AuthSession | null> {
 }
 
 export async function getHazeMarketplaceSession(): Promise<HazeMarketplaceSession> {
+  if (await readGuestSession()) throw new OrganizationExtensionsError("unauthenticated");
   // The encrypted Eureka cookie deliberately omits access tokens, so every
   // marketplace proxy request refreshes a short-lived token server-side. The
   // shared auth helper deduplicates concurrent refreshes from profile, list,

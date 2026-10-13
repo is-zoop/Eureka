@@ -916,7 +916,8 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     }
     return counts;
   }, [references]);
-  const canQueueStreamingMessage = hasInputText || attachedImages.length > 0 || references.length > 0;
+  const canQueueStreamingMessage = !inputLocked && Boolean(onSteer || onFollowUp)
+    && (hasInputText || attachedImages.length > 0 || references.length > 0);
   // The execution stop action is wider than the normal send action. Reserve
   // enough room in the bottom controls so tool selectors never sit under it.
   const composerActionReservation = isStreaming && planMode?.phase === "executing" ? 148 : 112;
@@ -1136,6 +1137,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   }, [value, attachedImages, references, onPromptWithStreamingBehavior, onSteer, onFollowUp, clearInput, onAudioUnlock]);
 
   const stageStreamingSubmission = useCallback(() => {
+    if (inputLocked || (!onSteer && !onFollowUp)) return;
     const message = value.trim();
     if (!message && !attachedImages.length && !references.length) return;
 
@@ -1149,7 +1151,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     setAtQuery(null);
     setHistoryMenuOpen(false);
     if (draftKey) clearDraft(draftKey);
-  }, [value, attachedImages, references, draftKey]);
+  }, [value, attachedImages, references, draftKey, inputLocked, onSteer, onFollowUp]);
 
   const restoreStagedStreamingSubmission = useCallback(() => {
     if (!pendingStreamingSubmission) return;
@@ -1164,11 +1166,18 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   }, [pendingStreamingSubmission]);
 
   const confirmStagedStreamingSubmission = useCallback((mode: "steer" | "followup") => {
-    if (!pendingStreamingSubmission) return;
+    if (!pendingStreamingSubmission || inputLocked) return;
     const pending = pendingStreamingSubmission;
     setPendingStreamingSubmission(null);
-    sendQueued(mode, pending);
-  }, [pendingStreamingSubmission, sendQueued]);
+    // The current run may finish while the user is choosing a delivery mode.
+    // Submit as a normal prompt then, so the staged draft remains sendable.
+    if (!isStreaming) {
+      onAudioUnlock?.();
+      onSend(pending.message, pending.images.length ? pending.images : undefined, pending.references);
+    } else {
+      sendQueued(mode, pending);
+    }
+  }, [pendingStreamingSubmission, inputLocked, isStreaming, onAudioUnlock, onSend, sendQueued]);
 
   const getNextSlashIndex = useCallback((direction: "up" | "down" | "left" | "right") => {
     const lastIndex = displayedSlashCommands.length - 1;
@@ -2025,10 +2034,10 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                   <button type="button" onClick={restoreStagedStreamingSubmission} style={{ flexShrink: 0, padding: "5px 8px", border: "1px solid var(--border)", borderRadius: 7, background: "transparent", color: "var(--text-muted)", cursor: "pointer", fontSize: 12 }}>
                     {t("chat.moveToInput")}
                   </button>
-                  {onFollowUp && <button type="button" onClick={() => confirmStagedStreamingSubmission("followup")} style={{ flexShrink: 0, padding: "5px 9px", border: "1px solid var(--border)", borderRadius: 7, background: "var(--bg-hover)", color: "var(--text)", cursor: "pointer", fontSize: 12, fontWeight: 550 }}>
+                  {(onFollowUp || !isStreaming) && <button type="button" disabled={inputLocked} onClick={() => confirmStagedStreamingSubmission("followup")} style={{ flexShrink: 0, padding: "5px 9px", border: "1px solid var(--border)", borderRadius: 7, background: "var(--bg-hover)", color: "var(--text)", cursor: "pointer", fontSize: 12, fontWeight: 550 }}>
                     {t("chat.queueSend")}
                   </button>}
-                  {onSteer && <button type="button" onClick={() => confirmStagedStreamingSubmission("steer")} style={{ flexShrink: 0, padding: "5px 9px", border: "1px solid transparent", borderRadius: 7, background: isDark ? "#ffffff" : "#080707", color: isDark ? "#080707" : "#fff", cursor: "pointer", fontSize: 12, fontWeight: 600 }}>
+                  {(onSteer || !isStreaming) && <button type="button" disabled={inputLocked} onClick={() => confirmStagedStreamingSubmission("steer")} style={{ flexShrink: 0, padding: "5px 9px", border: "1px solid transparent", borderRadius: 7, background: isDark ? "#ffffff" : "#080707", color: isDark ? "#080707" : "#fff", cursor: "pointer", fontSize: 12, fontWeight: 600 }}>
                     {t("chat.immediateSteer")}
                   </button>}
                 </div>
@@ -2040,12 +2049,9 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
             style={{
               position: "relative",
               // The bottom control bar deliberately overlaps the lower part of
-              // the composer.  Keeping this container as a stacking context
-              // made that otherwise transparent bar sit above the absolute
-              // send button, so mouse clicks never reached it.  Only raise the
-              // composer as a whole while the streaming drawer is present;
-              // otherwise the send button's own z-index can sit above the bar.
-              zIndex: composerDrawerVisible ? 1 : "auto",
+              // the composer. Do not create a stacking context here: both send
+              // and stop must stay above that bar, even with the drawer open.
+              zIndex: "auto",
               minWidth: 0,
               display: "flex",
               flexDirection: "column",
@@ -2086,7 +2092,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
           {/* The controls below intentionally overlap the composer. Keep their
               reserved space outside the textarea so content sizing can never
               consume it. */}
-          <div style={{ width: "100%", minWidth: 0, paddingBottom: isMobile ? 0 : 42 }}>
+          <div style={{ width: "100%", minWidth: 0, paddingBottom: 42 }}>
           <textarea
             ref={textareaRef}
             value={value}
@@ -2146,13 +2152,13 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
               // content. The max height above takes over as a scroll limit.
               fieldSizing: "content",
               paddingBottom: 0,
-              paddingRight: isStreaming && canQueueStreamingMessage ? 260 : 112,
+              paddingRight: 0,
             }}
           />
           </div>
 
           {isStreaming && canQueueStreamingMessage && planMode?.phase !== "executing" ? (
-            <div style={{ position: "absolute", right: 24, bottom: 10, display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+            <div style={{ position: "absolute", zIndex: 3, right: 24, bottom: 10, display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
               <Tooltip>
               <TooltipTrigger render={<button
                   onClick={stageStreamingSubmission}

@@ -22,6 +22,7 @@ export type AuthTransaction = {
   verifier: string;
   returnTo: string;
   expiresAt: number;
+  desktopRequestId?: string;
 };
 
 export type ProviderTokens = {

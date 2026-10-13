@@ -3,13 +3,15 @@
 import { NotificationNotice } from "@/components/Notifications";
 
 import { registerAbortHandler } from "@/hooks/useKeyboardShortcuts";
-import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { AgentMessage, AssistantContentBlock, AssistantMessage, BashExecutionMessage, BlockingExtensionUiRequest, CustomMessage, ExtensionUiRequest, SessionInfo, SessionTreeNode, ToolResultMessage, UserMessage } from "@/lib/types";
 import { normalizeCustomPanelLines, parseAnsiLine } from "@/lib/ansi";
 import { asBracketedPaste, toTerminalKeyData } from "@/lib/terminal-input";
-import { countToolCallBlocks, getAssistantErrorMessage, getDisplayableAssistantBlocks, splitFinalAssistantBlocks } from "@/lib/message-display";
+import { buildTaskPhases, type TaskPhaseSource } from "@/lib/task-phases";
 import { extractTurnWrittenFiles, type WrittenFile } from "@/lib/turn-written-files";
 import { MessageView } from "./MessageView";
+import { TaskTurnView } from "./TaskTurnView";
+import { AgentActivityStatus } from "./AgentActivity";
 import { PlanCard } from "./PlanCard";
 import { PlanQuestionCard } from "./PlanQuestionCard";
 import { ChatInput, type ChatInputHandle } from "./ChatInput";
@@ -17,7 +19,7 @@ import { ChatMinimap, useMessageRefs } from "./ChatMinimap";
 import { ExtensionStatusBar } from "./ExtensionStatusBar";
 import { useI18n } from "@/hooks/useI18n";
 import { useTheme } from "@/hooks/useTheme";
-import { useAgentSession, type AgentPhase } from "@/hooks/useAgentSession";
+import { useAgentSession } from "@/hooks/useAgentSession";
 import { useDragDrop } from "@/hooks/useDragDrop";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { Skeleton } from "./ui/skeleton";
@@ -27,7 +29,6 @@ import { getPendingPlanQuestionGroup, getSessionPlans, isDraftPlanEntry, type Eu
 import {
   captureScrollDistance,
   getNextVisibleCount,
-  getPromptAnchorSpacerHeight,
   getVisibleRenderWindow,
   restoreScrollTop,
   VISIBLE_PAGE_SIZE,
@@ -70,29 +71,9 @@ export interface PlanReviewControls {
   abandon: () => Promise<unknown>;
 }
 
-function phaseLabel(phase: AgentPhase, t: (key: string, params?: Record<string, string | number>) => string): string | null {
-  if (phase?.kind === "running_tools") {
-    const names = phase.tools.map((t) => t.name);
-    if (names.length === 0) return t("chat.runningTool");
-    if (names.length === 1) return t("chat.runningNamedTool", { name: names[0] });
-    if (names.length <= 3) return t("chat.runningTools", { names: names.join(", ") });
-    return t("chat.runningToolsMore", { names: names.slice(0, 2).join(", "), count: names.length - 2 });
-  }
-  if (phase?.kind === "waiting_model") return t("chat.waitingModel");
-  if (phase?.kind === "running_command") return t("chat.runningCommand");
-  return null;
-}
-
 const CHAT_MINIMAP_WIDTH = 36;
 const CHAT_COLUMN_PADDING = 16;
 const CHAT_INPUT_RIGHT_PADDING = CHAT_COLUMN_PADDING + CHAT_MINIMAP_WIDTH;
-
-function hasFinalAssistantAnswer(message: AgentMessage): boolean {
-  if (message.role !== "assistant") return false;
-  return splitFinalAssistantBlocks(message as AssistantMessage).answerBlocks.some((block) => (
-    block.type === "image" || (block.type === "text" && block.text.trim().length > 0)
-  ));
-}
 
 function getAssistantText(message: AssistantMessage): string {
   return message.content
@@ -100,16 +81,6 @@ function getAssistantText(message: AssistantMessage): string {
     .map((block) => block.text)
     .join("\n")
     .trim();
-}
-
-function findFinalAssistantIndex(messages: AgentMessage[], userIdx: number, endIdx: number): number {
-  for (let candidateIdx = endIdx - 1; candidateIdx > userIdx; candidateIdx--) {
-    if (hasFinalAssistantAnswer(messages[candidateIdx])) return candidateIdx;
-  }
-  for (let candidateIdx = endIdx - 1; candidateIdx > userIdx; candidateIdx--) {
-    if (messages[candidateIdx]?.role === "assistant") return candidateIdx;
-  }
-  return -1;
 }
 
 function getUserInputText(message: AgentMessage): string | null {
@@ -124,16 +95,6 @@ function getUserInputText(message: AgentMessage): string | null {
     .join("\n")
     .trim();
   return text.length > 0 ? text : null;
-}
-
-function countToolCalls(messages: AgentMessage[], indices: number[]): number {
-  let count = 0;
-  for (const idx of indices) {
-    const msg = messages[idx];
-    if (msg?.role !== "assistant") continue;
-    count += countToolCallBlocks(getDisplayableAssistantBlocks(msg as AssistantMessage));
-  }
-  return count;
 }
 
 function getPlanQuestionsForMessage(message: AgentMessage, questions: EurekaPlanQuestion[]): EurekaPlanQuestion[] {
@@ -157,13 +118,6 @@ function groupPlanQuestions(questions: EurekaPlanQuestion[]): EurekaPlanQuestion
   return [...groups.values()];
 }
 
-function hasDisplayableProcessMessage(message: AgentMessage): boolean {
-  if (message.role === "assistant") {
-    return getDisplayableAssistantBlocks(message as AssistantMessage).length > 0;
-  }
-  return message.role === "custom";
-}
-
 // A user message normally anchors a turn (user prompt → process → final
 // answer), and the process messages in between get folded into a collapsed
 // ProcessDetailsGroup. When compaction fires mid-turn, pi drops the original
@@ -185,49 +139,6 @@ function withAssistantBlocks(
   const next = { ...message, content };
   if (options.omitUsage) next.usage = undefined;
   return next;
-}
-
-function ProcessDetailsGroup({ messageCount, toolCallCount, defaultExpanded = false, children, t }: { messageCount: number; toolCallCount: number; defaultExpanded?: boolean; children: ReactNode; t: (key: string, params?: Record<string, string | number>) => string }) {
-  const [expanded, setExpanded] = useState(defaultExpanded);
-  const parts = [t("chat.processDetails"), `${messageCount} ${t(messageCount === 1 ? "chat.message" : "chat.messages")}`];
-  if (toolCallCount > 0) parts.push(`${toolCallCount} ${t(toolCallCount === 1 ? "chat.toolCall" : "chat.toolCalls")}`);
-
-  return (
-    <div style={{ marginBottom: 14 }}>
-      <button
-        type="button"
-        aria-expanded={expanded}
-        onClick={() => setExpanded((v) => !v)}
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 8,
-          width: "auto",
-          minHeight: 24,
-          padding: "2px 0",
-          border: "none",
-          background: "transparent",
-          color: "var(--text-muted)",
-          cursor: "pointer",
-          fontSize: 12,
-          textAlign: "left",
-        }}
-        title={expanded ? t("chat.collapseProcess") : t("chat.expandProcess")}
-      >
-        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, transform: expanded ? "rotate(90deg)" : "none", transition: "transform 0.15s" }}>
-          <polyline points="4 2.5 7.5 6 4 9.5" />
-        </svg>
-        <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          {parts.join(" · ")}
-        </span>
-      </button>
-      {expanded && (
-        <div style={{ marginTop: 8 }}>
-          {children}
-        </div>
-      )}
-    </div>
-  );
 }
 
 export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionDraftKey, onAgentEnd, onAttentionNeeded, onSessionCreated, onSessionForked, modelsRefreshKey, chatInputRef, onBranchDataChange, onSystemPromptChange, onSystemPromptLoaderChange, onSessionStatsChange, onSessionStatsPanelOpen, onContextUsageChange, onOpenFile, onOpenComposerReference, soundEnabled = true, onSoundToggle, playDoneSound = () => {}, unlockAudio, onPlanStateChange, onOpenPlanReview, onContentLoadingChange }: Props) {
@@ -266,13 +177,12 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
     isAutoModelSelection,
     agentPhase,
     isNew,
-    sessionIdRef, messagesEndRef, scrollContainerRef,
-    lastUserMsgRef, promptAnchorActive,
+    sessionIdRef, messagesEndRef, scrollContainerRef, messageContentRef,
     handleSend, handleAbort, handleFork, handleNavigate, handleModelChange,
     handleCompact, handleSteer, handleFollowUp, handlePromptWithStreamingBehavior, handleAbortCompaction,
     handleRecallQueue,
     handleBuiltinSlashCommand,
-    handleToolPresetChange, handleThinkingLevelChange, loadSlashCommands, scrollUserMsgToTop,
+    handleToolPresetChange, handleThinkingLevelChange, loadSlashCommands,
     handlePlanModeChange, handleSubmitPlan, handlePlanQuestionAnswer, handlePlanReviewUpdate, handleReturnPlanForRevision, handleApprovePlan, handleAbandonPlan,
   } = useAgentSession({
     session, sessionRunning, newSessionCwd, newSessionDraftKey, onAgentEnd: wrappedOnAgentEnd, onAttentionNeeded, onSessionCreated, onSessionForked,
@@ -294,6 +204,9 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
     onPlanStateChange?.(planMode, planReviewControls);
   }, [onPlanStateChange, planMode, planReviewControls]);
   const sessionBusy = agentRunning || bashRunning;
+  const runningToolIds = useMemo<ReadonlySet<string>>(() => new Set(
+    agentPhase?.kind === "running_tools" ? agentPhase.tools.map((tool) => tool.id) : [],
+  ), [agentPhase]);
 
   useEffect(() => {
     if (!extensionDialog || soundedExtensionDialogIdRef.current === extensionDialog.id) return;
@@ -429,105 +342,6 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
   const isEmptyNew = isNew && messages.length === 0 && !streamState.isStreaming && !sessionBusy;
   const hasStreamingContent = Boolean(streamState.streamingMessage?.content.length);
   const messageCwd = session?.cwd ?? newSessionCwd ?? undefined;
-  const messageContentRef = useRef<HTMLDivElement | null>(null);
-  const promptAnchorSpacerRef = useRef<HTMLDivElement | null>(null);
-  const promptAnchorSpacerHeightRef = useRef(0);
-  const promptAnchorMeasureFrameRef = useRef<number | null>(null);
-  const promptAnchorAdjustmentDoneRef = useRef(false);
-  const promptAnchorUpdateRef = useRef<(() => void) | null>(null);
-
-  useLayoutEffect(() => {
-    const spacer = promptAnchorSpacerRef.current;
-    if (!agentRunning || !promptAnchorActive) {
-      promptAnchorUpdateRef.current = null;
-      promptAnchorSpacerHeightRef.current = 0;
-      promptAnchorAdjustmentDoneRef.current = false;
-      if (spacer) spacer.style.height = "";
-      return;
-    }
-
-    const container = scrollContainerRef.current;
-    const messageContent = messageContentRef.current;
-    const userMessage = lastUserMsgRef.current;
-    if (!container || !messageContent || !userMessage || !spacer) return;
-
-    let disposed = false;
-    const updatePromptAnchorSpacer = () => {
-      if (
-        disposed
-        || scrollContainerRef.current !== container
-        || messageContentRef.current !== messageContent
-        || lastUserMsgRef.current !== userMessage
-        || promptAnchorSpacerRef.current !== spacer
-      ) return;
-
-      const containerTop = container.getBoundingClientRect().top;
-      const userMessageTop = userMessage.getBoundingClientRect().top
-        - containerTop
-        + container.scrollTop;
-      const targetTop = Math.max(0, userMessageTop - 16);
-      const contentEnd = spacer.getBoundingClientRect().top
-        - containerTop
-        + container.scrollTop;
-      const nextPromptAnchorSpacerHeight = getPromptAnchorSpacerHeight(
-        targetTop,
-        contentEnd,
-        container.clientHeight,
-      );
-
-      const isInitialMeasurement = !promptAnchorAdjustmentDoneRef.current;
-      const needsInitialAdjustment = isInitialMeasurement
-        && nextPromptAnchorSpacerHeight > 0;
-      if (isInitialMeasurement) promptAnchorAdjustmentDoneRef.current = true;
-      if (nextPromptAnchorSpacerHeight === promptAnchorSpacerHeightRef.current) return;
-
-      promptAnchorSpacerHeightRef.current = nextPromptAnchorSpacerHeight;
-      spacer.style.height = nextPromptAnchorSpacerHeight > 0
-        ? `${nextPromptAnchorSpacerHeight}px`
-        : "";
-      if (needsInitialAdjustment) scrollUserMsgToTop();
-    };
-
-    promptAnchorUpdateRef.current = updatePromptAnchorSpacer;
-    const schedulePromptAnchorMeasure = () => {
-      if (disposed || promptAnchorMeasureFrameRef.current !== null) return;
-      promptAnchorMeasureFrameRef.current = requestAnimationFrame(() => {
-        promptAnchorMeasureFrameRef.current = null;
-        updatePromptAnchorSpacer();
-      });
-    };
-
-    updatePromptAnchorSpacer();
-    const observer = typeof ResizeObserver === "undefined"
-      ? null
-      : new ResizeObserver(schedulePromptAnchorMeasure);
-    observer?.observe(container);
-    observer?.observe(messageContent);
-    observer?.observe(userMessage);
-    return () => {
-      disposed = true;
-      if (promptAnchorUpdateRef.current === updatePromptAnchorSpacer) {
-        promptAnchorUpdateRef.current = null;
-      }
-      observer?.disconnect();
-      if (promptAnchorMeasureFrameRef.current !== null) {
-        cancelAnimationFrame(promptAnchorMeasureFrameRef.current);
-        promptAnchorMeasureFrameRef.current = null;
-      }
-    };
-  }, [
-    agentRunning,
-    lastUserMsgRef,
-    messages.length,
-    promptAnchorActive,
-    scrollContainerRef,
-    scrollUserMsgToTop,
-  ]);
-
-  useLayoutEffect(() => {
-    promptAnchorUpdateRef.current?.();
-  }, [streamState.streamingMessage]);
-
   const availableThinkingLevels = displayModelValue
     ? (modelThinkingLevels[`${displayModelValue.provider}:${displayModelValue.modelId}`] ?? null)
     : null;
@@ -696,18 +510,11 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
       <>
       <div className="relative flex min-w-0 flex-1 overflow-hidden">
         <div ref={scrollContainerRef} className="min-w-0 flex-1 overflow-x-hidden overflow-y-auto pt-4 [scrollbar-width:none]">
-          <div style={{ minWidth: 0, padding: `0 ${CHAT_COLUMN_PADDING}px` }}>
-            <div ref={messageContentRef} style={{ width: "100%", minWidth: 0, maxWidth: 820, margin: "0 auto" }}>
+          <div style={{ minWidth: 0, minHeight: "100%", display: "flex", flexDirection: "column", padding: `0 ${CHAT_COLUMN_PADDING}px` }}>
+            <div ref={messageContentRef} style={{ width: "100%", minWidth: 0, maxWidth: 820, margin: "0 auto", flex: "1 0 auto", display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
             {(() => {
-              let lastUserIdx = -1;
-              for (let i = messages.length - 1; i >= 0; i--) {
-                if (messages[i].role === "user") { lastUserIdx = i; break; }
-              }
-              // Anchor for live-tail detection: the last user message, or a
-              // compaction summary when compaction has replaced it mid-turn.
-              // Computed independently from lastUserIdx (which is kept for the
-              // scroll-to-user ref) because a compaction summary can sit after
-              // the last user message and anchor the still-streaming segment.
+              let streamingConsumed = false;
+              // Compaction summaries may anchor a live segment after the last user prompt.
               let lastAnchorIdx = -1;
               for (let i = messages.length - 1; i >= 0; i--) {
                 if (isGroupAnchor(messages[i])) { lastAnchorIdx = i; break; }
@@ -721,12 +528,11 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
                 }
               });
 
-              const attachVisibleRef = (idx: number, refIndex: number) => (el: HTMLDivElement | null) => {
+              const attachVisibleRef = (refIndex: number) => (el: HTMLDivElement | null) => {
                 messageRefs.current[refIndex] = el;
-                if (idx === lastUserIdx) { (lastUserMsgRef as { current: HTMLDivElement | null }).current = el; }
               };
 
-              const renderMessage = (idx: number, options: { attachRef?: boolean; keyPrefix?: string; messageOverride?: AgentMessage; showTimestamp?: boolean; writtenFiles?: WrittenFile[]; renderPlan?: boolean } = {}): ReactNode => {
+              const renderMessage = (idx: number, options: { attachRef?: boolean; keyPrefix?: string; messageOverride?: AgentMessage; showTimestamp?: boolean; writtenFiles?: WrittenFile[]; renderPlan?: boolean; isStreaming?: boolean } = {}): ReactNode => {
                 const msg = options.messageOverride ?? messages[idx];
                 const prevAssistantEntryId =
                   msg.role === "user" && idx > 0 && messages[idx - 1].role === "assistant"
@@ -753,7 +559,9 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
                   <MessageView
                     key={`${keyPrefix}-view-${idx}`}
                     message={msg}
+                    isStreaming={options.isStreaming}
                     toolResults={toolResultsMap}
+                    runningToolIds={runningToolIds}
                     modelNames={modelNames}
                     cwd={messageCwd}
                     onOpenFile={onOpenFile}
@@ -773,6 +581,8 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
                 const canSubmitPlan = planMode.planModeActive
                   && planMode.phase === "planning"
                   && msg.role === "assistant"
+                  && (msg as AssistantMessage).stopReason !== "error"
+                  && (msg as AssistantMessage).stopReason !== "aborted"
                   && idx === latestAssistantMessageIndex
                   && isDraftPlanEntry(planMode, entryIds, idx)
                   && !sessionBusy
@@ -781,7 +591,7 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
                 // A final assistant entry may be rendered twice: once for its
                 // thinking/tool process and once for its final text. The plan
                 // belongs to the final text only, never the process duplicate.
-                const sourcePlan = options.renderPlan === false
+                const sourcePlan = options.renderPlan === false || !entryIds[idx]
                   ? undefined
                   : getSessionPlans(planMode).find((plan) => plan.sourceEntryId === entryIds[idx]);
                 // A plan is editable only when both its stable record id and
@@ -831,7 +641,7 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
                 ) : content;
                 if (!isVisible || options.attachRef === false || currentRefIdx === undefined) return view;
                 return (
-                  <div key={`${keyPrefix}-${idx}`} ref={attachVisibleRef(idx, currentRefIdx)}>
+                  <div key={`${keyPrefix}-${idx}`} ref={attachVisibleRef(currentRefIdx)}>
                     {view}
                   </div>
                 );
@@ -850,85 +660,85 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
                 let endIdx = userIdx + 1;
                 while (endIdx < messages.length && !isGroupAnchor(messages[endIdx])) endIdx += 1;
 
-                const finalAssistantIdx = findFinalAssistantIndex(messages, userIdx, endIdx);
-
-                if (finalAssistantIdx === -1) {
-                  for (let renderIdx = userIdx; renderIdx < endIdx; renderIdx++) {
-                    rendered.push(renderMessage(renderIdx));
+                const isLiveTail = (agentRunning || streamState.isStreaming) && endIdx === messages.length && userIdx === lastAnchorIdx;
+                if (isLiveTail) streamingConsumed = true;
+                const assistantIndices: number[] = [];
+                const extraIndices: number[] = [];
+                const sources: TaskPhaseSource[] = [];
+                for (let sourceIdx = userIdx + 1; sourceIdx < endIdx; sourceIdx++) {
+                  const sourceMessage = messages[sourceIdx];
+                  if (sourceMessage.role === "assistant") {
+                    assistantIndices.push(sourceIdx);
+                    sources.push({ message: sourceMessage as AssistantMessage, messageIndex: sourceIdx, entryId: entryIds[sourceIdx] });
+                  } else if (sourceMessage.role !== "toolResult") {
+                    extraIndices.push(sourceIdx);
                   }
-                  idx = endIdx;
-                  continue;
                 }
-
-                const isLiveTail = (sessionBusy || streamState.isStreaming) && endIdx === messages.length && userIdx === lastAnchorIdx;
-                if (isLiveTail) {
-                  for (let renderIdx = userIdx; renderIdx < endIdx; renderIdx++) {
-                    rendered.push(renderMessage(renderIdx));
-                  }
-                  idx = endIdx;
-                  continue;
+                if (isLiveTail && streamState.isStreaming && streamState.streamingMessage) {
+                  sources.push({ message: streamState.streamingMessage, messageIndex: messages.length, isStreaming: true });
+                  streamingConsumed = true;
                 }
-
+                const protectedPlanIndices = new Set(assistantIndices.filter((sourceIdx) =>
+                  entryIds[sourceIdx] && getSessionPlans(planMode).some((plan) => plan.sourceEntryId === entryIds[sourceIdx])
+                  && getAssistantText(messages[sourceIdx] as AssistantMessage).length > 0));
+                const turn = buildTaskPhases(sources, {
+                  running: isLiveTail,
+                  toolResults: toolResultsMap,
+                  runningToolIds,
+                  summaryExcludedMessageIndices: protectedPlanIndices,
+                });
                 rendered.push(renderMessage(userIdx));
-
-                const processIndices: number[] = [];
-                for (let processIdx = userIdx + 1; processIdx < finalAssistantIdx; processIdx++) {
-                  processIndices.push(processIdx);
-                }
-                const visibleProcessIndices = processIndices.filter((processIdx) => hasDisplayableProcessMessage(messages[processIdx]));
-                const finalAssistant = messages[finalAssistantIdx] as AssistantMessage;
-                const finalSplit = splitFinalAssistantBlocks(finalAssistant);
-                const finalProcessMessage = finalSplit.processBlocks.length > 0
-                  ? withAssistantBlocks(finalAssistant, finalSplit.processBlocks, { omitUsage: true })
-                  : null;
-                const finalAnswerMessage = finalSplit.answerBlocks.length > 0 || getAssistantErrorMessage(finalAssistant)
-                  ? withAssistantBlocks(finalAssistant, finalSplit.answerBlocks)
-                  : null;
-
-                const processCount = visibleProcessIndices.length + (finalProcessMessage ? 1 : 0);
-                if (processCount > 0) {
-                  const processRefIdx = visibleProcessIndices
-                    .map((processIdx) => visibleRefIndexByMessage.get(processIdx))
-                    .find((value): value is number => typeof value === "number")
-                    ?? (finalAnswerMessage ? undefined : visibleRefIndexByMessage.get(finalAssistantIdx));
-                  const processGroup = (
-                    <ProcessDetailsGroup
-                      messageCount={processCount}
-                      defaultExpanded={!finalAnswerMessage}
-                      t={t}
-                      toolCallCount={countToolCalls(messages, visibleProcessIndices) + countToolCallBlocks(finalSplit.processBlocks)}
-                    >
-                      {visibleProcessIndices.map((processIdx) => renderMessage(processIdx, { attachRef: false, keyPrefix: "process" }))}
-                      {finalProcessMessage && renderMessage(finalAssistantIdx, { attachRef: false, keyPrefix: "process-final", messageOverride: finalProcessMessage, showTimestamp: false, renderPlan: false })}
-                    </ProcessDetailsGroup>
-                  );
-                  rendered.push(
-                    <div
-                      key={`process-group-${userIdx}-${finalAssistantIdx}`}
-                      ref={processRefIdx === undefined ? undefined : (el) => { messageRefs.current[processRefIdx] = el; }}
-                    >
-                      {processGroup}
-                    </div>,
-                  );
-                }
-
-                if (finalAnswerMessage) {
-                  // Each tool call is stored as its own assistant entry, so the
-                  // final answer alone carries no record of what the turn wrote.
-                  // Gather the turn's assistant blocks and derive the file list
-                  // from the write/edit calls among them.
-                  const turnContent: AssistantContentBlock[] = [];
-                  for (let i = userIdx + 1; i <= finalAssistantIdx; i++) {
-                    const m = messages[i];
-                    if (m?.role === "assistant") {
-                      for (const b of (m as AssistantMessage).content ?? []) turnContent.push(b);
+                if (turn.phases.length > 0 || (sources.length > 0 && turn.status !== "completed" && turn.status !== "running")) {
+                  const tail = sources.at(-1);
+                  const turnKey = (entryIds[userIdx] ?? String(userIdx)) + ":" + (isLiveTail ? "live" : tail?.entryId ?? String(tail?.message.timestamp ?? endIdx));
+                  rendered.push(<div key={"task-turn-" + turnKey} ref={(element) => {
+                    for (const sourceIdx of assistantIndices) {
+                      const refIndex = visibleRefIndexByMessage.get(sourceIdx);
+                      if (refIndex === undefined) continue;
+                      const current = messageRefs.current[refIndex];
+                      if (element && current && element.contains(current)) continue;
+                      messageRefs.current[refIndex] = element;
                     }
-                  }
-                  const writtenFiles = extractTurnWrittenFiles(turnContent, toolResultsMap, messageCwd);
-                  rendered.push(renderMessage(finalAssistantIdx, { messageOverride: finalAnswerMessage, writtenFiles }));
+                  }}>
+                    <TaskTurnView turn={turn} toolResults={toolResultsMap} runningToolIds={runningToolIds}
+                      agentPhase={isLiveTail ? agentPhase : null}
+                      cwd={messageCwd} onOpenFile={onOpenFile} sessionId={session?.id ?? sessionIdRef.current ?? undefined} modelNames={modelNames}
+                      phaseRef={(phase) => (element) => {
+                        for (const sourceIdx of new Set([...phase.summary, ...phase.items].map((ref) => ref.source.messageIndex))) {
+                          const refIndex = visibleRefIndexByMessage.get(sourceIdx);
+                          if (refIndex !== undefined) messageRefs.current[refIndex] = element;
+                        }
+                      }}
+                      renderExtras={(phase) => {
+                        const phaseIndex = turn.phases.indexOf(phase);
+                        const next = turn.phases[phaseIndex + 1];
+                        const start = phaseIndex === 0 ? userIdx : Math.min(...[...phase.summary, ...phase.items].map((ref) => ref.source.messageIndex));
+                        const end = next ? Math.min(...[...next.summary, ...next.items].map((ref) => ref.source.messageIndex)) : endIdx;
+                        const indices = new Set([...phase.summary, ...phase.items].map((ref) => ref.source.messageIndex));
+                        const phaseToolIds = new Set(phase.items.flatMap((ref) => ref.block.type === "toolCall" ? [ref.block.toolCallId] : []));
+                        return <>
+                          {extraIndices.filter((sourceIdx) => sourceIdx >= start && sourceIdx < end).map((sourceIdx) => renderMessage(sourceIdx, { attachRef: false }))}
+                          {[...indices].filter((sourceIdx) => sourceIdx < messages.length && !protectedPlanIndices.has(sourceIdx)).flatMap((sourceIdx) =>
+                            groupPlanQuestions(getPlanQuestionsForMessage(messages[sourceIdx], planMode.questions).filter((question) => question.status === "answered" && phaseToolIds.has(question.toolCallId)))
+                              .map((questions) => <PlanQuestionCard key={questions[0]?.toolCallId} questions={questions} readOnly />))}
+                        </>;
+                      }} />
+                  </div>);
+                } else {
+                  for (const sourceIdx of extraIndices) rendered.push(renderMessage(sourceIdx));
                 }
-                for (let renderIdx = finalAssistantIdx + 1; renderIdx < endIdx; renderIdx++) {
-                  rendered.push(renderMessage(renderIdx));
+                for (const sourceIdx of protectedPlanIndices) {
+                  if (sourceIdx !== turn.answerSource?.messageIndex) rendered.push(renderMessage(sourceIdx));
+                }
+                if (turn.answerSource) {
+                  const finalAssistant = turn.answerSource.message;
+                  const finalAnswer = withAssistantBlocks(finalAssistant, turn.answerBlockIndices.map((blockIndex) => finalAssistant.content[blockIndex]));
+                  const turnContent = sources.flatMap((source) => source.message.content ?? []);
+                  const writtenFiles = extractTurnWrittenFiles(turnContent, toolResultsMap, messageCwd);
+                  rendered.push(renderMessage(turn.answerSource.messageIndex, {
+                    messageOverride: finalAnswer, writtenFiles, isStreaming: turn.answerSource.isStreaming,
+                    keyPrefix: "final-answer",
+                  }));
                 }
                 idx = endIdx;
               }
@@ -941,22 +751,18 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
                     </div>
                   )}
                   {rendered.slice(startIndex)}
+                  {!streamingConsumed && streamState.isStreaming && hasStreamingContent && streamState.streamingMessage && (
+                    <MessageView message={streamState.streamingMessage} isStreaming modelNames={modelNames} cwd={messageCwd} onOpenFile={onOpenFile} sessionId={session?.id ?? sessionIdRef.current ?? undefined} />
+                  )}
+                  {!streamingConsumed && agentRunning && !hasStreamingContent && agentPhase && (
+                    <div className="py-2 text-[13px] text-text-muted"><AgentActivityStatus phase={agentPhase} /></div>
+                  )}
                 </>
               );
             })()}
-            {streamState.isStreaming && hasStreamingContent && streamState.streamingMessage && (
-              <MessageView message={streamState.streamingMessage as AgentMessage} isStreaming modelNames={modelNames} cwd={messageCwd} onOpenFile={onOpenFile} />
-            )}
-
-            {agentRunning && !hasStreamingContent && agentPhase && (
-              <div className="py-2 text-[13px] text-text-muted">
-                <span className="animate-[pulse_1.5s_infinite]">{phaseLabel(agentPhase, t)}</span>
-              </div>
-            )}
-
             {bashRunning && !pendingBash && (
               <div className="py-2 text-[13px] text-text-muted">
-                 <span className="animate-[pulse_1.5s_infinite]">{t("chat.runningCommand")}</span>
+                <AgentActivityStatus phase={{ kind: "running_command" }} />
               </div>
             )}
 
@@ -971,8 +777,6 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
                 sessionId={session?.id ?? sessionIdRef.current ?? undefined}
               />
             )}
-
-            <div ref={promptAnchorSpacerRef} aria-hidden="true" />
 
             <div ref={messagesEndRef} />
             </div>

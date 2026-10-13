@@ -1,21 +1,21 @@
 {
-  "name": "@agegr/pi-web",
+  "name": "eureka",
   "version": "0.8.8",
   "description": "Web UI for the pi coding agent",
-  "homepage": "https://github.com/agegr/pi-web#readme",
+  "homepage": "https://github.com/is-zoop/Eureka#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/agegr/pi-web.git"
+    "url": "git+https://github.com/is-zoop/Eureka.git"
   },
   "bugs": {
-    "url": "https://github.com/agegr/pi-web/issues"
+    "url": "https://github.com/is-zoop/Eureka/issues"
   },
   "license": "MIT",
   "engines": {
     "node": ">=22.19.0"
   },
   "bin": {
-    "pi-web": "bin/pi-web.js"
+    "eureka": "bin/eureka.js"
   },
   "files": [
     "bin",

@@ -3,6 +3,7 @@ import { clearTransaction, readTransaction, writeAuthSession } from "@/lib/auth/
 import { getIdentityProvider } from "@/lib/auth/provider";
 import { AUTH_SESSION_COOKIE, getAuthConfig } from "@/lib/auth/config";
 import { IdentityProviderError } from "@/lib/auth/types";
+import { desktopLogins } from "@/lib/auth/desktop-login-store";
 
 export async function GET(request: NextRequest) {
   // Next dev may build request.url with its internal localhost origin even when
@@ -12,12 +13,16 @@ export async function GET(request: NextRequest) {
   const { cookies } = await import("next/headers");
   const store = await cookies();
   const tx = readTransaction(store);
+  const returnedState = request.nextUrl.searchParams.get("state");
   const fail = (error: string) => {
-    const response = NextResponse.redirect(new URL(`/login?error=${encodeURIComponent(error)}`, appOrigin));
+    if (tx?.desktopRequestId && returnedState === tx.state) {
+      desktopLogins.fail(tx.desktopRequestId, tx.state, error);
+    }
+    const target = tx?.desktopRequestId ? "/login?desktop=failed" : `/login?error=${encodeURIComponent(error)}`;
+    const response = NextResponse.redirect(new URL(target, appOrigin));
     clearTransaction(response.cookies);
     return response;
   };
-  const returnedState = request.nextUrl.searchParams.get("state");
   const providerError = request.nextUrl.searchParams.get("error");
   if (!tx || returnedState !== tx.state || providerError) {
     console.warn("[marketplace-auth] OAuth callback state rejected:", {
@@ -33,9 +38,16 @@ export async function GET(request: NextRequest) {
   try {
     const tokens = await provider.exchangeCode({ code, verifier: tx.verifier });
     const principal = await provider.userInfo(tokens.accessToken);
+    const session = { providerId: provider.id, accessToken: tokens.accessToken, refreshToken: tokens.refreshToken, expiresAt: Date.now() + tokens.expiresIn * 1000, principal };
+    if (tx.desktopRequestId) {
+      if (!desktopLogins.complete(tx.desktopRequestId, tx.state, session)) return fail("invalid_grant");
+      const response = NextResponse.redirect(new URL("/login?desktop=success", appOrigin));
+      clearTransaction(response.cookies);
+      return response;
+    }
     const response = NextResponse.redirect(new URL(tx.returnTo, appOrigin));
     clearTransaction(response.cookies);
-    writeAuthSession(response.cookies, { providerId: provider.id, accessToken: tokens.accessToken, refreshToken: tokens.refreshToken, expiresAt: Date.now() + tokens.expiresIn * 1000, principal });
+    writeAuthSession(response.cookies, session);
     const sessionCookie = response.cookies.get(AUTH_SESSION_COOKIE);
     console.info("[marketplace-auth] OAuth session cookie issued:", {
       present: Boolean(sessionCookie?.value),

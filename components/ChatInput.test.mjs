@@ -9,7 +9,7 @@ const jiti = createJiti(import.meta.url, {
   tsconfigPaths: true,
 });
 const { ChatInput, ModelErrorBanner, ModelScopeWarningBanner, canRestoreUserMessage, filterModelOptions, getUpwardMenuMaxHeight, getUserMessageText, getUserMessageDraftImages } = await jiti.import("./ChatInput.tsx");
-const { clearDraft, getDraft, mergeRestoredSubmissionDraft, mergeRestoredSubmissionText, rekeyDraft, setDraft } = await jiti.import("../lib/draft-store.ts");
+const { clearDraft, getDraft, mergeRestoredSubmissionDraft, mergeRestoredSubmissionText, rekeyDraft, setDraft } = await jiti.import("@/lib/draft-store");
 const { I18nProvider } = await jiti.import("@/hooks/useI18n");
 
 test("upstream model errors no longer reserve inline layout space", () => {
@@ -264,4 +264,37 @@ test("compact errors leave the composer available without inserting an inline al
   assert.doesNotMatch(html, /role="alert"/);
   assert.doesNotMatch(html, /Compaction failed: OpenAI API error/);
   assert.match(html, /<textarea/);
+});
+
+test("text uses the full composer width during both idle and streaming runs", () => {
+  const draftKey = "composer-width-regression";
+  setDraft(draftKey, { value: "筛选条件固定显示两个条件，多的条件使用滚动条滚动展示", images: [] });
+  try {
+    for (const isStreaming of [false, true]) {
+      const html = renderToStaticMarkup(React.createElement(I18nProvider, null,
+        React.createElement(ChatInput, { onSend() {}, onAbort() {}, onSteer() {}, isStreaming, draftKey }),
+      ));
+      const textarea = html.match(/<textarea[^>]*>/)?.[0];
+      assert.match(textarea, /width:100%/);
+      assert.match(textarea, /padding-right:0(?:;|")/);
+      assert.match(html, /筛选条件固定显示两个条件，多的条件使用滚动条滚动展示<\/textarea>/);
+    }
+  } finally {
+    clearDraft(draftKey);
+  }
+});
+
+test("a running shell with a draft keeps the stop action instead of staging an undeliverable message", () => {
+  const draftKey = "composer-shell-regression";
+  setDraft(draftKey, { value: "send after the shell finishes", images: [] });
+  try {
+    const html = renderToStaticMarkup(React.createElement(I18nProvider, null,
+      React.createElement(ChatInput, { onSend() {}, onAbort() {}, isStreaming: true, draftKey }),
+    ));
+    assert.match(html, /aria-label="Stop agent"/);
+    assert.doesNotMatch(html, /aria-label="Send"/);
+    assert.match(html, /send after the shell finishes<\/textarea>/);
+  } finally {
+    clearDraft(draftKey);
+  }
 });

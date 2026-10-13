@@ -177,10 +177,22 @@
       "description": "Permission identifier",
       "oneOf": [
         {
+          "description": "Allows the isolated local titlebar to control its own desktop window.",
+          "type": "string",
+          "const": "allow-desktop-window-action",
+          "markdownDescription": "Allows the isolated local titlebar to control its own desktop window."
+        },
+        {
           "description": "Allows Eureka's local WebView to request opening an HTTP or HTTPS link in the system browser.",
           "type": "string",
           "const": "allow-open-external-url",
           "markdownDescription": "Allows Eureka's local WebView to request opening an HTTP or HTTPS link in the system browser."
+        },
+        {
+          "description": "Allows the Eureka frontend to synchronize the persistent desktop titlebar theme.",
+          "type": "string",
+          "const": "allow-set-desktop-theme",
+          "markdownDescription": "Allows the Eureka frontend to synchronize the persistent desktop titlebar theme."
         },
         {
           "description": "Default core plugins set.\n#### This default permission set includes:\n\n- `core:path:default`\n- `core:event:default`\n- `core:window:default`\n- `core:webview:default`\n- `core:app:default`\n- `core:image:default`\n- `core:resources:default`\n- `core:menu:default`\n- `core:tray:default`",

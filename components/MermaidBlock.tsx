@@ -343,7 +343,7 @@ function CodeBody({ code, lang, isDark, isStreaming }: { code: string; lang: str
         <SyntaxHighlighter
           language={lang || "text"}
           style={isDark ? editorDarkTheme : editorLightTheme}
-          customStyle={{ margin: 0, minWidth: "max-content", padding: 0, fontSize: 12.5, lineHeight: 1.62, borderRadius: 0, border: "none", background: "transparent", overflow: "visible" }}
+          customStyle={{ margin: 0, minWidth: "max-content", padding: 0, fontSize: "var(--message-code-font-size, 12.5px)", lineHeight: "var(--message-code-line-height, 20.25px)", borderRadius: 0, border: "none", background: "transparent", overflow: "visible" }}
           codeTagProps={{ style: { fontFamily: "var(--font-code-mono)" } }}
         >
           {code}

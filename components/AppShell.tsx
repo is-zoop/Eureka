@@ -68,7 +68,7 @@ type AutoNameStatus =
 const TOP_BAR_ICON_BUTTON_SIZE = 36;
 const LANGUAGE_MENU_WIDTH = 176;
 
-export function AppShell() {
+export function AppShell({ initialGuest = false }: { initialGuest?: boolean }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [initialNavigation] = useState(() => getInitialNavigation(searchParams));
@@ -120,6 +120,7 @@ export function AppShell() {
   const [mobileSidebarReady, setMobileSidebarReady] = useState(false);
   const [authenticatedUser, setAuthenticatedUser] = useState<SidebarUser | null>(null);
   const [authenticatedUserLoading, setAuthenticatedUserLoading] = useState(true);
+  const [guest, setGuest] = useState(initialGuest);
   const [sessionContentLoading, setSessionContentLoading] = useState(false);
   const authProfileRequestedRef = useRef(false);
   useEffect(() => {
@@ -128,13 +129,16 @@ export function AppShell() {
     if (authProfileRequestedRef.current) return;
     authProfileRequestedRef.current = true;
     void fetch("/api/marketplace-auth/session", { cache: "no-store" })
-      .then(async (response) => ({ response, body: await response.json().catch(() => null) as { user?: SidebarUser } | null }))
+      .then(async (response) => ({ response, body: await response.json().catch(() => null) as { guest?: boolean; user?: SidebarUser } | null }))
       .then(({ response, body }) => {
         if (response.status === 401) {
           window.location.replace("/login?returnTo=/");
           return;
         }
-        if (response.ok && body?.user?.name) setAuthenticatedUser(body.user);
+        if (response.ok && body?.user?.name) {
+          setAuthenticatedUser(body.user);
+          setGuest(body.guest === true);
+        }
         setAuthenticatedUserLoading(false);
       })
       .catch(() => {
@@ -1063,6 +1067,7 @@ export function AppShell() {
       />
       <SidebarUserMenu
         user={authenticatedUser}
+        guest={guest}
         loading={authenticatedUserLoading}
         onOpenSettings={() => { setSettingsSection("system"); setSettingsOpen(true); }}
         onOpenModels={() => { setSettingsSection("models"); setSettingsOpen(true); }}
@@ -1181,16 +1186,16 @@ export function AppShell() {
       return (
         <div style={{ display: "flex", alignItems: "center", minWidth: 0, height: "100%" }}>
           {titleLoading ? (
-            <div aria-busy="true" aria-label={translate("chat.loadingSession")} style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0, height: "100%", padding: "0 14px" }}>
-              <Skeleton className="size-[17px] shrink-0 rounded-full" />
-              <Skeleton className="h-4 w-36" />
+            <div aria-busy="true" aria-label={translate("chat.loadingSession")} style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0, height: "100%", padding: "0 14px" }}>
+              <Skeleton className="size-4 shrink-0 rounded-full" />
+              <Skeleton className="h-3.5 w-36" />
             </div>
           ) : <Tooltip>
             <TooltipTrigger
               render={
-                <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0, height: "100%", padding: "0 14px", color: "var(--text)" }}>
-                  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}><path d="M2.992 16.342a2 2 0 0 1 .094 1.167l-1.065 3.29a1 1 0 0 0 1.236 1.168l3.413-.998a2 2 0 0 1 1.099.092 10 10 0 1 0-4.777-4.719" /><path d="M8 12h.01" /><path d="M12 12h.01" /><path d="M16 12h.01" /></svg>
-                  <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 15, fontWeight: 600, letterSpacing: "-0.01em" }}>{sessionTitle}</span>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0, height: "100%", padding: "0 14px", color: "var(--text)" }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}><path d="M2.992 16.342a2 2 0 0 1 .094 1.167l-1.065 3.29a1 1 0 0 0 1.236 1.168l3.413-.998a2 2 0 0 1 1.099.092 10 10 0 1 0-4.777-4.719" /><path d="M8 12h.01" /><path d="M12 12h.01" /><path d="M16 12h.01" /></svg>
+                  <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 14, fontWeight: 600, letterSpacing: "-0.01em" }}>{sessionTitle}</span>
                 </div>
               }
             />
@@ -1780,7 +1785,7 @@ export function AppShell() {
       <div data-notification-boundary="10" className="eureka-main-column" style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0, background: "var(--chat-bg)" }}>
         {/* Top bar with sidebar toggle */}
         <div ref={topBarRef} style={{ display: mainView === "extensions" || (!isMobile && mainView === "chat" && selectedSession === null) ? "none" : undefined, flexShrink: 0, background: "var(--chat-bg)" }}>
-        <div style={{ display: "flex", alignItems: "center", position: "relative", background: "var(--chat-bg)", borderBottom: "1px solid var(--border)", height: `calc(${isMobile ? 48 : 42}px + env(safe-area-inset-top))`, paddingTop: "env(safe-area-inset-top)" }}>
+        <div style={{ display: "flex", alignItems: "center", position: "relative", background: "var(--chat-bg)", borderBottom: "1px solid var(--border)", height: `calc(${isMobile ? 48 : 38}px + env(safe-area-inset-top))`, paddingTop: "env(safe-area-inset-top)" }}>
           {!sidebarOpen && <button
             onClick={handleSidebarToggle}
              title={sidebarOpen ? translate("sidebar.hide") : translate("sidebar.show")}
@@ -2168,8 +2173,10 @@ export function AppShell() {
           {mainView === "extensions" && projectTrustCwd ? (
             <ExtensionsCenter
               cwd={projectTrustCwd}
+              guest={guest}
               sessionId={selectedSession?.id ?? null}
               onReloaded={() => setSessionKey((key) => key + 1)}
+              onShowSidebar={sidebarOpen ? undefined : handleSidebarToggle}
               onOpenExtensionDetails={handleOpenExtensionDetails}
             />
           ) : showChat ? (
@@ -2278,7 +2285,7 @@ export function AppShell() {
           display: "flex",
           alignItems: "center",
           flexShrink: 0,
-          height: `calc(${isMobile ? 48 : 42}px + env(safe-area-inset-top))`,
+          height: `calc(${isMobile ? 48 : 38}px + env(safe-area-inset-top))`,
           paddingTop: "env(safe-area-inset-top)",
           background: "var(--chat-bg)",
           borderBottom: "1px solid var(--border)",

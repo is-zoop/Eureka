@@ -11,6 +11,7 @@ import { skillExpansionToCommand } from "@/lib/slash-display";
 import { clearLastSelectedProject, getLastSelectedProject, setLastSelectedProject } from "@/lib/workspace-memory";
 import { useI18n } from "@/hooks/useI18n";
 import { DirectoryPicker } from "./DirectoryPicker";
+import { ProjectLabel } from "./ProjectLabel";
 import { FileExplorer, type FileExplorerHandle } from "./FileExplorer";
 import {
   DropdownMenu,
@@ -1184,14 +1185,9 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
             {selectedCwd ? (
               <>
                 <FolderGit2Icon size={16} strokeWidth={1.7} style={{ flexShrink: 0, marginRight: 7, color: "var(--text-muted)" }} />
-                <PathLabel
-                  text={displayCwd(selectedProject ?? selectedCwd, homeDir)}
-                  style={{
-                    flex: 1,
-                    fontFamily: "var(--font-ui)",
-                    fontSize: 13,
-                    color: "var(--text)",
-                  }}
+                <ProjectLabel
+                  path={selectedProject ?? selectedCwd}
+                  displayPath={displayCwd(selectedProject ?? selectedCwd, homeDir)}
                 />
               </>
             ) : (
@@ -1319,7 +1315,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
                               <CheckIcon size={15} color="var(--accent)" strokeWidth={2.2} style={{ flexShrink: 0 }} />
                             )}
                             {project !== selectedProject && <span style={{ width: 15, flexShrink: 0 }} />}
-                            <PathLabel text={displayCwd(project, homeDir)} style={{ flex: 1 }} />
+                            <ProjectLabel path={project} displayPath={displayCwd(project, homeDir)} />
                             {showProjectActivity(projectActivity.get(project), t)}
                           </button>
                           <Tooltip>
@@ -1822,7 +1818,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
 
       {/* Session list */}
       <div style={{ flex: explorerOpen && (selectedCwdProp || selectedCwd) ? "1 1 0" : "1 1 auto", overflowY: "auto", padding: "0", minHeight: 80 }}>
-        {sessionSearchOpen ? <div style={{ height: 32, display: "flex", alignItems: "center", overflow: "hidden", background: "var(--bg-panel)", padding: "0 10px" }}>
+        {sessionSearchOpen ? <div style={{ position: "sticky", top: 0, zIndex: 1, height: 32, display: "flex", alignItems: "center", overflow: "hidden", background: "var(--bg-panel)", padding: "0 10px" }}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" style={{ marginLeft: 2, flexShrink: 0, color: "var(--text-muted)" }}><circle cx="11" cy="11" r="6" /><path d="m20 20-4-4" /></svg>
             <input
               ref={sessionSearchRef}
@@ -1836,7 +1832,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
             <ToolbarIconButton onClick={() => { setSessionSearchOpen(false); setSessionSearchQuery(""); }} title={t("chat.close")} color="var(--text-muted)">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="m6 6 12 12M18 6 6 18" /></svg>
             </ToolbarIconButton>
-        </div> : <div style={{ height: 32, margin: "0 10px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        </div> : <div style={{ position: "sticky", top: 0, zIndex: 1, boxSizing: "border-box", height: 32, padding: "0 10px", display: "flex", alignItems: "center", justifyContent: "space-between", background: "var(--sidebar-bg)" }}>
           <span style={{ fontSize: 12, fontWeight: 600, letterSpacing: "0.02em", color: "var(--text-muted)" }}>{t("sidebar.tasks")}</span>
           <ToolbarIconButton onClick={() => setSessionSearchOpen(true)} title={t("sidebar.searchTasks")} color="var(--text-muted)" ariaPressed={false}>
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="6" /><path d="m20 20-4-4" /></svg>
@@ -2318,7 +2314,7 @@ function SessionItem({
   });
 
   // Fixed-height outer wrapper — content swaps in place so the list never reflows
-  const ITEM_HEIGHT = 32;
+  const ITEM_HEIGHT = 30;
 
   return (
     <>
@@ -2394,7 +2390,7 @@ function SessionItem({
             outline: "none",
             background: "var(--bg)",
             color: "var(--text)",
-            height: 30,
+            height: 24,
           }}
         />
       ) : (
@@ -2421,8 +2417,8 @@ function SessionItem({
                       minWidth: 0,
                       flex: 1,
                       fontSize: 13,
-                      fontWeight: isSelected ? 600 : 500,
-                      lineHeight: 1.5,
+                      fontWeight: 400,
+                      lineHeight: "16px",
                       color: "var(--text)",
                     }}
 

@@ -1,19 +1,25 @@
 "use client";
 import { NotificationNotice } from "./Notifications";
 
-import { memo, useState, useRef, useEffect, useMemo } from "react";
+import { memo, useState, useRef, useEffect, useMemo, type ReactNode } from "react";
 import { MarkdownBody } from "./MarkdownBody";
 import { ImagePreview } from "./ImagePreview";
+import { AgentActivityIndicator, ThinkingActivityIndicator } from "./AgentActivity";
 import { copyText } from "@/lib/clipboard";
 import { useI18n } from "@/hooks/useI18n";
 import { parseCompactionSummary } from "@/lib/compaction-summary";
 import { getAssistantErrorMessage, isEmptyThinkingBlock } from "@/lib/message-display";
 import { parseUnifiedPatch, type SplitDiffCell } from "@/lib/patch";
-import { isEditToolName } from "@/lib/tool-names";
+import { isEditToolName, isWriteToolName } from "@/lib/tool-names";
 import { TurnWrittenFiles } from "./TurnWrittenFiles";
 import { FolderIcon, getFileIcon } from "./FileIcons";
 import type { WrittenFile } from "@/lib/turn-written-files";
 import { skillExpansionToCommand } from "@/lib/slash-display";
+import type { TaskBlockReference } from "@/lib/task-phases";
+import { estimateThinkingSeconds, getMessageThinkingTiming, isThinkingActive, thinkingTimingKey, startThinkingTiming, finishThinkingTiming, rememberThinkingDuration, aliasThinkingTiming } from "@/lib/thinking-timing";
+import { getThinkingPreview } from "@/lib/thinking-preview";
+import { getCachedThinkingPreview, loadThinkingContent } from "@/lib/thinking-content";
+import { getStoredThinkingPreview, rememberThinkingPreview } from "@/lib/thinking-preview-cache";
 import type {
   AgentMessage,
   UserMessage,
@@ -79,8 +85,6 @@ function estimateUpdatedTokens(previous: TokenEstimateCacheEntry | undefined, te
   return baseTokens + estimateTokens(text.slice(suffixStart));
 }
 
-const MAX_THINKING_CACHE_ENTRIES = 100;
-const thinkingContentCache = new Map<string, Promise<string>>();
 
 // Messages larger than this skip markdown rendering entirely. react-markdown +
 // KaTeX + syntax highlighting on multi-hundred-KB payloads (e.g. pasted HAR or
@@ -160,39 +164,12 @@ function SafeMarkdownBody({ children, className, ...props }: React.ComponentProp
 // push the conversation off screen; overflow scrolls inside the bubble.
 const USER_BUBBLE_MAX_HEIGHT = 300;
 
-function loadThinkingContent(sessionId: string, entryId: string, blockIndex: number): Promise<string> {
-  const key = `${sessionId}:${entryId}:${blockIndex}`;
-  const cached = thinkingContentCache.get(key);
-  if (cached) {
-    thinkingContentCache.delete(key);
-    thinkingContentCache.set(key, cached);
-    return cached;
-  }
-
-  const request = fetch(
-    `/api/sessions/${encodeURIComponent(sessionId)}/entries/${encodeURIComponent(entryId)}/thinking?blockIndex=${blockIndex}`,
-  ).then(async (response) => {
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const data = await response.json() as { thinking?: unknown };
-    if (typeof data.thinking !== "string") throw new Error("Invalid thinking response");
-    return data.thinking;
-  }).catch((error) => {
-    thinkingContentCache.delete(key);
-    throw error;
-  });
-
-  thinkingContentCache.set(key, request);
-  if (thinkingContentCache.size > MAX_THINKING_CACHE_ENTRIES) {
-    const oldestKey = thinkingContentCache.keys().next().value;
-    if (oldestKey) thinkingContentCache.delete(oldestKey);
-  }
-  return request;
-}
 
 interface Props {
   message: AgentMessage;
   isStreaming?: boolean;
   toolResults?: Map<string, ToolResultMessage>;
+  runningToolIds?: ReadonlySet<string>;
   modelNames?: Record<string, string>;
   cwd?: string;
   onOpenFile?: (filePath: string) => void;
@@ -261,12 +238,12 @@ function haveSameRelevantToolResults(
   return true;
 }
 
-export const MessageView = memo(function MessageView({ message, isStreaming, toolResults, modelNames, cwd, onOpenFile, onOpenReference, entryId, onFork, forking, onNavigate, prevAssistantEntryId, onEditContent, showTimestamp, prevTimestamp, sessionId, writtenFiles }: Props) {
+export const MessageView = memo(function MessageView({ message, isStreaming, toolResults, runningToolIds, modelNames, cwd, onOpenFile, onOpenReference, entryId, onFork, forking, onNavigate, prevAssistantEntryId, onEditContent, showTimestamp, prevTimestamp, sessionId, writtenFiles }: Props) {
   if (message.role === "user") {
     return <UserMessageView message={message as UserMessage} cwd={cwd} onOpenFile={onOpenFile} onOpenReference={onOpenReference} entryId={entryId} onFork={onFork} forking={forking} onNavigate={onNavigate} prevAssistantEntryId={prevAssistantEntryId} onEditContent={onEditContent} />;
   }
   if (message.role === "assistant") {
-    return <AssistantMessageView message={message as AssistantMessage} isStreaming={isStreaming} toolResults={toolResults} modelNames={modelNames} cwd={cwd} onOpenFile={onOpenFile} showTimestamp={showTimestamp} prevTimestamp={prevTimestamp} sessionId={sessionId} entryId={entryId} writtenFiles={writtenFiles} />;
+    return <AssistantMessageView message={message as AssistantMessage} isStreaming={isStreaming} toolResults={toolResults} runningToolIds={runningToolIds} modelNames={modelNames} cwd={cwd} onOpenFile={onOpenFile} showTimestamp={showTimestamp} prevTimestamp={prevTimestamp} sessionId={sessionId} entryId={entryId} writtenFiles={writtenFiles} />;
   }
   if (message.role === "toolResult") {
     // Rendered inline under its toolCall — skip standalone rendering if paired
@@ -291,6 +268,8 @@ export const MessageView = memo(function MessageView({ message, isStreaming, too
   return prev.message === next.message
     && prev.isStreaming === next.isStreaming
     && haveSameRelevantToolResults(prev.message, prev.toolResults, next.toolResults)
+    && (prev.message.role !== "assistant" || ((prev.message as AssistantMessage).content ?? []).every((block) =>
+      block.type !== "toolCall" || Boolean(prev.runningToolIds?.has(block.toolCallId)) === Boolean(next.runningToolIds?.has(block.toolCallId))))
     && prev.modelNames === next.modelNames
     && prev.cwd === next.cwd
     && prev.onOpenFile === next.onOpenFile
@@ -633,11 +612,11 @@ function AssistantMessageView({
   message,
   isStreaming,
   toolResults,
+  runningToolIds,
   modelNames,
   cwd,
   onOpenFile,
   showTimestamp,
-  prevTimestamp,
   sessionId,
   entryId,
   writtenFiles,
@@ -645,6 +624,7 @@ function AssistantMessageView({
   message: AssistantMessage;
   isStreaming?: boolean;
   toolResults?: Map<string, ToolResultMessage>;
+  runningToolIds?: ReadonlySet<string>;
   modelNames?: Record<string, string>;
   cwd?: string;
   onOpenFile?: (filePath: string) => void;
@@ -660,6 +640,9 @@ function AssistantMessageView({
     .map((block, originalIndex) => ({ block, originalIndex }))
     .filter(({ block }) => !isEmptyThinkingBlock(block, { isStreaming })), [message.content, isStreaming]);
   const blocks = useMemo(() => blockItems.map(({ block }) => block), [blockItems]);
+  const activeThinkingIndex = isStreaming && blockItems.at(-1)?.block.type === "thinking"
+    ? blockItems.at(-1)?.originalIndex
+    : undefined;
   const providerError = getAssistantErrorMessage(message, { isStreaming });
   const [hovered, setHovered] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -692,13 +675,9 @@ function AssistantMessageView({
   const blockStartTimesRef = useRef<Map<number, number>>(new Map());
   const [streamingDurations, setStreamingDurations] = useState<Map<number, number>>(new Map());
 
-  // Thinking duration derived from file timestamps: time from prev message end to this message end
-  // This is the total generation time (thinking + any text before first tool call)
-  const thinkingDurationFromFile = useMemo<number | undefined>(() => {
-    if (!message.timestamp || !prevTimestamp) return undefined;
-    const secs = Math.round((message.timestamp - prevTimestamp) / 1000);
-    return secs > 0 ? secs : undefined;
-  }, [message.timestamp, prevTimestamp]);
+  // Historical fallback uses the original request start and entry completion.
+  // It estimates generation time when no per-thinking-block clock was recorded.
+  const thinkingDurationFromFile = useMemo(() => estimateThinkingSeconds(message), [message]);
 
   // Tool call durations derived from session file timestamps (accurate for completed messages)
   // assistant message timestamp = when generation ended = when tools started running
@@ -830,7 +809,7 @@ function AssistantMessageView({
 
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         {blockItems.map(({ block, originalIndex }) => (
-          <BlockView key={`${entryId ?? "stream"}-${originalIndex}`} block={block} toolResults={toolResults} isStreaming={isStreaming} streamingDuration={streamingDurations.get(originalIndex) ?? (block.type === "thinking" ? thinkingDurationFromFile : undefined)} toolCallDurations={toolCallDurations} cwd={cwd} onOpenFile={onOpenFile} sessionId={sessionId} entryId={entryId} blockIndex={originalIndex} />
+          <BlockView key={`${entryId ?? "stream"}-${originalIndex}`} block={block} toolResults={toolResults} runningToolIds={runningToolIds} isStreaming={isStreaming} isActiveThinking={originalIndex === activeThinkingIndex} streamingDuration={streamingDurations.get(originalIndex) ?? (block.type === "thinking" ? thinkingDurationFromFile : undefined)} timingKey={thinkingTimingKey(sessionId, message.timestamp, originalIndex, entryId)} messageTimestamp={message.timestamp} durationEstimated={!isStreaming} toolCallDurations={toolCallDurations} cwd={cwd} onOpenFile={onOpenFile} sessionId={sessionId} entryId={entryId} blockIndex={originalIndex} />
         ))}
       </div>
 
@@ -908,38 +887,100 @@ function AssistantMessageView({
   );
 }
 
-function BlockView({ block, toolResults, isStreaming, streamingDuration, toolCallDurations, cwd, onOpenFile, sessionId, entryId, blockIndex }: { block: AssistantContentBlock; toolResults?: Map<string, ToolResultMessage>; isStreaming?: boolean; streamingDuration?: number; toolCallDurations?: Map<string, number>; cwd?: string; onOpenFile?: (filePath: string) => void; sessionId?: string; entryId?: string; blockIndex: number }) {
+function BlockView({ block, toolResults, runningToolIds, isStreaming, isActiveThinking, streamingDuration, toolCallDurations, cwd, onOpenFile, sessionId, entryId, blockIndex, metadata, timingKey, messageTimestamp, durationEstimated }: { block: AssistantContentBlock; toolResults?: Map<string, ToolResultMessage>; runningToolIds?: ReadonlySet<string>; isStreaming?: boolean; isActiveThinking?: boolean; streamingDuration?: number; toolCallDurations?: Map<string, number>; cwd?: string; onOpenFile?: (filePath: string) => void; sessionId?: string; entryId?: string; blockIndex: number; metadata?: ReactNode; timingKey?: string; messageTimestamp?: number; durationEstimated?: boolean }) {
   if (block.type === "text") {
     return <TextBlock block={block as TextContent} isStreaming={isStreaming} cwd={cwd} onOpenFile={onOpenFile} />;
   }
   if (block.type === "thinking") {
-    return <ThinkingBlock block={block as ThinkingContent} duration={streamingDuration} sessionId={sessionId} entryId={entryId} blockIndex={blockIndex} />;
+    return <ThinkingBlock block={block as ThinkingContent} duration={streamingDuration} durationEstimated={durationEstimated} timingKey={timingKey} messageTimestamp={messageTimestamp} isActive={isActiveThinking} sessionId={sessionId} entryId={entryId} blockIndex={blockIndex} metadata={metadata} />;
   }
   if (block.type === "toolCall") {
     const tc = block as ToolCallContent;
     const result = toolResults?.get(tc.toolCallId);
     const duration = toolCallDurations?.get(tc.toolCallId);
-    return <ToolCallBlock block={tc} result={result} duration={duration} />;
+    return <ToolCallBlock block={tc} result={result} duration={duration} isRunning={isStreaming || runningToolIds?.has(tc.toolCallId)} metadata={metadata} />;
   }
   return null;
+}
+
+export const ProcessBlockView = memo(function ProcessBlockView({ reference, toolResults, runningToolIds, cwd, onOpenFile, sessionId, modelNames }: {
+  reference: TaskBlockReference;
+  toolResults?: Map<string, ToolResultMessage>;
+  runningToolIds?: ReadonlySet<string>;
+  cwd?: string;
+  onOpenFile?: (filePath: string) => void;
+  sessionId?: string;
+  modelNames?: Record<string, string>;
+}) {
+  const { block, blockIndex, source } = reference;
+  const result = block.type === "toolCall" ? toolResults?.get(block.toolCallId) : undefined;
+  const elapsed = result?.timestamp && source.message.timestamp ? Math.max(0, Math.round((result.timestamp - source.message.timestamp) / 1000)) : undefined;
+  const durations = block.type === "toolCall" && elapsed !== undefined ? new Map([[block.toolCallId, elapsed]]) : undefined;
+  return <BlockView block={block} blockIndex={blockIndex} entryId={source.entryId} sessionId={sessionId}
+    timingKey={thinkingTimingKey(sessionId, source.message.timestamp, blockIndex, source.entryId)}
+    messageTimestamp={source.message.timestamp}
+    streamingDuration={block.type === "thinking" ? estimateThinkingSeconds(source.message, source.completedAt) : undefined} durationEstimated
+    metadata={<ProcessMessageMetadata message={source.message} modelNames={modelNames} />}
+    isStreaming={source.isStreaming} isActiveThinking={isThinkingActive(source, blockIndex, sessionId)}
+    toolResults={toolResults} runningToolIds={runningToolIds} toolCallDurations={durations} cwd={cwd} onOpenFile={onOpenFile} />;
+});
+
+export function ProcessMessageMetadata({ message, modelNames }: { message: AssistantMessage; modelNames?: Record<string, string> }) {
+  const { t } = useI18n();
+  return <div className="task-phase-message-info" aria-label={t("taskPhase.messageInfo")}>
+    <span>{modelNames?.[message.model] ?? message.model}</span>
+    {message.usage && <span>{formatUsage(message.usage)}</span>}
+    {message.timestamp && <span>{formatTime(message.timestamp)}</span>}
+  </div>;
 }
 
 function TextBlock({ block, isStreaming, cwd, onOpenFile }: { block: TextContent; isStreaming?: boolean; cwd?: string; onOpenFile?: (filePath: string) => void }) {
   return <SafeMarkdownBody isStreaming={isStreaming} cwd={cwd} onOpenFile={onOpenFile}>{formatPlanCompletionMarkers(block.text)}</SafeMarkdownBody>;
 }
 
-function ThinkingBlock({ block, duration, sessionId, entryId, blockIndex }: {
+function ThinkingBlock({ block, duration, isActive, sessionId, entryId, blockIndex, metadata, timingKey, messageTimestamp, durationEstimated }: {
   block: ThinkingContent;
   duration?: number;
+  isActive?: boolean;
   sessionId?: string;
   entryId?: string;
   blockIndex: number;
+  metadata?: ReactNode;
+  timingKey?: string;
+  messageTimestamp?: number;
+  durationEstimated?: boolean;
 }) {
   const { t } = useI18n();
   const [expanded, setExpanded] = useState(false);
   const [content, setContent] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    const raw = block.deferred ? content?.trim() ? content : block.preview ?? "" : block.thinking;
+    rememberThinkingPreview(sessionId, messageTimestamp, blockIndex, raw, entryId);
+  }, [block.deferred, block.thinking, block.preview, content, sessionId, messageTimestamp, blockIndex, entryId]);
+  const [observedNow, setObservedNow] = useState(0);
+  const timing = getMessageThinkingTiming(sessionId, messageTimestamp, blockIndex, entryId);
+  const active = Boolean(isActive && timing?.finishedAt === undefined);
+  useEffect(() => {
+    aliasThinkingTiming(thinkingTimingKey(sessionId, messageTimestamp, blockIndex), timingKey);
+    if (!active) {
+      finishThinkingTiming(timingKey, Date.now(), true);
+      rememberThinkingDuration(timingKey, duration, Boolean(durationEstimated));
+      setObservedNow(Date.now());
+      return;
+    }
+    startThinkingTiming(timingKey, Date.now(), true);
+    const tick = () => setObservedNow(Date.now());
+    tick();
+    const timer = setInterval(tick, 300);
+    return () => clearInterval(timer);
+  }, [active, timingKey, duration, durationEstimated, sessionId, messageTimestamp, blockIndex]);
+  const seconds = timing ? Math.max(0, Math.round(((timing.finishedAt ?? (observedNow || Date.now())) - timing.startedAt) / 1000))
+    : active ? 0 : duration;
+  const estimated = timing?.estimated ?? Boolean(durationEstimated);
+  const durationLabel = seconds === undefined ? t("taskPhase.thoughtTimeUnknown")
+    : estimated ? t("taskPhase.thoughtTimeEstimated", { seconds }) : `${seconds}s`;
 
   const toggle = async () => {
     const nextExpanded = !expanded;
@@ -961,145 +1002,107 @@ function ThinkingBlock({ block, duration, sessionId, entryId, blockIndex }: {
     }
   };
 
+  const preview = [block.deferred ? content : block.thinking, block.preview,
+    getStoredThinkingPreview(sessionId, messageTimestamp, blockIndex, entryId),
+    getCachedThinkingPreview(sessionId, entryId, blockIndex)]
+    .map((value) => getThinkingPreview(value ?? "")).find(Boolean) ?? "";
   return (
-    <div
-      style={{
-        border: "1px solid var(--border)",
-        borderRadius: 6,
-        overflow: "hidden",
-        fontSize: 13,
-      }}
-    >
-      <button
-        onClick={() => void toggle()}
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 6,
-          width: "100%",
-          padding: "6px 10px",
-          background: "var(--bg-panel)",
-          border: "none",
-          color: "var(--text-muted)",
-          cursor: "pointer",
-          fontSize: 12,
-          textAlign: "left",
-        }}
-      >
-         <span>{t("i18n.thinking")}</span>
-        {duration !== undefined && (
-          <span style={{ marginLeft: "auto", fontSize: 11, color: "var(--text-dim)", fontVariantNumeric: "tabular-nums" }}>{duration}s</span>
-        )}
+    <div className="tool-activity thinking-activity" data-status={active ? "running" : "completed"}>
+      <button type="button" className="tool-activity-summary" aria-expanded={expanded} onClick={() => void toggle()}>
+        {active ? <ThinkingActivityIndicator /> : <svg className="tool-activity-status" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <circle cx="8" cy="8" r="5.75" /><path d="m5.2 8 1.8 1.8 3.8-3.8" />
+        </svg>}
+        <span className="tool-activity-label">{t(active ? "i18n.thinking" : "taskPhase.thought")}</span>
+        {preview && <><span className="tool-activity-separator" aria-hidden="true">·</span><span className="tool-activity-preview" title={preview}>{preview}</span></>}
+        <span className="tool-activity-trailing">
+          <span className="tool-activity-duration" title={estimated && seconds !== undefined ? t("taskPhase.thoughtTimeEstimatedTitle") : undefined}>{durationLabel}</span>
+          <svg className="tool-activity-chevron" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><polyline points="2 3.5 5 6.5 8 3.5" /></svg>
+        </span>
       </button>
-      {expanded && (error ? <NotificationNotice message={error} /> :
-        <div
-          style={{
-            padding: "8px 10px",
-            color: "var(--text-muted)",
-            fontSize: 12,
-            lineHeight: 1.6,
-            whiteSpace: "pre-wrap",
-            background: "var(--bg-panel)",
-            borderTop: "1px solid var(--border)",
-          }}
-        >
-           {loading ? t("i18n.loadingThinking") : (block.deferred ? content : block.thinking)}
+      {expanded && <>
+        {metadata}
+        <div className="tool-activity-details">
+          <div className="thinking-activity-content">
+            {error ? <NotificationNotice message={error} /> : loading ? t("i18n.loadingThinking") : block.deferred ? content : block.thinking}
+          </div>
         </div>
-      )}
+      </>}
     </div>
   );
 }
 
 
-function ToolCallBlock({ block, result, duration }: { block: ToolCallContent; result?: ToolResultMessage; duration?: number }) {
+function ToolCallBlock({ block, result, duration, isRunning = false, metadata }: { block: ToolCallContent; result?: ToolResultMessage; duration?: number; isRunning?: boolean; metadata?: ReactNode }) {
+  const { t } = useI18n();
   const [expanded, setExpanded] = useState(false);
-  const inputStr = JSON.stringify(block.input, null, 2);
   const isEditTool = isEditToolName(block.toolName);
-  const resultDiff = result && !result.isError ? getResultDiff(result) : null;
-
-  // Result display
+  const isWriteTool = isWriteToolName(block.toolName);
+  const toolName = block.toolName.toLowerCase();
+  const labelKeys: Record<string, string> = {
+    read: "toolActivity.read",
+    bash: "toolActivity.command",
+    "bash (local)": "toolActivity.localCommand",
+    grep: "toolActivity.search",
+    find: "toolActivity.find",
+    ls: "toolActivity.list",
+    load_tool: "toolActivity.load",
+    load_tools: "toolActivity.load",
+  };
+  const labelKey = isEditTool ? "toolActivity.edit" : isWriteTool ? "toolActivity.write" : labelKeys[toolName] ?? "toolActivity.generic";
+  const label = t(labelKey);
+  const preview = getToolPreview(block);
+  const filePath = block.input?.path ?? block.input?.file_path;
+  const isFile = (toolName === "read" || isEditTool || isWriteTool) && typeof filePath === "string" && filePath.length > 0;
+  const summary = isFile ? filePath.split(/[\\/]/).at(-1) || filePath
+    : labelKey === "toolActivity.generic" ? [block.toolName, preview].filter(Boolean).join(" · ") : preview;
+  const isError = result?.isError ?? false;
+  const status = isError ? "error" : result ? "completed" : isRunning ? "running" : "unknown";
+  const statusLabel = t("toolActivity." + status);
+  const resultDiff = result && !isError ? getResultDiff(result) : null;
   const resultText = result
     ? result.content.filter((b): b is { type: "text"; text: string } => b.type === "text").map((b) => b.text).join("\n")
-    : null;
-  const resultIsEmpty = resultText === null ? false : (resultText.trim() === "(no output)" || resultText.trim() === "");
-  const isError = result?.isError ?? false;
+    : "";
+  const resultIsEmpty = resultText.trim() === "(no output)" || resultText.trim() === "";
 
   return (
-    <div
-      style={{
-        borderRadius: 7,
-        overflow: "hidden",
-        fontSize: 12,
-        border: isError ? "1px solid rgba(248,113,113,0.45)" : "1px solid rgba(34,197,94,0.25)",
-        background: isError ? "rgba(248,113,113,0.05)" : "rgba(34,197,94,0.04)",
-      }}
-    >
-      {/* ── Tool call header ── */}
+    <div className="tool-activity" data-status={status}>
       <button
-        onClick={() => setExpanded((v) => !v)}
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 7,
-          width: "100%",
-          padding: "6px 10px",
-          background: "none",
-          border: "none",
-          color: "var(--text-muted)",
-          cursor: "pointer",
-          fontSize: 12,
-          textAlign: "left",
-          minWidth: 0,
-        }}
+        type="button"
+        className="tool-activity-summary"
+        aria-expanded={expanded}
+        title={[block.toolName, isFile ? filePath : preview, statusLabel].filter(Boolean).join(" · ")}
+        onClick={() => setExpanded((value) => !value)}
       >
-        <span style={{ color: isError ? "#f87171" : "#16a34a", fontFamily: "var(--font-mono)", fontWeight: 600, fontSize: 11, flexShrink: 0 }}>
-          {block.toolName}
+        {status === "running" ? <AgentActivityIndicator /> : <svg className="tool-activity-status" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <circle cx="8" cy="8" r="5.75" strokeDasharray={status === "unknown" ? "2 2" : undefined} />
+            {status === "completed" && <path d="m5.2 8 1.8 1.8 3.8-3.8" />}
+            {status === "error" && <path d="m6 6 4 4m0-4-4 4" />}
+        </svg>}
+        <span className="sr-only">{statusLabel}: </span>
+        <span className="tool-activity-label">{label}</span>
+        {summary && <>
+          {!isFile && <span className="tool-activity-separator" aria-hidden="true">·</span>}
+          <span className={isFile ? "tool-activity-file" : "tool-activity-preview"} title={isFile ? filePath : summary}>{summary}</span>
+        </>}
+        <span className="tool-activity-trailing">
+          {duration !== undefined && <span className="tool-activity-duration">{duration}s</span>}
+          <svg className="tool-activity-chevron" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <polyline points="2 3.5 5 6.5 8 3.5" />
+          </svg>
         </span>
-        <span style={{ color: "var(--text-dim)", fontFamily: "var(--font-mono)", fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0 }}>
-          {getToolPreview(block)}
-        </span>
-        {duration !== undefined && (
-          <span style={{ fontSize: 11, color: "var(--text-dim)", flexShrink: 0, fontVariantNumeric: "tabular-nums" }}>{duration}s</span>
-        )}
-        <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="var(--text-dim)" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, transform: expanded ? "rotate(180deg)" : "none", transition: "transform 0.15s" }}>
-          <polyline points="2 3.5 5 6.5 8 3.5" />
-        </svg>
       </button>
-
-      {/* ── Expanded: input args ── */}
-      {expanded && !isEditTool && (
-        <pre
-          style={{
-            margin: 0,
-            padding: "8px 10px",
-            color: "var(--text-muted)",
-            fontSize: 12,
-            lineHeight: 1.5,
-            overflow: "auto",
-            background: "var(--bg-subtle)",
-            borderTop: isError ? "1px solid rgba(248,113,113,0.25)" : "1px solid rgba(34,197,94,0.2)",
-            whiteSpace: "pre-wrap",
-            wordBreak: "break-all",
-          }}
-        >
-          {inputStr}
-        </pre>
-      )}
-
-      {/* ── Paired result — only shown when expanded ── */}
-      {expanded && result && (
-        resultDiff ? (
-          <PairedDiffResult
-            diff={resultDiff}
-          />
-        ) : (
-          <PairedResult
-            text={resultText ?? ""}
-            isEmpty={resultIsEmpty}
-            isError={isError}
-          />
-        )
-      )}
+      {expanded && <>
+        {metadata}
+        <div className="tool-activity-details">
+          {isEditTool ? <details className="task-phase-metadata"><summary>{t("toolActivity.arguments")}</summary>
+            <pre className="tool-activity-input">{JSON.stringify(block.input, null, 2)}</pre>
+          </details> : <pre className="tool-activity-input">{JSON.stringify(block.input, null, 2)}</pre>}
+          {result && (resultDiff ? <PairedDiffResult diff={resultDiff} /> : <PairedResult text={resultText} isEmpty={resultIsEmpty} isError={isError} />)}
+          {resultDiff && <details className="task-phase-metadata"><summary>{t("toolActivity.output")}</summary>
+            <PairedResult text={resultText} isEmpty={resultIsEmpty} isError={isError} />
+          </details>}
+        </div>
+      </>}
     </div>
   );
 }
@@ -1114,7 +1117,7 @@ function PairedDiffResult({ diff }: {
   return (
     <div
       style={{
-        borderTop: "1px solid rgba(34,197,94,0.15)",
+        borderTop: "1px solid var(--border)",
         background: "var(--bg)",
       }}
     >
@@ -1349,7 +1352,7 @@ function PairedResult({ text, isEmpty, isError }: {
   return (
     <div
       style={{
-        borderTop: `1px solid ${isError ? "rgba(248,113,113,0.3)" : "rgba(34,197,94,0.15)"}`,
+        borderTop: "1px solid var(--border)",
         background: isError ? "rgba(248,113,113,0.04)" : "var(--bg-subtle)",
       }}
     >
@@ -1671,14 +1674,15 @@ function getToolPreview(block: ToolCallContent): string {
   if (keys.length === 0) return "";
 
   // Common tool input patterns
-  if ("command" in input) return String(input.command).slice(0, 120);
-  if ("path" in input) return String(input.path).slice(0, 120);
-  if ("file_path" in input) return String(input.file_path).slice(0, 120);
-  if ("pattern" in input) return String(input.pattern).slice(0, 120);
-  if ("query" in input) return String(input.query).slice(0, 120);
+  if ("command" in input) return String(input.command);
+  if ("cmd" in input) return String(input.cmd);
+  if ("path" in input) return String(input.path);
+  if ("file_path" in input) return String(input.file_path);
+  if ("pattern" in input) return String(input.pattern);
+  if ("query" in input) return String(input.query);
 
   const first = input[keys[0]];
-  return String(first).slice(0, 120);
+  return String(first);
 }
 
 function formatUsage(usage: {
@@ -1752,7 +1756,7 @@ function BashExecutionView({ message, sessionId }: { message: BashExecutionMessa
 
   return (
     <div style={{ margin: "6px 0" }}>
-      <ToolCallBlock block={block} result={result} />
+      <ToolCallBlock block={block} result={result} isRunning={isPending} />
       {message.truncated && fullOutputUrl && (
         <div style={{ padding: "4px 10px", fontSize: 11, marginTop: -1 }}>
           {showFullButton && (

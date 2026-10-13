@@ -7,6 +7,7 @@ import { readAuthSessionValue } from "@/lib/auth/session-value";
 import { rememberHazeAccessSession } from "@/lib/auth/access-token-cache";
 import { clearRuntimeHazeSession, writeRuntimeHazeSession } from "@/lib/auth/runtime-session";
 import type { AuthSession, AuthTransaction } from "@/lib/auth/types";
+import { GUEST_SESSION_COOKIE, GUEST_SESSION_MAX_AGE, isGuestSessionValue } from "@/lib/auth/guest";
 
 const YEAR = 60 * 60 * 24 * 365;
 const TEN_MINUTES = 60 * 10;
@@ -21,10 +22,31 @@ export function authCookieOptions(maxAge: number) {
 
 type CookieWriter = { set: (name: string, value: string, options: ReturnType<typeof authCookieOptions>) => void };
 
+export async function readGuestSession(): Promise<boolean> {
+  return isGuestSessionValue((await cookies()).get(GUEST_SESSION_COOKIE)?.value);
+}
+
+export async function readAppSession(): Promise<{ guest: true } | { guest: false; session: AuthSession } | null> {
+  if (await readGuestSession()) return { guest: true };
+  const session = await readAuthSession();
+  return session ? { guest: false, session } : null;
+}
+
+export function clearGuestSession(store: CookieWriter) {
+  store.set(GUEST_SESSION_COOKIE, "", authCookieOptions(0));
+}
+
+export function writeGuestSession(store: CookieWriter) {
+  clearAuthSession(store);
+  clearTransaction(store);
+  store.set(GUEST_SESSION_COOKIE, "1", authCookieOptions(GUEST_SESSION_MAX_AGE));
+}
+
 export async function readAuthSession(): Promise<AuthSession | null> {
   const config = getAuthConfig();
   if (!config) return null;
   const store = await cookies();
+  if (isGuestSessionValue(store.get(GUEST_SESSION_COOKIE)?.value)) return null;
   const rawSession = store.get(AUTH_SESSION_COOKIE)?.value;
   const session = readAuthSessionValue(rawSession);
   if (!session) {
@@ -63,6 +85,7 @@ export function writeAuthSession(store: CookieWriter, session: AuthSession) {
   rememberHazeAccessSession(session);
   writeRuntimeHazeSession(session);
   store.set(AUTH_SESSION_COOKIE, seal(persistedSession, config.sessionSecret), authCookieOptions(YEAR));
+  clearGuestSession(store);
 }
 
 export function clearAuthSession(store: CookieWriter) {

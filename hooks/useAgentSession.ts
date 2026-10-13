@@ -13,6 +13,10 @@ import type {
 } from "@/lib/types";
 import { isBlockingExtensionUiRequest } from "@/lib/browser-notifications";
 import { normalizeToolCalls } from "@/lib/normalize";
+import { useChatTailFollow } from "./useChatTailFollow";
+import { preserveRunningToolActivity } from "@/lib/agent-activity";
+import { observeThinkingEvent, observeThinkingSnapshot, finishMessageThinking, transferMessageThinking, bindMessageThinkingTimings } from "@/lib/thinking-timing";
+import { observeThinkingPreviewEvent, rememberMessageThinkingPreviews, transferThinkingPreviews } from "@/lib/thinking-preview-cache";
 import { isPromptRejectedError, sendAgentCommand } from "@/lib/agent-client";
 import { clearDraft, rekeyDraft, restoreDraftSubmission, type ChatDraftReference } from "@/lib/draft-store";
 import { getPreferredToolPreset, setPreferredToolPreset } from "@/lib/tool-preset-preference";
@@ -21,11 +25,6 @@ import { EMPTY_PLAN_STATE, getPendingPlanQuestion, getPlanDoneIndexes, PLAN_MODE
 import type { SessionStatsInfo } from "@/lib/pi-types";
 import { userMessageKey } from "@/lib/prompt-recovery";
 import { AgentEventConnection } from "@/lib/agent-event-connection";
-import {
-  CHAT_SCROLL_REATTACH_TOLERANCE,
-  CHAT_SCROLL_TAIL_TOLERANCE,
-  getLiveFollowAttached,
-} from "@/lib/chat-lazy-load";
 import {
   INITIAL_STREAMING_STATE,
   streamReducer,
@@ -249,7 +248,6 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const [compactError, setCompactError] = useState<string | null>(null);
   const [compactResult, setCompactResult] = useState<CompactResultInfo | null>(null);
   const [agentPhase, setAgentPhase] = useState<AgentPhase>(null);
-  const [promptAnchorActive, setPromptAnchorActive] = useState(false);
   const [slashCommands, setSlashCommands] = useState<SlashCommandInfo[]>([]);
   const [slashCommandsLoading, setSlashCommandsLoading] = useState(false);
   const [sessionStatsOverride, setSessionStatsOverride] = useState<SessionStatsInfo | null>(null);
@@ -275,14 +273,12 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const bashRecoveryIdRef = useRef(0);
   const handleAgentEventRef = useRef<((event: AgentEvent) => void) | null>(null);
   const initialScrollDoneRef = useRef(false);
-  const lastUserMsgRef = useRef<HTMLDivElement | null>(null);
-  const pendingScrollToUserRef = useRef(false);
-  const isNearBottomRef = useRef(true);
-  const previousScrollTopRef = useRef(0);
-  const liveFollowFrameRef = useRef<number | null>(null);
+  const pendingScrollToTailRef = useRef(false);
+  const thinkingMessageTimestampRef = useRef<number | undefined>(undefined);
+  const { scrollContainerRef, messageContentRef, messagesEndRef, isNearBottomRef, scrollToBottom, scheduleLiveFollow, followTail } = useChatTailFollow({
+    active: agentRunning || bashRunning, ready: !loading, contentVersion: messages.length,
+  });
   const executeBashRef = useRef<(command: string, excludeFromContext: boolean) => Promise<void> | undefined>(undefined);
-  const messagesEndRef = useRef<HTMLDivElement | null>(null);
-  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const ensuringNewSessionRef = useRef<Promise<string | null> | null>(null);
   const newSessionPromotedRef = useRef(false);
   const newSessionModelOverrideRef = useRef<SelectedModel | null>(null);
@@ -327,12 +323,6 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     if (!isNew || sessionIdRef.current) return;
     setToolPresetState(getPreferredToolPreset());
   }, [isNew, setToolPresetState]);
-
-  const scrollToBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
-    const container = scrollContainerRef.current;
-    messagesEndRef.current?.scrollIntoView({ behavior });
-    if (container) previousScrollTopRef.current = container.scrollTop;
-  }, []);
 
   const currentModel = currentModelOverride ?? data?.context.model ?? pendingModel ?? null;
   const displayModel = isNew ? (newSessionModel ?? newSessionDefaultModel) : currentModel;
@@ -433,6 +423,12 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       const d = await res.json() as SessionData;
       if (sessionIdRef.current !== sid) return null;
       const persistedMessages = d.context.messages;
+      persistedMessages.forEach((message, index) => {
+        if (message.role === "assistant") {
+          rememberMessageThinkingPreviews(sid, message, d.context.entryIds?.[index]);
+          bindMessageThinkingTimings(sid, message, d.context.entryIds?.[index]);
+        }
+      });
       setData(d);
       setActiveLeafId(d.leafId);
       setMessages(persistedMessages);
@@ -487,6 +483,12 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       const res = await fetch(url);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const d = await res.json() as { context: { messages: AgentMessage[]; entryIds: string[] } };
+      d.context.messages.forEach((message, index) => {
+        if (message.role === "assistant") {
+          rememberMessageThinkingPreviews(sid, message, d.context.entryIds[index]);
+          bindMessageThinkingTimings(sid, message, d.context.entryIds[index]);
+        }
+      });
       setMessages(d.context.messages);
       setEntryIds(d.context.entryIds ?? []);
     } catch (e) {
@@ -756,6 +758,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
 
   const settleUiStage = useCallback(() => {
     const wasRunning = agentRunningRef.current;
+    finishMessageThinking(sessionIdRef.current ?? undefined, thinkingMessageTimestampRef.current, Date.now(), true);
     agentRunningRef.current = false;
     setAgentRunning(false);
     setAgentPhase(null);
@@ -1075,30 +1078,27 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           const msg = event.message as AgentMessage | undefined;
           if (msg?.role === "user") break;
           if (msg?.role === "assistant") {
+            thinkingMessageTimestampRef.current = msg.timestamp;
+            observeThinkingSnapshot(sessionIdRef.current ?? undefined, msg, Date.now());
+            rememberMessageThinkingPreviews(sessionIdRef.current ?? undefined, msg, undefined, true);
             dispatch({ type: "snapshot", message: msg });
-            if (msg.content.length > 0) setAgentPhase(null);
-          } else if (msg) {
-            setAgentPhase(null);
+            if (msg.content.length > 0) setAgentPhase((previous) => preserveRunningToolActivity(previous, null));
+          } else if (msg && msg.role !== "toolResult") {
+            setAgentPhase((previous) => preserveRunningToolActivity(previous, null));
           }
         } else {
           const delta = event.assistantMessageEvent as ClientAssistantMessageEvent | undefined;
           if (delta) {
+            observeThinkingEvent(sessionIdRef.current ?? undefined, thinkingMessageTimestampRef.current, delta, Date.now());
+            observeThinkingPreviewEvent(sessionIdRef.current ?? undefined, thinkingMessageTimestampRef.current, delta);
             dispatch({ type: "delta", event: delta });
             if (delta.type !== "toolcall_start" && delta.type !== "toolcall_delta") {
-              setAgentPhase(null);
+              setAgentPhase((previous) => preserveRunningToolActivity(previous, delta.type === "thinking_end" ? { kind: "waiting_model" } : null));
             }
           }
         }
-        // Live-follow the streaming output only when the user is already near
-        // the bottom of the message list. If they scrolled up, leave them there.
-        if (!pendingScrollToUserRef.current && isNearBottomRef.current && liveFollowFrameRef.current === null) {
-          // Defer the scroll so React has time to update the DOM with the new
-          // streaming content; otherwise scrollIntoView may target stale layout.
-          liveFollowFrameRef.current = requestAnimationFrame(() => {
-            liveFollowFrameRef.current = null;
-            if (isNearBottomRef.current) scrollToBottom("auto");
-          });
-        }
+        // Follow after React commits the latest model content.
+        if (!pendingScrollToTailRef.current) scheduleLiveFollow();
         break;
       }
       case "message_end": {
@@ -1107,6 +1107,16 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         // appending it again would duplicate it.
         if (!agentRunningRef.current) break;
         const completed = event.message as AgentMessage | undefined;
+        const completionObservedAt = Date.now();
+        if (completed?.role === "assistant") {
+          const now = completionObservedAt;
+          const sid = sessionIdRef.current ?? undefined;
+          finishMessageThinking(sid, thinkingMessageTimestampRef.current, now);
+          transferMessageThinking(sid, thinkingMessageTimestampRef.current, completed.timestamp);
+          transferThinkingPreviews(sid, thinkingMessageTimestampRef.current, completed.timestamp);
+          rememberMessageThinkingPreviews(sid, completed);
+          finishMessageThinking(sid, completed.timestamp, now);
+        }
         if (completed && completed.role === "user") {
           // Delivered steering/follow-up messages surface here as user
           // messages. The run's initial prompt also emits one, but handleSend
@@ -1126,10 +1136,13 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
             return [...prev, delivered];
           });
         } else if (completed) {
-          setMessages((prev) => [...prev, normalizeToolCalls(completed)]);
+          const displayMessage = completed.role === "assistant"
+            ? { ...completed, generationCompletedAt: completionObservedAt }
+            : completed;
+          setMessages((prev) => [...prev, normalizeToolCalls(displayMessage)]);
         }
         dispatch({ type: "end" });
-        setAgentPhase({ kind: "waiting_model" });
+        setAgentPhase((previous) => preserveRunningToolActivity(previous, { kind: "waiting_model" }));
         break;
       }
       case "tool_execution_start": {
@@ -1201,7 +1214,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         handleExtensionUiRequest(event as ExtensionUiRequest);
         break;
     }
-  }, [addNotice, cancelEventStreamGrace, handleExtensionUiRequest, loadSession, notifyPromptStage, onAgentEnd, scheduleEventStreamClose, scrollToBottom, settleUiStage]);
+  }, [addNotice, cancelEventStreamGrace, handleExtensionUiRequest, loadSession, notifyPromptStage, onAgentEnd, scheduleEventStreamClose, scheduleLiveFollow, settleUiStage]);
   handleAgentEventRef.current = handleAgentEvent;
 
   const handleSend = useCallback(async (message: string, images?: AttachedImage[], references?: ChatDraftReference[], options?: { bypassPlanQuestionGuard?: boolean; executePlan?: boolean }) => {
@@ -1232,6 +1245,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         restoreSubmission(message, images, references, composerDraftKey);
         return;
       }
+      pendingScrollToTailRef.current = true;
       await executeBashRef.current?.(bashCmd, isExcluded);
       return;
     }
@@ -1255,8 +1269,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     setAgentRunning(true);
     setAgentPhase(isSlashCommandPrompt ? { kind: "running_command" } : { kind: "waiting_model" });
     dispatch({ type: "start" });
-    pendingScrollToUserRef.current = true;
-    setPromptAnchorActive(true);
+    pendingScrollToTailRef.current = true;
 
     const piImages = images?.map((img) => ({ type: "image" as const, data: img.data, mimeType: img.mimeType }));
     let sentSessionId: string | null = null;
@@ -1375,10 +1388,14 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     }
     try {
       await sendAgentCommand(sid, { type: "abort" });
+      // Recover the stop button and streaming bubble if the terminal SSE event
+      // was missed while this tab was in the background.
+      await reconcileAgentState(sid);
     } catch (e) {
       console.error("Failed to abort:", e);
+      addNotice({ type: "error", message: e instanceof Error ? e.message : String(e) });
     }
-  }, []);
+  }, [addNotice, reconcileAgentState]);
 
   const handleFork = useCallback(async (entryId: string) => {
     if (bashRunningRef.current) return;
@@ -1602,19 +1619,23 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     message: string,
     behavior: "steer" | "followUp",
     images?: AttachedImage[],
+    references?: ChatDraftReference[],
   ) => {
     const sid = sessionIdRef.current;
-    const restore = () => restoreSubmission(message, images, undefined, composerDraftKey);
+    const restore = () => restoreSubmission(message, images, references, composerDraftKey);
     if (!sid) {
       restore();
       addNotice({ type: "error", message: "No active session for the queued message" });
       return;
     }
     const piImages = images?.map((img) => ({ type: "image" as const, data: img.data, mimeType: img.mimeType }));
+    let promptRequestStarted = false;
     try {
+      await ensureEventsConnected(sid);
+      promptRequestStarted = true;
       await sendAgentCommand(sid, {
         type: "prompt",
-        message,
+        message: [...(references ?? []).map((reference) => `@${reference.path}${reference.isDir ? "/" : ""}`), message.trim()].filter(Boolean).join(" "),
         streamingBehavior: behavior,
         ...(piImages?.length ? { images: piImages } : {}),
       });
@@ -1623,28 +1644,29 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       // A transport failure after dispatch is ambiguous: the server may have
       // accepted the queued prompt before the response was lost. Restoring in
       // that case would invite a duplicate turn.
-      if (isPromptRejectedError(e)) restore();
+      if (!promptRequestStarted || isPromptRejectedError(e)) restore();
       addNotice({
         type: "error",
         message: e instanceof Error ? e.message : String(e),
       });
     }
-  }, [addNotice, composerDraftKey, restoreSubmission]);
+  }, [addNotice, composerDraftKey, ensureEventsConnected, restoreSubmission]);
 
-  const handleSteer = useCallback(async (message: string, images?: AttachedImage[]) => {
-    await sendStreamingPrompt(message, "steer", images);
+  const handleSteer = useCallback(async (message: string, images?: AttachedImage[], references?: ChatDraftReference[]) => {
+    await sendStreamingPrompt(message, "steer", images, references);
   }, [sendStreamingPrompt]);
 
   const handlePromptWithStreamingBehavior = useCallback(async (
     message: string,
     behavior: "steer" | "followUp",
     images?: AttachedImage[],
+    references?: ChatDraftReference[],
   ) => {
-    await sendStreamingPrompt(message, behavior, images);
+    await sendStreamingPrompt(message, behavior, images, references);
   }, [sendStreamingPrompt]);
 
-  const handleFollowUp = useCallback(async (message: string, images?: AttachedImage[]) => {
-    await sendStreamingPrompt(message, "followUp", images);
+  const handleFollowUp = useCallback(async (message: string, images?: AttachedImage[], references?: ChatDraftReference[]) => {
+    await sendStreamingPrompt(message, "followUp", images, references);
   }, [sendStreamingPrompt]);
 
   const handleAbortCompaction = useCallback(async () => {
@@ -1837,50 +1859,6 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     }
   }, [addNotice, loadTools]);
 
-  const scrollUserMsgToTop = useCallback(() => {
-    const container = scrollContainerRef.current;
-    const el = lastUserMsgRef.current;
-    if (!container || !el) return;
-    const elAbsTop = el.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop;
-    const maxScrollTop = Math.max(0, container.scrollHeight - container.clientHeight);
-    const targetTop = Math.min(Math.max(0, elAbsTop - 16), maxScrollTop);
-
-    if (liveFollowFrameRef.current !== null) {
-      cancelAnimationFrame(liveFollowFrameRef.current);
-      liveFollowFrameRef.current = null;
-    }
-    isNearBottomRef.current = true;
-    previousScrollTopRef.current = targetTop;
-    container.scrollTo({ top: targetTop, behavior: "auto" });
-  }, []);
-
-  const handleScrollPositionChange = useCallback(() => {
-    const container = scrollContainerRef.current;
-    if (container) {
-      const { scrollTop, clientHeight, scrollHeight } = container;
-      const isAgentRunning = agentRunningRef.current;
-      const wasAttached = isNearBottomRef.current;
-      const isAttached = getLiveFollowAttached(
-        wasAttached,
-        previousScrollTopRef.current,
-        scrollTop,
-        clientHeight,
-        scrollHeight,
-        isAgentRunning
-          ? CHAT_SCROLL_REATTACH_TOLERANCE
-          : CHAT_SCROLL_TAIL_TOLERANCE,
-      );
-      isNearBottomRef.current = isAttached;
-      previousScrollTopRef.current = scrollTop;
-      if (!wasAttached && isAttached && isAgentRunning) {
-        scrollToBottom("auto");
-      } else if (!isAttached && liveFollowFrameRef.current !== null) {
-        cancelAnimationFrame(liveFollowFrameRef.current);
-        liveFollowFrameRef.current = null;
-      }
-    }
-  }, [scrollToBottom]);
-
   // Load session on mount
   useEffect(() => {
     sessionHookMountedRef.current = true;
@@ -1929,10 +1907,6 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           }
         });
       }
-      if (liveFollowFrameRef.current !== null) {
-        cancelAnimationFrame(liveFollowFrameRef.current);
-        liveFollowFrameRef.current = null;
-      }
       bashRecoveryIdRef.current += 1;
       cancelEventStreamGrace();
       closeEvents();
@@ -1954,34 +1928,20 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     onBranchDataChange(data?.tree ?? [], activeLeafId, handleLeafChange);
   }, [data?.tree, activeLeafId, handleLeafChange, onBranchDataChange]);
 
-  useEffect(() => {
-    const container = scrollContainerRef.current;
-    if (!container) return;
-    previousScrollTopRef.current = container.scrollTop;
-    container.addEventListener("scroll", handleScrollPositionChange, { passive: true });
-    return () => {
-      container.removeEventListener("scroll", handleScrollPositionChange);
-    };
-  }, [messages.length, loading, handleScrollPositionChange]);
-
-  useEffect(() => {
-    if (!agentRunning) setPromptAnchorActive(false);
-  }, [agentRunning]);
-
   useLayoutEffect(() => {
     if (messages.length > 0) {
-      if (pendingScrollToUserRef.current) {
-        pendingScrollToUserRef.current = false;
+      if (pendingScrollToTailRef.current) {
+        pendingScrollToTailRef.current = false;
         initialScrollDoneRef.current = true;
-        scrollUserMsgToTop();
+        followTail();
       } else if (!initialScrollDoneRef.current) {
         initialScrollDoneRef.current = true;
         scrollToBottom("instant");
-      } else if (!agentRunningRef.current && isNearBottomRef.current) {
+      } else if (isNearBottomRef.current) {
         scrollToBottom("auto");
       }
     }
-  }, [messages.length, agentRunning, scrollToBottom, scrollUserMsgToTop]);
+  }, [messages.length, agentRunning, bashRunning, followTail, isNearBottomRef, scrollToBottom]);
 
   // Load model list
   useEffect(() => {
@@ -2058,10 +2018,9 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     isAutoModelSelection: isNew && newSessionModel === null,
     agentPhase,
     isNew,
-    promptAnchorActive,
     // Refs
-    sessionIdRef, messagesEndRef, scrollContainerRef,
-    lastUserMsgRef, pendingScrollToUserRef, initialScrollDoneRef,
+    sessionIdRef, messagesEndRef, scrollContainerRef, messageContentRef,
+    pendingScrollToTailRef, initialScrollDoneRef,
     // Actions
     handleSend, handleAbort, handleFork, handleNavigate, handleModelChange,
     handleCompact, handleSteer, handleFollowUp, handlePromptWithStreamingBehavior, handleAbortCompaction,
@@ -2069,7 +2028,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     handleBuiltinSlashCommand,
     handleToolPresetChange, handleThinkingLevelChange, loadTools, loadSlashCommands, setActiveLeafId, setData, setMessages,
     handlePlanModeChange, handleSubmitPlan, handlePlanQuestionAnswer, handlePlanReviewUpdate, handleReturnPlanForRevision, handleApprovePlan, handleAbandonPlan,
-    scrollToBottom, scrollUserMsgToTop,
+    scrollToBottom, followTail,
     dispatch, setAgentRunning, setForkingEntryId,
     bashRunning, pendingBash,
     // Subscriptions

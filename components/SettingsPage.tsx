@@ -7,6 +7,7 @@ import { UsageStatisticsPage } from "@/components/UsageStatistics";
 import { Combobox, ComboboxContent, ComboboxInput, ComboboxItem, ComboboxList } from "@/components/ui/combobox";
 import { useI18n } from "@/hooks/useI18n";
 import { type ThemePreference, useTheme } from "@/hooks/useTheme";
+import { FontSizeSettings } from "./FontSizeSettings";
 
 export type SettingsSection = "system" | "models" | "usage";
 
@@ -62,6 +63,7 @@ export function SettingsPage({ onBack, initialSection = "system" }: { onBack?: (
             <p className="mt-2 text-sm text-[var(--text-muted)]">{t("settings.systemDescription")}</p>
             <div className="mt-9 space-y-7">
               <section><h2 className="mb-3 text-base font-semibold">{t("settings.appearance")}</h2><div className="overflow-hidden rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-panel)] p-2"><div className="grid grid-cols-3 gap-2">{(["light", "dark", "auto"] as ThemePreference[]).map((item) => <button key={item} type="button" onClick={() => setPreference(item)} className="flex min-h-20 flex-col items-center justify-center gap-2 rounded-[var(--radius-control)] px-3 text-sm transition-colors" style={{ background: preference === item ? "var(--bg-selected)" : "transparent", color: "var(--text)" }} onMouseEnter={(event) => { if (preference !== item) event.currentTarget.style.background = "var(--bg-hover)"; }} onMouseLeave={(event) => { if (preference !== item) event.currentTarget.style.background = "transparent"; }}><ThemeIcon preference={item} /><span>{t(`settings.theme.${item}`)}</span></button>)}</div></div></section>
+              <FontSizeSettings />
               <section><h2 className="mb-3 text-base font-semibold">{t("settings.language")}</h2><div className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-panel)] px-4 py-3"><div className="flex items-center justify-between gap-5 text-sm"><div><span id="display-language-label" className="block font-medium">{t("settings.displayLanguage")}</span><span className="mt-1 block text-xs text-[var(--text-muted)]">{t("settings.languageDescription")}</span></div><Combobox items={supportedLocales.map((plugin) => plugin.label)} value={selectedLocale?.label ?? ""} onValueChange={(value) => { const nextLocale = supportedLocales.find((plugin) => plugin.label === value); if (nextLocale) setLocale(nextLocale.id as typeof locale); }}><ComboboxInput aria-labelledby="display-language-label" className="h-9 w-32 shrink-0 text-sm" placeholder={t("settings.displayLanguage")} /><ComboboxContent align="end"><ComboboxList>{(item: string) => <ComboboxItem key={item} value={item} className="text-sm">{item}</ComboboxItem>}</ComboboxList></ComboboxContent></Combobox></div></div></section>
             </div>
           </div>

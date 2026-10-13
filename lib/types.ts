@@ -36,6 +36,8 @@ export interface ThinkingContent {
   thinking: string;
   /** Historical content omitted from the initial response and loaded on demand. */
   deferred?: boolean;
+  /** Short display excerpt; complete historical reasoning is still loaded on demand. */
+  preview?: string;
 }
 
 export interface ToolCallContent {
@@ -61,6 +63,8 @@ export interface AssistantMessage {
   stopReason?: string;
   errorMessage?: string;
   timestamp?: number;
+  /** UI metadata from the original session entry, independent of the compressed navigation tree. */
+  generationCompletedAt?: number;
   usage?: {
     input: number;
     output: number;

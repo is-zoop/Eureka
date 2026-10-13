@@ -5,6 +5,7 @@ import {
 } from "@/lib/request-security";
 import { AUTH_SESSION_COOKIE } from "@/lib/auth/config";
 import { readAuthSessionValue } from "@/lib/auth/session-value";
+import { GUEST_SESSION_COOKIE, isGuestSessionValue } from "@/lib/auth/guest";
 
 export function proxy(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
@@ -37,8 +38,12 @@ export function proxy(request: NextRequest) {
   const isPublicPage = pathname === "/login";
   const isMarketplaceAuthRoute = pathname.startsWith("/api/marketplace-auth/");
   if (!isPublicPage && !isMarketplaceAuthRoute) {
+    const guest = isGuestSessionValue(request.cookies.get(GUEST_SESSION_COOKIE)?.value);
+    if (guest && (pathname === "/api/organization-extensions" || pathname.startsWith("/api/organization-extensions/"))) {
+      return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
+    }
     const session = readAuthSessionValue(request.cookies.get(AUTH_SESSION_COOKIE)?.value);
-    if (!session) {
+    if (!session && !guest) {
       if (isApiRequest) return NextResponse.json({ error: "Authentication required" }, { status: 401 });
       const loginUrl = new URL("/login", request.url);
       loginUrl.searchParams.set("returnTo", `${pathname}${request.nextUrl.search}`);
@@ -49,4 +54,4 @@ export function proxy(request: NextRequest) {
   return NextResponse.next();
 }
 
-export const config = { matcher: ["/((?!_next/static|_next/image|favicon.ico|manifest.webmanifest|icons/|sw.js|workbox-|.*\\.(?:png|jpg|jpeg|gif|svg|ico|webp)$).*)"] };
+export const config = { matcher: ["/api/organization-extensions/:path*", "/((?!_next/static|_next/image|favicon.ico|manifest.webmanifest|icons/|sw.js|workbox-|.*\\.(?:png|jpg|jpeg|gif|svg|ico|webp)$).*)"] };

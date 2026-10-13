@@ -4,6 +4,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem,
 import { SidebarFooter, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar";
 import { useI18n } from "@/hooks/useI18n";
 import { Skeleton } from "./ui/skeleton";
+import { GUEST_AVATAR_URL } from "@/lib/auth/guest";
 
 export type SidebarUser = {
   name: string;
@@ -27,10 +28,15 @@ function LogoutIcon() {
   return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path d="m16 17 5-5-5-5" /><path d="M21 12H9" /></svg>;
 }
 
-export function SidebarUserMenu({ user, loading = false, onOpenSettings, onOpenModels }: { user: SidebarUser | null; loading?: boolean; onOpenSettings?: () => void; onOpenModels?: () => void }) {
+export function SidebarUserMenu({ user, guest = false, loading = false, onOpenSettings, onOpenModels }: { user: SidebarUser | null; guest?: boolean; loading?: boolean; onOpenSettings?: () => void; onOpenModels?: () => void }) {
   const { t } = useI18n();
-  const name = user?.name || t("account.loading");
-  const email = user?.email || t("account.emailUnavailable");
+  const name = guest ? t("account.guest") : user?.name || t("account.loading");
+  const email = guest ? t("account.notLoggedIn") : user?.email || t("account.emailUnavailable");
+  const avatarUrl = guest ? GUEST_AVATAR_URL : user?.avatarUrl;
+  const handleLogin = () => {
+    const returnTo = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+    window.location.assign(`/login?returnTo=${encodeURIComponent(returnTo)}`);
+  };
   const handleLogout = async () => {
     try {
       await fetch("/api/marketplace-auth/logout", { method: "POST" });
@@ -50,10 +56,10 @@ export function SidebarUserMenu({ user, loading = false, onOpenSettings, onOpenM
                 <span className="flex min-w-0 flex-1 flex-col gap-1.5"><Skeleton className="h-3.5 w-24" /><Skeleton className="h-3 w-32" /></span>
               </> : <>
                 <span className="flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[var(--bg-hover)] text-[var(--text-muted)]">
-                  {user?.avatarUrl ? <img src={user.avatarUrl} alt="" className="size-full object-cover" /> : <DefaultUserIcon />}
+                  {avatarUrl ? <img src={avatarUrl} alt="" className="size-full object-cover" /> : <DefaultUserIcon />}
                 </span>
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate font-medium leading-5">{name}</span>
+                  <span className="block truncate font-medium leading-5" title={name}>{name}</span>
                   <span className="block truncate text-xs leading-4 text-[var(--text-muted)]">{email}</span>
                 </span>
                 <svg className="size-4 shrink-0 text-[var(--text-muted)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9" /></svg>
@@ -62,16 +68,16 @@ export function SidebarUserMenu({ user, loading = false, onOpenSettings, onOpenM
             <DropdownMenuContent side="top" align="start" sideOffset={8} className="w-[var(--anchor-width)] min-w-52 bg-[var(--bg-panel)] text-[var(--text)]">
               <div className="flex items-center gap-2 px-2 py-2">
                 <span className="flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[var(--bg-hover)] text-[var(--text-muted)]">
-                  {user?.avatarUrl ? <img src={user.avatarUrl} alt="" className="size-full object-cover" /> : <DefaultUserIcon />}
+                  {avatarUrl ? <img src={avatarUrl} alt="" className="size-full object-cover" /> : <DefaultUserIcon />}
                 </span>
-                <span className="min-w-0"><span className="block truncate text-sm font-medium">{name}</span><span className="block truncate text-xs text-[var(--text-muted)]">{email}</span></span>
+                <span className="min-w-0 flex-1"><span className="block break-words text-sm font-medium">{name}</span><span className="block truncate text-xs text-[var(--text-muted)]">{email}</span></span>
               </div>
               <DropdownMenuSeparator className="mx-2" />
               <DropdownMenuGroup>
                 <DropdownMenuItem onClick={onOpenSettings}><SettingsIcon />{t("account.settings")}</DropdownMenuItem>
                 <DropdownMenuItem onClick={onOpenModels}><ModelsIcon />{t("settings.models")}</DropdownMenuItem>
               </DropdownMenuGroup>
-              <DropdownMenuItem variant="destructive" onClick={() => void handleLogout()}><LogoutIcon />{t("account.logout")}</DropdownMenuItem>
+              {guest ? <DropdownMenuItem onClick={handleLogin}><LogoutIcon />{t("account.login")}</DropdownMenuItem> : <DropdownMenuItem variant="destructive" onClick={() => void handleLogout()}><LogoutIcon />{t("account.logout")}</DropdownMenuItem>}
             </DropdownMenuContent>
           </DropdownMenu>
         </SidebarMenuItem>

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { hasMarketplaceAccess, refreshMarketplaceSession } from "@/lib/auth/marketplace";
-import { clearAuthSession } from "@/lib/auth/session";
+import { clearAuthSession, readGuestSession } from "@/lib/auth/session";
+import { GUEST_AVATAR_URL, GUEST_NAME } from "@/lib/auth/guest";
 
 function safeAvatarUrl(value: string | null | undefined): string | null {
   if (!value || value.length > 512_000) return null;
@@ -9,6 +10,14 @@ function safeAvatarUrl(value: string | null | undefined): string | null {
 }
 
 export async function GET() {
+  if (await readGuestSession()) {
+    return NextResponse.json({
+      authenticated: false,
+      guest: true,
+      marketplace: false,
+      user: { name: GUEST_NAME, email: null, avatarUrl: GUEST_AVATAR_URL, permissions: [] },
+    }, { headers: { "Cache-Control": "no-store" } });
+  }
   // The encrypted cookie deliberately excludes the access token and avatar.
   // Refresh here so the client receives a current, display-safe profile only.
   const result = await refreshMarketplaceSession(true);
@@ -20,6 +29,7 @@ export async function GET() {
   const { session } = result;
   const response = NextResponse.json({
     authenticated: true,
+    guest: false,
     marketplace: hasMarketplaceAccess(session),
     user: {
       name: session.principal.name,

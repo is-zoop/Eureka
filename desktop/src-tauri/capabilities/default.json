@@ -2,6 +2,6 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Core permissions for the Eureka desktop window.",
-  "windows": ["main", "startup-error"],
+  "webviews": ["eureka-content"],
   "permissions": ["core:default", "allow-open-external-url"]
 }

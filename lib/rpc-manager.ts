@@ -4,6 +4,7 @@ import { KeybindingsManager as TuiKeybindingsManager, TUI_KEYBINDINGS } from "@e
 import { Type } from "typebox";
 import { installBuiltInMcpAdapter, MCP_STATUS_EVENT } from "./mcp-adapter";
 import { installHazeManagedMcpRuntime } from "./haze-mcp-runtime";
+import { EUREKA_TASK_PROGRESS_EXTENSION } from "./task-progress";
 import { clearMcpRuntime, updateMcpRuntime } from "./mcp-runtime";
 import { randomUUID } from "crypto";
 import { existsSync, realpathSync, writeFileSync } from "fs";
@@ -697,7 +698,7 @@ export class AgentSessionWrapper {
             id: randomUUID(),
             method: "notify",
             notifyType: "warning",
-            message: "Extension requested shutdown, but shutdown is not supported in Pi Web.",
+            message: "Extension requested shutdown, but shutdown is not supported in Eureka.",
           } as ExtensionUiRequest as AgentEvent),
           onError: (error) => this.emit({
             type: "extension_error",
@@ -1984,7 +1985,7 @@ export class AgentSessionWrapper {
       get theme() { return PLAIN_TEXT_THEME; },
       getAllThemes: () => [],
       getTheme: () => undefined,
-      setTheme: () => ({ success: false, error: "Theme switching is not supported in Pi Web extension UI yet" }),
+      setTheme: () => ({ success: false, error: "Theme switching is not supported in Eureka extension UI yet" }),
       getToolsExpanded: () => false,
       setToolsExpanded: () => {},
     };
@@ -2260,7 +2261,7 @@ export async function startRpcSession(
       // Otherwise DO NOT pass a builtin-only allow-list: passing CODING_TOOL_NAMES
       // set allowedToolNames to coding builtins only, which filtered every
       // extension/package-provided tool (e.g. subagents, web access) out of the
-      // tool registry — so they were unavailable in Pi Web sessions even though the
+      // tool registry — so they were unavailable in Eureka sessions even though the
       // `pi` CLI keeps them. Leaving the allow-list unset lets the SDK register all
       // tools (and activate extension tools); we narrow the ACTIVE set below.
       toolsOption = toolNames.length === 0 ? [] : undefined;
@@ -2275,7 +2276,7 @@ export async function startRpcSession(
       cwd: sessionCwd,
       agentDir,
       resourceLoaderOptions: {
-        extensionFactories: [installBuiltInMcpAdapter, installHazeManagedMcpRuntime, EUREKA_NATIVE_PLAN_EXTENSION, EUREKA_MCP_EXTENSION],
+        extensionFactories: [installBuiltInMcpAdapter, installHazeManagedMcpRuntime, EUREKA_NATIVE_PLAN_EXTENSION, EUREKA_MCP_EXTENSION, EUREKA_TASK_PROGRESS_EXTENSION],
         skillsOverride: (base) => applyHazeProjectSkillOverrides(sessionCwd, base),
       },
       ...(trustReloadOptions ? { resourceLoaderReloadOptions: trustReloadOptions } : {}),
@@ -2323,7 +2324,7 @@ export async function startRpcSession(
 
     // If specific tool names were requested (non-empty), set the active tools to the
     // requested builtin coding tools PLUS all extension/package tools, so installed
-    // extensions stay usable in Pi Web just like in the `pi` CLI.
+    // extensions stay usable in Eureka just like in the `pi` CLI.
     if (toolNames && toolNames.length > 0) {
       inner.setActiveToolsByName(withExtensionTools(inner, toolNames));
     }

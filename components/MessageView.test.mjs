@@ -8,18 +8,106 @@ const jiti = createJiti(import.meta.url, {
   jsx: { runtime: "automatic" },
   tsconfigPaths: true,
 });
-const { MessageView, replaceUserMessageText, formatPlanCompletionMarkers } = await jiti.import("./MessageView.tsx");
+const { MessageView, ProcessBlockView, replaceUserMessageText, formatPlanCompletionMarkers } = await jiti.import("./MessageView.tsx");
+const { observeThinkingEvent, rememberThinkingDuration } = await jiti.import("@/lib/thinking-timing");
+const { observeThinkingPreviewEvent, rememberMessageThinkingPreviews } = await jiti.import("@/lib/thinking-preview-cache");
 const { I18nProvider } = await jiti.import("@/hooks/useI18n");
 
-function renderMessage(message) {
+function renderMessage(message, props = {}) {
   return renderToStaticMarkup(
     React.createElement(
       I18nProvider,
       null,
-      React.createElement(MessageView, { message }),
+      React.createElement(MessageView, { message, ...props }),
     ),
   );
 }
+
+function renderThinkingRecord(message, blockIndex, props = {}) {
+  return renderToStaticMarkup(React.createElement(I18nProvider, null,
+    React.createElement(ProcessBlockView, {
+      reference: { block: message.content[blockIndex], blockIndex,
+        source: { message, entryId: "thought-entry", completedAt: props.completedAt, isStreaming: props.isStreaming } },
+      sessionId: props.sessionId,
+    })));
+}
+
+test("reopened thinking uses original entry completion without a navigation tree timestamp", () => {
+  const message = { role: "assistant", model: "test", timestamp: 1791875229811,
+    generationCompletedAt: 1791875232152, content: [{ type: "thinking", thinking: "", deferred: true,
+      preview: "Formulating query for shop and category metrics" }] };
+  for (let reopen = 0; reopen < 2; reopen++) {
+    const html = renderThinkingRecord(message, 0, { sessionId: "original-completion" });
+    assert.match(html, /class="tool-activity-duration"[^>]*>~2s/);
+    assert.match(html, /Formulating query for shop and category metrics/);
+    assert.doesNotMatch(html, /Time not recorded/);
+  }
+});
+
+test("thinking records display completed wording and the measured original block duration", () => {
+  const message = { role: "assistant", model: "test", timestamp: 123,
+    content: [{ type: "text", text: "phase" }, { type: "thinking", thinking: "private detail" }] };
+  observeThinkingEvent("render-exact", 123, { type: "thinking_start", contentIndex: 1 }, 1000);
+  observeThinkingEvent("render-exact", 123, { type: "thinking_end", contentIndex: 1 }, 6200);
+  const html = renderThinkingRecord(message, 1, { sessionId: "render-exact", isStreaming: true });
+  assert.match(html, /Thinking complete/);
+  assert.match(html, /data-status="completed"/);
+  assert.match(html, /class="tool-activity-duration">5s/);
+  assert.doesNotMatch(html, /thinking-activity-content|task-phase-message-info/);
+});
+
+test("historical thinking duration is approximate and missing timing is explicit", () => {
+  const message = { role: "assistant", model: "test", timestamp: 1000,
+    content: [{ type: "thinking", thinking: "one" }] };
+  const estimated = renderThinkingRecord(message, 0, { completedAt: 4900 });
+  assert.match(estimated, /~4s/);
+  assert.match(estimated, /title="Estimated:/);
+  const multi = renderThinkingRecord({ ...message, content: [...message.content, { type: "thinking", thinking: "two" }] }, 1, { completedAt: 4900 });
+  assert.match(multi, /Time not recorded/);
+  assert.doesNotMatch(multi, /~4s/);
+});
+
+test("remounted deferred thinking retains its summary and completed duration without loading full content", () => {
+  const sessionId = "remounted-thought";
+  const message = { role: "assistant", model: "test", timestamp: 1500,
+    content: [{ type: "thinking", thinking: "**Querying 2025 platform category data**" }] };
+  observeThinkingEvent(sessionId, 1500, { type: "thinking_start", contentIndex: 0 }, 1000);
+  observeThinkingEvent(sessionId, 1500, { type: "thinking_end", contentIndex: 0 }, 8200);
+  const first = renderThinkingRecord(message, 0, { sessionId });
+  const remounted = renderThinkingRecord({ ...message, content: [{ type: "thinking", thinking: "", deferred: true,
+    preview: "Querying 2025 platform category data" }] }, 0, { sessionId });
+  for (const html of [first, remounted]) {
+    assert.match(html, /tool-activity-duration">7s/);
+    assert.match(html, /tool-activity-preview" title="Querying 2025 platform category data">Querying 2025 platform category data/);
+    assert.doesNotMatch(html, /\*\*|Time not recorded|thinking-activity-content/);
+  }
+  rememberThinkingDuration("estimate-retained:1500:0", 4);
+  assert.match(renderThinkingRecord(message, 0, { sessionId: "estimate-retained" }), /~4s/);
+});
+
+test("reopening a stage restores streamed summaries when history has no preview or contains an empty preview", () => {
+  const sessionId = "fold-without-detail";
+  observeThinkingPreviewEvent(sessionId, 2500, { type: "thinking_start", contentIndex: 0 });
+  observeThinkingPreviewEvent(sessionId, 2500, { type: "thinking_delta", contentIndex: 0, delta: "**Formulating query for shop and category metrics**" });
+  observeThinkingPreviewEvent(sessionId, 2500, { type: "thinking_end", contentIndex: 0, content: "**Formulating query for shop and category metrics**" });
+  const message = { role: "assistant", model: "test", timestamp: 2500,
+    content: [{ type: "thinking", thinking: "", deferred: true }] };
+  const previousFetch = globalThis.fetch;
+  let fetched = false;
+  globalThis.fetch = () => { fetched = true; throw new Error("Summary must not load full thinking"); };
+  try {
+    for (const block of [message.content[0], { ...message.content[0], preview: "" }]) {
+      const saved = { ...message, content: [block] };
+      rememberMessageThinkingPreviews(sessionId, saved, "thought-entry");
+      for (let reopen = 0; reopen < 2; reopen++) {
+        const html = renderThinkingRecord(saved, 0, { sessionId });
+        assert.match(html, /tool-activity-preview" title="Formulating query for shop and category metrics">Formulating query for shop and category metrics/);
+        assert.doesNotMatch(html, /thinking-activity-content|\*\*/);
+      }
+    }
+    assert.equal(fetched, false);
+  } finally { globalThis.fetch = previousFetch; }
+});
 
 const COMPLETE_SKILL_EXPANSION = `<skill name="review" location="/skills/review/SKILL.md">
 References are relative to /skills/review.
@@ -28,6 +116,78 @@ Review the supplied files.
 </skill>
 
 src/main.ts`;
+
+function renderTool(toolName, input, { result = true, isError = false, isStreaming = false, runningToolIds } = {}) {
+  const toolCallId = "test-tool";
+  return renderMessage({
+    role: "assistant", provider: "test", model: "test", timestamp: 1000,
+    content: [{ type: "toolCall", toolCallId, toolName, input }],
+  }, {
+    isStreaming,
+    runningToolIds,
+    toolResults: result ? new Map([[toolCallId, {
+      role: "toolResult", toolCallId, content: [{ type: "text", text: "Detailed output stays collapsed" }], isError, timestamp: 2000,
+    }]]) : new Map(),
+  });
+}
+
+test("completed file tools render a compact summary with basename chips and full path tooltips", () => {
+  for (const [tool, input, label] of [
+    ["read", { path: "C:\\work\\deployment.md" }, "Read file"],
+    ["edit", { path: "/work/deployment.md", oldText: "old", newText: "new" }, "Edit file"],
+    ["write", { file_path: "/work/deployment.md", content: "hello" }, "Write file"],
+  ]) {
+    const html = renderTool(tool, input);
+    assert.match(html, /class="tool-activity" data-status="completed"/);
+    assert.match(html, /class="tool-activity-file"[^>]*>deployment\.md<\/span>/);
+    assert.match(html, new RegExp(label));
+    assert.ok(html.includes(`title="${input.path ?? input.file_path}"`));
+    assert.match(html, /aria-expanded="false"/);
+    assert.match(html, /class="tool-activity-duration">1s/);
+    assert.doesNotMatch(html, /Detailed output stays collapsed|tool-activity-details|rgba\(34,197,94/);
+  }
+});
+
+test("terminal and MCP summaries preserve their command or tool identity", () => {
+  const command = "python -c 'print(1)' " + "argument ".repeat(30);
+  const terminal = renderTool("bash", { command });
+  assert.match(terminal, /Terminal command/);
+  assert.ok(terminal.includes("argument ".repeat(30)));
+  assert.match(terminal, /class="tool-activity-preview"/);
+  const mcp = renderTool("plugin_site.prepare_site", { slug: "my-site" });
+  assert.match(mcp, /Use tool/);
+  assert.match(mcp, /plugin_site\.prepare_site · my-site/);
+});
+
+test("running, failed, and missing-result calls have distinct accessible statuses", () => {
+  const running = renderTool("bash", { command: "npm test" }, { result: false, isStreaming: true });
+  assert.match(running, /data-status="running"/);
+  assert.match(running, /Running: /);
+  const failed = renderTool("bash", { command: "npm test" }, { isError: true });
+  assert.match(failed, /data-status="error"/);
+  assert.match(failed, /Failed: /);
+  const missing = renderTool("read", { path: "README.md" }, { result: false });
+  assert.match(missing, /data-status="unknown"/);
+  assert.match(missing, /No result yet: /);
+  assert.doesNotMatch(missing, /data-status="completed"/);
+});
+
+test("execution events keep committed tool calls running after model streaming ends", () => {
+  const running = renderTool("read", { path: "README.md" }, { result: false, runningToolIds: new Set(["test-tool"]) });
+  assert.match(running, /data-status="running"/);
+  const unrelated = renderTool("read", { path: "README.md" }, { result: false, runningToolIds: new Set(["other-tool"]) });
+  assert.match(unrelated, /data-status="unknown"/);
+  const completed = renderTool("read", { path: "README.md" }, { runningToolIds: new Set(["test-tool"]) });
+  assert.match(completed, /data-status="completed"/);
+});
+
+test("user-run terminal commands use the same compact rows and statuses", () => {
+  const completed = renderMessage({ role: "bashExecution", command: "pwd", output: "/work", exitCode: 0 });
+  assert.match(completed, /data-status="completed"/);
+  assert.match(completed, /Terminal command/);
+  const running = renderMessage({ role: "bashExecution", command: "pwd", output: "" });
+  assert.match(running, /data-status="running"/);
+});
 
 test("renders a provider error when the assistant message has no content", () => {
   const html = renderMessage({

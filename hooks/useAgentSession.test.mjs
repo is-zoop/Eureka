@@ -244,7 +244,7 @@ test("streaming submissions cannot be stranded in an idle direct queue", () => {
 
   assert.match(queueSource, /type: "prompt"/);
   assert.match(queueSource, /streamingBehavior: behavior/);
-  assert.match(queueSource, /if \(isPromptRejectedError\(e\)\) restore\(\)/);
+  assert.match(queueSource, /if \(!promptRequestStarted \|\| isPromptRejectedError\(e\)\) restore\(\)/);
   assert.doesNotMatch(queueSource, /type: "steer"/);
   assert.doesNotMatch(queueSource, /type: "follow_up"/);
 });
@@ -361,111 +361,52 @@ test("routes blocking extension requests through deduplicated browser attention 
   assert.match(appShellSource, /onAttentionNeeded=\{handleAttentionNeeded\}/);
 });
 
+
+const tailFollowSource = await readFile(new URL("./useChatTailFollow.ts", import.meta.url), "utf8");
+
+
 test("keeps live following cancellable when the user scrolls away from the tail", () => {
-  const streamUpdateSource = source.slice(
-    source.indexOf('case "message_start"'),
-    source.indexOf('case "message_end"'),
-  );
-  const scrollHandlerSource = source.slice(
-    source.indexOf("const handleScrollPositionChange"),
-    source.indexOf("// Load session on mount"),
-  );
-  const scrollToBottomSource = source.slice(
-    source.indexOf("const scrollToBottom"),
-    source.indexOf("const currentModel"),
-  );
-
-  assert.match(source, /const liveFollowFrameRef = useRef<number \| null>\(null\)/);
-  assert.match(source, /const previousScrollTopRef = useRef\(0\)/);
-  assert.match(source, /const wasAttached = isNearBottomRef\.current;[\s\S]*?const isAttached = getLiveFollowAttached\([\s\S]*?wasAttached,[\s\S]*?previousScrollTopRef\.current,[\s\S]*?scrollTop,[\s\S]*?clientHeight,[\s\S]*?scrollHeight/);
-  assert.match(scrollHandlerSource, /const isAgentRunning = agentRunningRef\.current;[\s\S]*?isAgentRunning\s*\? CHAT_SCROLL_REATTACH_TOLERANCE\s*:\s*CHAT_SCROLL_TAIL_TOLERANCE/);
-  assert.match(source, /previousScrollTopRef\.current = scrollTop/);
-  assert.match(scrollToBottomSource, /messagesEndRef\.current\?\.scrollIntoView\(\{ behavior \}\);\s*if \(container\) previousScrollTopRef\.current = container\.scrollTop/);
-  assert.match(streamUpdateSource, /liveFollowFrameRef\.current === null/);
-  assert.match(streamUpdateSource, /requestAnimationFrame\(\(\) => \{[\s\S]*?liveFollowFrameRef\.current = null;[\s\S]*?if \(isNearBottomRef\.current\) scrollToBottom\("auto"\)/);
-  assert.match(scrollHandlerSource, /!wasAttached && isAttached && isAgentRunning[\s\S]*?scrollToBottom\("auto"\)/);
-  assert.match(scrollHandlerSource, /cancelAnimationFrame\(liveFollowFrameRef\.current\)/);
-  assert.match(source, /previousScrollTopRef\.current = container\.scrollTop;\s*container\.addEventListener\("scroll", handleScrollPositionChange/);
-  assert.doesNotMatch(source, /SCROLL_BOTTOM_THRESHOLD|completionScrollAllowedRef|ignoreProgrammaticScrollUntilRef/);
+  const streamUpdateSource = source.slice(source.indexOf('case "message_start"'), source.indexOf('case "message_end"'));
+  assert.match(tailFollowSource, /const liveFollowFrameRef = useRef<number \| null>\(null\)/);
+  assert.match(tailFollowSource, /getLiveFollowAttached\(wasAttached, previousScrollTopRef\.current, scrollTop, clientHeight, scrollHeight/);
+  assert.match(tailFollowSource, /activeRef\.current \? CHAT_SCROLL_REATTACH_TOLERANCE : CHAT_SCROLL_TAIL_TOLERANCE/);
+  assert.match(tailFollowSource, /else if \(!isAttached\) cancelLiveFollow\(\)/);
+  assert.match(tailFollowSource, /cancelAnimationFrame\(liveFollowFrameRef\.current\)/);
+  assert.match(tailFollowSource, /if \(isNearBottomRef\.current\) scrollToBottom\("auto"\)/);
+  assert.match(streamUpdateSource, /if \(!pendingScrollToTailRef\.current\) scheduleLiveFollow\(\)/);
 });
 
-test("keeps a newly sent user message at the top while its response starts", () => {
-  const streamUpdateSource = source.slice(
-    source.indexOf('case "message_start"'),
-    source.indexOf('case "message_end"'),
-  );
-  const userScrollSource = source.slice(
-    source.indexOf("const scrollUserMsgToTop"),
-    source.indexOf("const handleScrollPositionChange"),
-  );
-  const scrollEffectSource = source.slice(
-    source.indexOf("useLayoutEffect(() => {\n    if (messages.length > 0)"),
-    source.indexOf("// Load model list"),
-  );
-
-  assert.match(streamUpdateSource, /!pendingScrollToUserRef\.current && isNearBottomRef\.current/);
-  assert.match(source, /const \[promptAnchorActive, setPromptAnchorActive\] = useState\(false\)/);
-  assert.match(source, /pendingScrollToUserRef\.current = true;\s*setPromptAnchorActive\(true\)/);
-  assert.match(userScrollSource, /const targetTop = Math\.min\(Math\.max\(0, elAbsTop - 16\), maxScrollTop\)/);
-  assert.match(userScrollSource, /cancelAnimationFrame\(liveFollowFrameRef\.current\)/);
-  assert.match(userScrollSource, /isNearBottomRef\.current = true/);
-  assert.match(userScrollSource, /previousScrollTopRef\.current = targetTop/);
-  assert.match(userScrollSource, /container\.scrollTo\(\{ top: targetTop, behavior: "auto" \}\)/);
-  assert.match(scrollEffectSource, /pendingScrollToUserRef\.current = false;[\s\S]*?scrollUserMsgToTop\(\)/);
-  assert.match(chatWindowSource, /const contentEnd = spacer\.getBoundingClientRect\(\)\.top[\s\S]*?getPromptAnchorSpacerHeight\([\s\S]*?targetTop,[\s\S]*?contentEnd,[\s\S]*?container\.clientHeight/);
-  assert.match(chatWindowSource, /<div ref=\{promptAnchorSpacerRef\} aria-hidden="true" \/>/);
-  assert.match(chatWindowSource, /const promptAnchorAdjustmentDoneRef = useRef\(false\)/);
-  assert.match(chatWindowSource, /promptAnchorAdjustmentDoneRef\.current = false/);
-  assert.match(chatWindowSource, /const isInitialMeasurement = !promptAnchorAdjustmentDoneRef\.current;[\s\S]*?promptAnchorAdjustmentDoneRef\.current = true;[\s\S]*?if \(needsInitialAdjustment\) scrollUserMsgToTop\(\)/);
+test("new submissions attach to the latest output instead of pinning the user message", () => {
+  const scrollEffectSource = source.slice(source.indexOf('useLayoutEffect(() => {\n    if (messages.length > 0)'), source.indexOf('// Load model list'));
+  assert.match(source, /pendingScrollToTailRef\.current = true/);
+  assert.match(scrollEffectSource, /pendingScrollToTailRef\.current = false;[\s\S]*?followTail\(\)/);
+  assert.match(tailFollowSource, /const followTail[\s\S]*?isNearBottomRef\.current = true;[\s\S]*?scrollToBottom\("auto"\)/);
+  assert.doesNotMatch(source + chatWindowSource, /promptAnchorActive|scrollUserMsgToTop|promptAnchorSpacerRef/);
 });
 
-test("keeps prompt anchor measurement outside the React update cycle", () => {
-  const anchorEffectStart = chatWindowSource.indexOf(
-    "useLayoutEffect(() => {\n    const spacer = promptAnchorSpacerRef.current;",
-  );
-  assert.notEqual(anchorEffectStart, -1);
-  const syncEffectStart = chatWindowSource.indexOf(
-    "useLayoutEffect(() => {\n    promptAnchorUpdateRef.current?.();",
-    anchorEffectStart,
-  );
-  assert.notEqual(syncEffectStart, -1);
-  const anchorLifecycleEffectSource = chatWindowSource.slice(
-    anchorEffectStart,
-    syncEffectStart,
-  );
-  const anchorSyncEffectSource = chatWindowSource.slice(
-    syncEffectStart,
-    chatWindowSource.indexOf("const availableThinkingLevels"),
-  );
-
-  assert.doesNotMatch(anchorLifecycleEffectSource, /\bset[A-Z][A-Za-z0-9]*\s*\(/);
-  assert.doesNotMatch(anchorSyncEffectSource, /\bset[A-Z][A-Za-z0-9]*\s*\(/);
-  assert.doesNotMatch(chatWindowSource, /setPromptAnchorSpacer|useState[^\n]*promptAnchorSpacer/);
-  assert.doesNotMatch(anchorLifecycleEffectSource, /streamState\.streamingMessage/);
-  assert.match(anchorLifecycleEffectSource, /spacer\.style\.height = nextPromptAnchorSpacerHeight > 0/);
-  assert.match(anchorLifecycleEffectSource, /promptAnchorUpdateRef\.current = updatePromptAnchorSpacer/);
-  assert.match(anchorLifecycleEffectSource, /new ResizeObserver\(schedulePromptAnchorMeasure\)/);
-  assert.match(anchorLifecycleEffectSource, /observer\?\.observe\(messageContent\)/);
-  assert.match(anchorLifecycleEffectSource, /if \(disposed \|\| promptAnchorMeasureFrameRef\.current !== null\) return/);
-  assert.match(anchorLifecycleEffectSource, /promptAnchorMeasureFrameRef\.current = requestAnimationFrame\(\(\) => \{\s*promptAnchorMeasureFrameRef\.current = null;\s*updatePromptAnchorSpacer\(\)/);
-  assert.match(anchorLifecycleEffectSource, /disposed = true;[\s\S]*?promptAnchorUpdateRef\.current === updatePromptAnchorSpacer[\s\S]*?cancelAnimationFrame\(promptAnchorMeasureFrameRef\.current\)/);
-  assert.match(anchorSyncEffectSource, /promptAnchorUpdateRef\.current\?\.\(\);\s*\}, \[streamState\.streamingMessage\]\)/);
+test("content and viewport resizing follow the tail without React state updates", () => {
+  assert.match(source, /useChatTailFollow\(\{[\s\S]*?active: agentRunning \|\| bashRunning, ready: !loading, contentVersion: messages\.length/);
+  assert.match(tailFollowSource, /new ResizeObserver\(handleResize\)/);
+  assert.match(tailFollowSource, /observer\?\.observe\(content\)/);
+  assert.match(tailFollowSource, /observer\?\.observe\(container\)/);
+  assert.match(tailFollowSource, /if \(activeRef\.current\) scheduleLiveFollow\(\)/);
+  assert.match(tailFollowSource, /requestAnimationFrame\(\(\) => \{[\s\S]*?liveFollowFrameRef\.current = null/);
+  assert.match(tailFollowSource, /observer\?\.disconnect\(\);[\s\S]*?cancelLiveFollow\(\)/);
+  assert.doesNotMatch(tailFollowSource, /useState|setPromptAnchorSpacer/);
   assert.match(chatWindowSource, /<div ref=\{messageContentRef\} style=\{\{/);
 });
 
-test("uses the prompt anchor as the only trailing message spacer", () => {
-  assert.match(chatWindowSource, /<div ref=\{promptAnchorSpacerRef\} aria-hidden="true" \/>[\s\S]*?<div ref=\{messagesEndRef\} \/>/);
-  assert.doesNotMatch(chatWindowSource, /bottomComposer(?:Ref|Height|ScrollFrameRef)/);
-  assert.doesNotMatch(chatWindowSource, /new ResizeObserver\(updateBottomComposerHeight\)/);
+test("the real message tail has no artificial trailing spacer", () => {
+  assert.doesNotMatch(chatWindowSource, /getPromptAnchorSpacerHeight|promptAnchorSpacer/);
+  assert.match(tailFollowSource, /container\.scrollTo\(\{ top: Math\.max\(0, container\.scrollHeight - container\.clientHeight\), behavior \}\)/);
+  assert.doesNotMatch(tailFollowSource, /scrollIntoView/);
+  assert.match(chatWindowSource, /<div ref=\{messagesEndRef\} \/>/);
+  assert.match(chatWindowSource, /justifyContent: "flex-end"/);
 });
 
-test("keeps a detached viewport in place when streaming completes", () => {
-  const scrollEffectSource = source.slice(
-    source.indexOf("useLayoutEffect(() => {\n    if (messages.length > 0)"),
-    source.indexOf("// Load model list"),
-  );
-
-  assert.match(scrollEffectSource, /!agentRunningRef\.current && isNearBottomRef\.current[\s\S]*?scrollToBottom\("auto"\)/);
-  assert.doesNotMatch(scrollEffectSource, /\|\|/);
-  assert.match(source, /addEventListener\("scroll", handleScrollPositionChange/);
+test("new messages and completion follow only when the viewport is attached", () => {
+  const scrollEffectSource = source.slice(source.indexOf('useLayoutEffect(() => {\n    if (messages.length > 0)'), source.indexOf('// Load model list'));
+  assert.match(scrollEffectSource, /else if \(isNearBottomRef\.current\) \{[\s\S]*?scrollToBottom\("auto"\)/);
+  assert.doesNotMatch(scrollEffectSource, /!agentRunningRef\.current/);
+  assert.match(tailFollowSource, /container\.addEventListener\("scroll", handleScroll, \{ passive: true \}\)/);
 });

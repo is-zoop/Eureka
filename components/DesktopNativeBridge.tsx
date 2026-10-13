@@ -2,7 +2,6 @@
 
 import { useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useTheme } from "@/hooks/useTheme";
 
 function isTauriDesktop(): boolean {
@@ -10,9 +9,8 @@ function isTauriDesktop(): boolean {
 }
 
 /**
- * Bridges web-only behavior to the native Eureka host. The window itself keeps
- * standard Windows decorations; this component never handles dragging or
- * caption buttons.
+ * Bridges web-only behavior to the native Eureka host. The caption lives in a
+ * separate local WebView and stays available through content navigation.
  */
 export function DesktopNativeBridge() {
   const { preference } = useTheme();
@@ -20,6 +18,7 @@ export function DesktopNativeBridge() {
   useEffect(() => {
     if (!isTauriDesktop()) return;
     document.documentElement.classList.add("eureka-desktop");
+    document.documentElement.classList.add("eureka-native-titlebar");
 
     // WebView2 can create a native child window for window.open("about:blank")
     // before Tauri's new-window callback receives the final external URL.
@@ -51,10 +50,9 @@ export function DesktopNativeBridge() {
 
   useEffect(() => {
     if (!isTauriDesktop()) return;
-    // Keep `auto` as null so Tao follows future Windows system-theme changes
-    // instead of freezing the currently resolved web theme.
-    const nativeTheme = preference === "auto" ? null : preference;
-    void getCurrentWindow().setTheme(nativeTheme)
+    // Pass the preference so the native host and its local caption can
+    // follow future Windows theme changes when set to auto.
+    void invoke("set_desktop_theme", { preference })
       .catch((error) => {
         console.error("Failed to synchronize Eureka native titlebar theme:", error);
       });

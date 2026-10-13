@@ -2,11 +2,12 @@ import type { Metadata, Viewport } from "next";
 import { Inter, JetBrains_Mono, Noto_Sans_Mono, Noto_Sans_SC } from "next/font/google";
 import { PwaRegistration } from "@/components/PwaRegistration";
 import { DesktopNativeBridge } from "@/components/DesktopNativeBridge";
-import { DesktopTitlebar } from "@/components/desktop/DesktopTitlebar";
 import { ThemeAwareFavicon } from "@/components/ThemeAwareFavicon";
 import "katex/dist/katex.min.css";
 import "./globals.css";
 import { NotificationProvider } from "@/components/Notifications";
+import { FontSizePreference } from "@/components/FontSizePreference";
+import { FONT_SIZE_BOOTSTRAP_SCRIPT } from "@/lib/font-size-preference";
 
 const notoSansMono = Noto_Sans_Mono({
   subsets: ["latin", "cyrillic"],
@@ -83,6 +84,12 @@ export default function RootLayout({
     <html lang="en" translate="no" className={`${inter.variable} ${notoSansSC.variable} ${notoSansMono.variable} ${jetBrainsMono.variable} notranslate`} suppressHydrationWarning>
       <head>
         <meta name="google" content="notranslate" />
+        <script dangerouslySetInnerHTML={{ __html: FONT_SIZE_BOOTSTRAP_SCRIPT }} />
+        <script
+          dangerouslySetInnerHTML={{
+            __html: "if(window.__EUREKA_NATIVE_TITLEBAR__){document.documentElement.classList.add('eureka-desktop','eureka-native-titlebar');}",
+          }}
+        />
         <script
           dangerouslySetInnerHTML={{
             __html: `(function(){try{var t=localStorage.getItem("pi-theme");var dark=t==="dark"||((t==null||t===""||t==="auto")&&window.matchMedia("(prefers-color-scheme: dark)").matches);if(dark)document.documentElement.classList.add("dark")}catch(e){}})();`,
@@ -90,9 +97,9 @@ export default function RootLayout({
         />
       </head>
       <body translate="no" className="notranslate" suppressHydrationWarning>
+        <FontSizePreference />
         <ThemeAwareFavicon />
         <DesktopNativeBridge />
-        <DesktopTitlebar />
         <NotificationProvider><div className="eureka-desktop-content">{children}</div></NotificationProvider>
         <PwaRegistration />
       </body>

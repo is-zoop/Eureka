@@ -2,11 +2,13 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "eureka-localhost",
   "description": "Allow the bundled Eureka localhost frontend to synchronize the native window theme.",
-  "windows": ["main"],
+  "webviews": ["eureka-content"],
   "remote": {
     "urls": ["http://127.0.0.1:8080/*"]
   },
   "permissions": [
+    "allow-set-desktop-theme",
+    "allow-open-external-url",
     "core:event:allow-listen",
     "core:window:allow-close",
     "core:window:allow-is-maximized",

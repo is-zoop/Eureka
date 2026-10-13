@@ -1,7 +1,7 @@
 import { NotificationNotice } from "@/components/Notifications";
-import Link from "next/link";
 import { Card, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { HazeLoginButton } from "@/components/HazeLoginButton";
+import { isSafeReturnTo } from "@/lib/auth/session";
 
 const errors: Record<string, string> = {
   access_denied: "当前账号没有技能市场访问权限。",
@@ -12,8 +12,11 @@ const errors: Record<string, string> = {
   not_configured: "登录服务尚未配置。",
 };
 
-export default async function LoginPage({ searchParams }: { searchParams: Promise<{ returnTo?: string; error?: string }> }) {
-  const { returnTo, error } = await searchParams;
-  const target = returnTo?.startsWith("/") && !returnTo.startsWith("//") ? returnTo : "/";
-  return <main className="grid min-h-screen place-items-center bg-[var(--bg)] p-6"><Card className="w-full max-w-sm"><CardHeader><CardTitle>登录 Eureka</CardTitle><CardDescription>使用 Eureka 的 Agent、项目和会话功能前需要完成 Haze 登录。</CardDescription></CardHeader><NotificationNotice message={error ? errors[error] ?? "登录暂时不可用，请重试。" : null} type="error" /><CardFooter className="flex-col gap-3"><Link href={`/api/marketplace-auth/start?returnTo=${encodeURIComponent(target)}`} className="w-full"><Button className="w-full">使用 Haze 登录</Button></Link><p className="text-center text-xs text-[var(--text-muted)]">密码仅在 Haze 输入，Eureka 不会收集或保存你的密码。</p></CardFooter></Card></main>;
+export default async function LoginPage({ searchParams }: { searchParams: Promise<{ returnTo?: string; error?: string; desktop?: string }> }) {
+  const { returnTo, error, desktop } = await searchParams;
+  const target = isSafeReturnTo(returnTo) ? returnTo : "/";
+  if (desktop === "success" || desktop === "failed") {
+    return <main className="eureka-login-page"><Card className="relative w-full max-w-sm"><CardHeader><CardTitle>{desktop === "success" ? "Haze 授权已完成" : "Haze 授权未完成"}</CardTitle><CardDescription>{desktop === "success" ? "请返回 Eureka 桌面端，应用会自动继续。你可以关闭此浏览器页面。" : "请返回 Eureka 桌面端重新发起登录。你可以关闭此浏览器页面。"}</CardDescription></CardHeader></Card></main>;
+  }
+  return <main className="eureka-login-page"><Card className="relative w-full max-w-sm"><CardHeader><CardTitle>登录 Eureka</CardTitle><CardDescription>登录以使用Haze企业扩展</CardDescription></CardHeader><NotificationNotice message={error ? errors[error] ?? "登录暂时不可用，请重试。" : null} type="error" /><CardFooter className="flex-col gap-3 pt-2"><HazeLoginButton returnTo={target} /></CardFooter></Card></main>;
 }

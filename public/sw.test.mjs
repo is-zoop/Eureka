@@ -13,6 +13,42 @@ globalThis.self = {
 
 await import("./sw.js");
 
+test("refreshes the offline page cache and retires the previous branding cache", async () => {
+  const previousCaches = globalThis.caches;
+  const previousSkipWaiting = self.skipWaiting;
+  const previousClients = self.clients;
+  const calls = [];
+  let installedCache;
+  globalThis.caches = {
+    open: async (key) => {
+      installedCache = key;
+      return { addAll: async (urls) => { calls.push(["precache", urls]); } };
+    },
+    keys: async () => ["pi-web-static-icons-v1-test", installedCache, "other-app-cache"],
+    delete: async (key) => { calls.push(["delete", key]); return true; },
+  };
+  self.skipWaiting = async () => { calls.push(["skipWaiting"]); };
+  self.clients = { claim: async () => { calls.push(["claim"]); } };
+
+  try {
+    let pending;
+    listeners.get("install")({ waitUntil: (promise) => { pending = promise; } });
+    await pending;
+    assert.notEqual(installedCache, "pi-web-static-icons-v1-test");
+    assert.ok(calls[0][1].includes("/offline.html"));
+    assert.ok(calls[0][1].includes("/manifest.webmanifest"));
+    assert.deepEqual(calls[1], ["skipWaiting"]);
+
+    listeners.get("activate")({ waitUntil: (promise) => { pending = promise; } });
+    await pending;
+    assert.deepEqual(calls.slice(2), [["delete", "pi-web-static-icons-v1-test"], ["claim"]]);
+  } finally {
+    globalThis.caches = previousCaches;
+    self.skipWaiting = previousSkipWaiting;
+    self.clients = previousClients;
+  }
+});
+
 function dispatchNotificationClick(data) {
   let pending;
   let closed = false;

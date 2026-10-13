@@ -2,3 +2,13 @@
 identifier = "allow-open-external-url"
 description = "Allows Eureka's local WebView to request opening an HTTP or HTTPS link in the system browser."
 commands.allow = ["open_external_url"]
+
+[[permission]]
+identifier = "allow-desktop-window-action"
+description = "Allows the isolated local titlebar to control its own desktop window."
+commands.allow = ["desktop_window_action"]
+
+[[permission]]
+identifier = "allow-set-desktop-theme"
+description = "Allows the Eureka frontend to synchronize the persistent desktop titlebar theme."
+commands.allow = ["set_desktop_theme"]

@@ -10,6 +10,7 @@ import type { AgentMessage, SessionEntry, SessionHeader, SessionInfo, SessionCon
 import type { SessionEntry as PiSessionEntry, SessionInfo as PiSessionInfo } from "@earendil-works/pi-coding-agent";
 import { normalizeToolCalls } from "./normalize";
 import { sessionPathKey } from "./session-path";
+import { getThinkingPreview } from "./thinking-preview";
 import { resolveProject, type ProjectInfo } from "./worktree";
 
 export { getAgentDir };
@@ -325,15 +326,18 @@ function entryToUiMessage(
   // normalizeToolCalls is a secondary guard (returns non-assistant messages as-is).
   switch (entry.type) {
     case "message": {
-      const message = options.deferToolResultImages
+      const storedMessage = options.deferToolResultImages
         ? omitToolResultBase64Images(normalizeToolCalls(entry.message))
         : normalizeToolCalls(entry.message);
+      const message = storedMessage.role === "assistant"
+        ? { ...storedMessage, generationCompletedAt: parseEntryTimestamp(entry.timestamp) }
+        : storedMessage;
       if (!options.deferThinking || message.role !== "assistant") return message;
       return {
         ...message,
         content: message.content.map((block) => (
           block.type === "thinking" && block.thinking.trim() !== ""
-            ? { ...block, thinking: "", deferred: true }
+            ? { ...block, thinking: "", deferred: true, preview: getThinkingPreview(block.thinking) }
             : block
         )),
       };
