@@ -1,6 +1,8 @@
 import { isToolPreset, type ToolPreset } from "./tool-presets";
 
-const STORAGE_KEY = "pi-tool-preset";
+// Keep the new-session default separate from the former last-used session preset.
+const STORAGE_KEY = "eureka-default-tool-preset";
+const PREFERENCE_EVENT = "eureka-default-tool-preset-changed";
 
 interface StorageLike {
   getItem(key: string): string | null;
@@ -35,7 +37,16 @@ export function setPreferredToolPreset(
   if (!storage) return;
   try {
     storage.setItem(STORAGE_KEY, preset);
+    if (typeof window !== "undefined" && storage === getBrowserStorage()) window.dispatchEvent(new Event(PREFERENCE_EVENT));
   } catch {
     // Browser storage is best-effort.
   }
+}
+
+export function subscribeToolPresetPreference(listener: () => void): () => void {
+  if (typeof window === "undefined") return () => {};
+  const onStorage = (event: StorageEvent) => { if (event.key === STORAGE_KEY || event.key === null) listener(); };
+  window.addEventListener(PREFERENCE_EVENT, listener);
+  window.addEventListener("storage", onStorage);
+  return () => { window.removeEventListener(PREFERENCE_EVENT, listener); window.removeEventListener("storage", onStorage); };
 }

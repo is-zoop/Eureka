@@ -13,7 +13,7 @@ export async function POST(_: Request, { params }: { params: Promise<{ id: strin
     const { accessToken, session } = await getHazeMarketplaceSession();
     const isFavorite = await toggleOrganizationExtensionFavorite(id, accessToken);
     const response = NextResponse.json({ isFavorite });
-    writeAuthSession(response.cookies, session);
+    await writeAuthSession(response.cookies, session);
     return response;
   } catch (error) {
     return errorResponse(error instanceof OrganizationExtensionsError ? error : new OrganizationExtensionsError("unavailable"));

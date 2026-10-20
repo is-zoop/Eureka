@@ -1,5 +1,9 @@
 "use client";
 
+import { EMPTY_CLARIFICATION, blockingClarification, type ClarificationState, type ClarificationQueuedInput } from "@/lib/clarification";
+import { submissionClarificationPreference, rememberClarificationSubmission, forgetClarificationSubmission } from "@/lib/clarification-preference";
+import type { UserInputResponse } from "@/lib/user-input";
+import { dedupePlugins, splitPluginSelection, selectionEnvelope, type SelectedPlugin } from "@/lib/plugin-selection";
 import { useState, useCallback, useRef, useEffect, useLayoutEffect, useMemo, useReducer, useId } from "react";
 import type {
   AgentMessage,
@@ -19,9 +23,9 @@ import { observeThinkingEvent, observeThinkingSnapshot, finishMessageThinking, t
 import { observeThinkingPreviewEvent, rememberMessageThinkingPreviews, transferThinkingPreviews } from "@/lib/thinking-preview-cache";
 import { isPromptRejectedError, sendAgentCommand } from "@/lib/agent-client";
 import { clearDraft, rekeyDraft, restoreDraftSubmission, type ChatDraftReference } from "@/lib/draft-store";
-import { getPreferredToolPreset, setPreferredToolPreset } from "@/lib/tool-preset-preference";
+import { getPreferredToolPreset, subscribeToolPresetPreference } from "@/lib/tool-preset-preference";
 import { getToolNamesForPreset, type ToolEntry, type ToolPreset } from "@/lib/tool-presets";
-import { EMPTY_PLAN_STATE, getPendingPlanQuestion, getPlanDoneIndexes, PLAN_MODE_COMPLETE_TOOL, type EurekaPlanAnnotation, type EurekaPlanQuestion, type EurekaPlanQuestionResponse, type EurekaPlanState } from "@/lib/plan-mode";
+import { EMPTY_PLAN_STATE, getPendingPlanQuestion, getPlanDoneIndexes, normalizePlanForReview, PLAN_MODE_COMPLETE_TOOL, type EurekaPlanAnnotation, type EurekaPlanQuestion, type EurekaPlanQuestionResponse, type EurekaPlanState } from "@/lib/plan-mode";
 import type { SessionStatsInfo } from "@/lib/pi-types";
 import { userMessageKey } from "@/lib/prompt-recovery";
 import { AgentEventConnection } from "@/lib/agent-event-connection";
@@ -38,6 +42,7 @@ export interface SessionData {
   tree: SessionTreeNode[];
   leafId: string | null;
   planMode?: EurekaPlanState;
+  clarification?: ClarificationState;
   context: {
     messages: AgentMessage[];
     entryIds: string[];
@@ -72,6 +77,7 @@ type AgentStateResponse = {
   extensionWidgets?: ExtensionWidgetItem[];
   queuedMessages?: { steering?: string[]; followUp?: string[] } | null;
   planMode?: EurekaPlanState;
+  clarification?: ClarificationState;
 };
 
 export interface QueuedMessages {
@@ -118,6 +124,7 @@ export interface CompactResultInfo {
 }
 
 export interface SlashCommandInfo {
+  organizationCapability?: import("@/lib/organization-capability").OrganizationCapabilityRef;
   name: string;
   description?: string;
   source: "extension" | "prompt" | "skill";
@@ -182,7 +189,7 @@ export interface ChatInputHandle {
   addImages: (files: File[]) => void;
   addReferences: (references: ChatDraftReference[]) => void;
   rekeyDraft: (previousKey: string, nextKey: string) => void;
-  restoreSubmission: (text: string, images?: Array<{ data: string; mimeType: string }>, references?: ChatDraftReference[], targetDraftKey?: string) => void;
+  restoreSubmission: (text: string, images?: Array<{ data: string; mimeType: string }>, references?: ChatDraftReference[], targetDraftKey?: string, selectedPlugins?: SelectedPlugin[]) => void;
 }
 
 export interface AttachedImage {
@@ -257,6 +264,8 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const [extensionWidgets, setExtensionWidgets] = useState<ExtensionWidgetItem[]>([]);
   const [queuedMessages, setQueuedMessages] = useState<QueuedMessages>({ steering: [], followUp: [] });
   const [planMode, setPlanMode] = useState<EurekaPlanState>(EMPTY_PLAN_STATE);
+  const [clarification, setClarification] = useState<ClarificationState>(EMPTY_CLARIFICATION);
+  const updateClarification = useCallback((next: ClarificationState) => setClarification((current) => next.revision >= current.revision ? next : current), []);
 
   const eventConnectionRef = useRef<AgentEventConnection | null>(null);
   const eventStreamGraceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -322,6 +331,9 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   useLayoutEffect(() => {
     if (!isNew || sessionIdRef.current) return;
     setToolPresetState(getPreferredToolPreset());
+    return subscribeToolPresetPreference(() => {
+      if (!sessionIdRef.current && !ensuringNewSessionRef.current) setToolPresetState(getPreferredToolPreset());
+    });
   }, [isNew, setToolPresetState]);
 
   const currentModel = currentModelOverride ?? data?.context.model ?? pendingModel ?? null;
@@ -346,6 +358,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     images: AttachedImage[] | undefined,
     references: ChatDraftReference[] | undefined,
     targetDraftKey: string | undefined,
+    selectedPlugins?: SelectedPlugin[],
   ) => {
     const draftImages = images?.map(({ data, mimeType }) => ({ data, mimeType }));
     const destinationDraftKey = resolveComposerDraftKey(targetDraftKey);
@@ -356,9 +369,9 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     ) return;
     const input = opts.chatInputRef?.current;
     if (input) {
-      input.restoreSubmission(text, draftImages, references, destinationDraftKey);
+      input.restoreSubmission(text, draftImages, references, destinationDraftKey, selectedPlugins);
     } else if (destinationDraftKey) {
-      restoreDraftSubmission(destinationDraftKey, text, draftImages, references);
+      restoreDraftSubmission(destinationDraftKey, text, draftImages, references, selectedPlugins);
     }
   }, [newSessionDraftKey, opts.chatInputRef, resolveComposerDraftKey]);
 
@@ -434,6 +447,10 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       setMessages(persistedMessages);
       setEntryIds(d.context.entryIds ?? []);
       if (d.planMode !== undefined) setPlanMode(d.planMode);
+      if (d.clarification !== undefined) {
+        setClarification(d.clarification);
+        setQueuedMessages({ steering: d.clarification.queue.filter((q) => q.behavior === "steer").map((q) => selectionEnvelope(q.message, q.selectedPlugins ?? [])), followUp: d.clarification.queue.filter((q) => q.behavior === "followUp").map((q) => selectionEnvelope(q.message, q.selectedPlugins ?? [])) });
+      }
       setCurrentModelOverride((current) => modelSwitchPendingRef.current ? current : null);
       setError(null);
       if (d.context.thinkingLevel && d.context.thinkingLevel !== "off") {
@@ -459,8 +476,9 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           if (liveState.extensionWidgets !== undefined) setExtensionWidgets(liveState.extensionWidgets ?? []);
           if (liveState.queuedMessages !== undefined) setQueuedMessages(normalizeQueuedMessages(liveState.queuedMessages));
           if (liveState.planMode !== undefined) setPlanMode(liveState.planMode);
+          if (liveState.clarification !== undefined) updateClarification(liveState.clarification);
         } else if (!agentState.running) {
-          setQueuedMessages({ steering: [], followUp: [] });
+          if (!d.clarification?.queue.length) setQueuedMessages({ steering: [], followUp: [] });
         }
         return agentState;
       } catch (e) {
@@ -473,7 +491,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     } finally {
       if (showLoading && !messagesLoaded) setLoading(false);
     }
-  }, []);
+  }, [updateClarification]);
 
   const loadContext = useCallback(async (sid: string, leafId: string | null) => {
     try {
@@ -482,15 +500,17 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       const url = `/api/sessions/${encodeURIComponent(sid)}/context?${params}`;
       const res = await fetch(url);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const d = await res.json() as { context: { messages: AgentMessage[]; entryIds: string[] } };
+      const d = await res.json() as { context: { messages: AgentMessage[]; entryIds: string[] }; clarification?: ClarificationState };
       d.context.messages.forEach((message, index) => {
         if (message.role === "assistant") {
           rememberMessageThinkingPreviews(sid, message, d.context.entryIds[index]);
           bindMessageThinkingTimings(sid, message, d.context.entryIds[index]);
         }
       });
+      if (sessionIdRef.current !== sid) return;
       setMessages(d.context.messages);
       setEntryIds(d.context.entryIds ?? []);
+      setClarification(d.clarification ?? EMPTY_CLARIFICATION);
     } catch (e) {
       console.error("Failed to load context:", e);
     }
@@ -506,8 +526,10 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         const { getPresetFromTools } = await import("@/lib/tool-presets");
         setToolPresetState(getPresetFromTools(tools));
       }
+      return Boolean(tools);
     } catch (e) {
       console.error("Failed to load tools:", e);
+      return false;
     }
   }, [setToolPresetState]);
 
@@ -547,7 +569,8 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       const selectedModel = newSessionModelOverrideRef.current;
       const selectedThinkingLevel = thinkingLevelOverrideRef.current;
       if (selectedModel) setPendingModel(selectedModel);
-      const toolNames = getToolNamesForPreset(toolPreset);
+      const initialToolPreset = getPreferredToolPreset();
+      const toolNames = getToolNamesForPreset(initialToolPreset);
       const res = await fetch("/api/agent/new", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -571,6 +594,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       if (!result?.sessionId) throw new Error("The server did not return a session id.");
       const realId = result.sessionId;
       sessionIdRef.current = realId;
+      setToolPresetState(initialToolPreset);
       if (result.model && newSessionModelOverrideRef.current === selectedModel) {
         setPendingModel(result.model);
         if (!selectedModel) setNewSessionDefaultModel(result.model);
@@ -590,7 +614,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     } finally {
       ensuringNewSessionRef.current = null;
     }
-  }, [isNew, newSessionCwd, toolPreset]);
+  }, [isNew, newSessionCwd, setToolPresetState]);
 
   // Opening the System panel is also allowed to initialize an otherwise dormant
   // session. This is deliberately a non-prompt command: it creates no message
@@ -928,6 +952,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       // (wrapper destroyed) means nothing is compacting.
       setIsCompacting(state?.isCompacting ?? false);
       setQueuedMessages(normalizeQueuedMessages(state?.queuedMessages));
+      if (state?.clarification !== undefined) updateClarification(state.clarification);
       if (state?.planMode !== undefined) setPlanMode((current) => keepNewestPlanProgress(current, state.planMode!));
       const busy = data.running && state
         && (state.isStreaming || state.isPromptRunning || state.isCompacting);
@@ -947,7 +972,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     } catch {
       // Network still down — the next poll / visibility / online tick retries.
     }
-  }, [finishPromptWithoutStream]);
+  }, [finishPromptWithoutStream, updateClarification]);
 
   // Recovery net for missed SSE events: while the agent is running, verify
   // against the server periodically and whenever the tab returns to the
@@ -975,10 +1000,13 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
 
   useEffect(() => {
     agentRunningRef.current = agentRunning;
-  }, [agentRunning]);
+  }, [updateClarification, agentRunning]);
 
   const handleAgentEvent = useCallback((event: AgentEvent) => {
     switch (event.type) {
+      case "clarification_state":
+        updateClarification(event.state as ClarificationState);
+        break;
       case "connected": {
         dispatch({ type: "end" });
         if (event.isStreaming === true) {
@@ -1015,6 +1043,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
               if (d.state?.systemPrompt !== undefined) setSystemPrompt(d.state.systemPrompt ?? null);
               if (d.state?.extensionStatuses !== undefined) setExtensionStatuses(d.state.extensionStatuses ?? []);
               if (d.state?.extensionWidgets !== undefined) setExtensionWidgets(d.state.extensionWidgets ?? []);
+              if (d.state?.clarification !== undefined) updateClarification(d.state.clarification);
               if (d.state?.planMode !== undefined) setPlanMode(d.state.planMode);
               // Aborted turns can leave messages queued in pi (delivered with the
               // next turn); dead wrapper (no state) means the queue is gone.
@@ -1214,20 +1243,28 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         handleExtensionUiRequest(event as ExtensionUiRequest);
         break;
     }
-  }, [addNotice, cancelEventStreamGrace, handleExtensionUiRequest, loadSession, notifyPromptStage, onAgentEnd, scheduleEventStreamClose, scheduleLiveFollow, settleUiStage]);
+  }, [updateClarification, addNotice, cancelEventStreamGrace, handleExtensionUiRequest, loadSession, notifyPromptStage, onAgentEnd, scheduleEventStreamClose, scheduleLiveFollow, settleUiStage]);
   handleAgentEventRef.current = handleAgentEvent;
 
-  const handleSend = useCallback(async (message: string, images?: AttachedImage[], references?: ChatDraftReference[], options?: { bypassPlanQuestionGuard?: boolean; executePlan?: boolean }) => {
+  const handleSend = useCallback(async (message: string, images?: AttachedImage[], references?: ChatDraftReference[], options?: SelectedPlugin[] | { bypassPlanQuestionGuard?: boolean; executePlan?: boolean }) => {
+    const selectedPlugins = Array.isArray(options) ? options : [];
+    const clarificationEnabled = submissionClarificationPreference(resolveComposerDraftKey(composerDraftKey), message);
+    options = Array.isArray(options) ? undefined : options;
     const wireMessage = [...(references ?? []).map((reference) => `@${reference.path}${reference.isDir ? "/" : ""}`), message.trim()].filter(Boolean).join(" ");
     const trimmedMessage = wireMessage.trim();
     if (!trimmedMessage && !images?.length) return;
     if (agentRunningRef.current || bashRunningRef.current) {
-      restoreSubmission(message, images, references, composerDraftKey);
+      restoreSubmission(message, images, references, composerDraftKey, selectedPlugins);
+      return;
+    }
+    if (blockingClarification(clarification)) {
+      addNotice({ type: "warning", message: "请先回答、重试继续或取消当前澄清问题。" });
+      restoreSubmission(message, images, references, composerDraftKey, selectedPlugins);
       return;
     }
     if (!options?.bypassPlanQuestionGuard && getPendingPlanQuestion(planMode)) {
       addNotice({ type: "warning", message: "请先回答当前规划澄清问题。" });
-      restoreSubmission(message, images, references, composerDraftKey);
+      restoreSubmission(message, images, references, composerDraftKey, selectedPlugins);
       return;
     }
     const isSlashCommandPrompt = !images?.length && trimmedMessage.startsWith("/");
@@ -1236,13 +1273,13 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     if (isBashCommand) {
       if (planMode.planModeActive) {
         addNotice({ type: "warning", message: "规划模式不允许执行本地命令。" });
-        restoreSubmission(message, images, references, composerDraftKey);
+        restoreSubmission(message, images, references, composerDraftKey, selectedPlugins);
         return;
       }
       const isExcluded = trimmedMessage.startsWith("!!");
       const bashCmd = (isExcluded ? trimmedMessage.slice(2) : trimmedMessage.slice(1)).trim();
       if (!bashCmd) {
-        restoreSubmission(message, images, references, composerDraftKey);
+        restoreSubmission(message, images, references, composerDraftKey, selectedPlugins);
         return;
       }
       pendingScrollToTailRef.current = true;
@@ -1258,8 +1295,8 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     const userMsg: AgentMessage = {
       role: "user",
       content: imageBlocks?.length
-        ? [...(wireMessage ? [{ type: "text" as const, text: wireMessage }] : []), ...imageBlocks]
-        : wireMessage,
+        ? [...(wireMessage ? [{ type: "text" as const, text: selectionEnvelope(wireMessage, selectedPlugins) }] : []), ...imageBlocks]
+        : selectionEnvelope(wireMessage, selectedPlugins),
       timestamp: Date.now(),
     };
     setMessages((prev) => [...prev, userMsg]);
@@ -1294,6 +1331,8 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         await sendAgentCommand(sid, {
           type: options?.executePlan ? "execute_plan" : "prompt",
           message: wireMessage,
+          selectedPlugins: selectedPlugins.length ? selectedPlugins : undefined,
+          clarificationEnabled,
           ...(options?.executePlan ? {} : piImages?.length ? { images: piImages } : {}),
         });
         promoteNewSession(1, wireMessage);
@@ -1304,11 +1343,14 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         await sendAgentCommand(session.id, {
           type: options?.executePlan ? "execute_plan" : "prompt",
           message: wireMessage,
+          selectedPlugins: selectedPlugins.length ? selectedPlugins : undefined,
+          clarificationEnabled,
           ...(options?.executePlan ? {} : piImages?.length ? { images: piImages } : {}),
         });
       } else {
         throw new Error("No active session for the prompt");
       }
+      forgetClarificationSubmission(resolveComposerDraftKey(composerDraftKey));
       if (isSlashCommandPrompt && sentSessionId) {
         void waitForPromptSettlement(sentSessionId, promptRunId);
       }
@@ -1322,6 +1364,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         void waitForPromptSettlement(sentSessionId, promptRunId);
         return;
       }
+      rememberClarificationSubmission(resolveComposerDraftKey(composerDraftKey), message, clarificationEnabled);
       rpcPromptPendingRef.current = false;
       setMessages((prev) => {
         const optimisticIndex = prev.lastIndexOf(userMsg);
@@ -1330,7 +1373,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           : [...prev.slice(0, optimisticIndex), ...prev.slice(optimisticIndex + 1)];
       });
       addNotice({ type: "error", message: e instanceof Error ? e.message : String(e) });
-      restoreSubmission(message, images, references, composerDraftKey);
+      restoreSubmission(message, images, references, composerDraftKey, selectedPlugins);
       optimisticUserMessageKeyRef.current = null;
       // Rejection only describes this submission. Another tab or an event we
       // missed may still have a real run active for the same session, so keep
@@ -1345,7 +1388,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       setAgentPhase(null);
       dispatch({ type: "end" });
     }
-  }, [isNew, newSessionCwd, newSessionModel, session, ensureNewSession, ensureEventsConnected, promoteNewSession, waitForPromptSettlement, addNotice, cancelEventStreamGrace, closeEvents, composerDraftKey, reconcileAgentState, restoreSubmission, planMode]);
+  }, [resolveComposerDraftKey, clarification, isNew, newSessionCwd, newSessionModel, session, ensureNewSession, ensureEventsConnected, promoteNewSession, waitForPromptSettlement, addNotice, cancelEventStreamGrace, closeEvents, composerDraftKey, reconcileAgentState, restoreSubmission, planMode]);
 
   const executeBash = useCallback(async (command: string, excludeFromContext: boolean) => {
     if (agentRunningRef.current || bashRunningRef.current) return;
@@ -1620,9 +1663,11 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     behavior: "steer" | "followUp",
     images?: AttachedImage[],
     references?: ChatDraftReference[],
+    selectedPlugins: SelectedPlugin[] = [],
   ) => {
+    const clarificationEnabled = submissionClarificationPreference(resolveComposerDraftKey(composerDraftKey), message);
     const sid = sessionIdRef.current;
-    const restore = () => restoreSubmission(message, images, references, composerDraftKey);
+    const restore = () => restoreSubmission(message, images, references, composerDraftKey, selectedPlugins);
     if (!sid) {
       restore();
       addNotice({ type: "error", message: "No active session for the queued message" });
@@ -1636,24 +1681,30 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       await sendAgentCommand(sid, {
         type: "prompt",
         message: [...(references ?? []).map((reference) => `@${reference.path}${reference.isDir ? "/" : ""}`), message.trim()].filter(Boolean).join(" "),
+        selectedPlugins: selectedPlugins.length ? selectedPlugins : undefined,
+        clarificationEnabled,
         streamingBehavior: behavior,
         ...(piImages?.length ? { images: piImages } : {}),
       });
+      forgetClarificationSubmission(resolveComposerDraftKey(composerDraftKey));
     } catch (e) {
       console.error("Failed to submit streaming prompt:", e);
       // A transport failure after dispatch is ambiguous: the server may have
       // accepted the queued prompt before the response was lost. Restoring in
       // that case would invite a duplicate turn.
-      if (!promptRequestStarted || isPromptRejectedError(e)) restore();
+      if (!promptRequestStarted || isPromptRejectedError(e)) {
+        rememberClarificationSubmission(resolveComposerDraftKey(composerDraftKey), message, clarificationEnabled);
+        restore();
+      }
       addNotice({
         type: "error",
         message: e instanceof Error ? e.message : String(e),
       });
     }
-  }, [addNotice, composerDraftKey, ensureEventsConnected, restoreSubmission]);
+  }, [addNotice, composerDraftKey, ensureEventsConnected, restoreSubmission, resolveComposerDraftKey]);
 
-  const handleSteer = useCallback(async (message: string, images?: AttachedImage[], references?: ChatDraftReference[]) => {
-    await sendStreamingPrompt(message, "steer", images, references);
+  const handleSteer = useCallback(async (message: string, images?: AttachedImage[], references?: ChatDraftReference[], selectedPlugins?: SelectedPlugin[]) => {
+    await sendStreamingPrompt(message, "steer", images, references, selectedPlugins);
   }, [sendStreamingPrompt]);
 
   const handlePromptWithStreamingBehavior = useCallback(async (
@@ -1661,12 +1712,13 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     behavior: "steer" | "followUp",
     images?: AttachedImage[],
     references?: ChatDraftReference[],
+    selectedPlugins?: SelectedPlugin[],
   ) => {
-    await sendStreamingPrompt(message, behavior, images, references);
+    await sendStreamingPrompt(message, behavior, images, references, selectedPlugins);
   }, [sendStreamingPrompt]);
 
-  const handleFollowUp = useCallback(async (message: string, images?: AttachedImage[], references?: ChatDraftReference[]) => {
-    await sendStreamingPrompt(message, "followUp", images, references);
+  const handleFollowUp = useCallback(async (message: string, images?: AttachedImage[], references?: ChatDraftReference[], selectedPlugins?: SelectedPlugin[]) => {
+    await sendStreamingPrompt(message, "followUp", images, references, selectedPlugins);
   }, [sendStreamingPrompt]);
 
   const handleAbortCompaction = useCallback(async () => {
@@ -1683,13 +1735,17 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     const sid = sessionIdRef.current;
     if (!sid) return;
     try {
-      const result = await sendAgentCommand<{ steering?: string[]; followUp?: string[] }>(sid, { type: "clear_queue" });
+      const result = await sendAgentCommand<{ steering?: string[]; followUp?: string[]; submissions?: ClarificationQueuedInput[] }>(sid, { type: "clear_queue" });
       // clearQueue also emits an empty queue_update, but that only reaches us
       // while SSE is connected — clear locally so idle recalls update the UI.
       setQueuedMessages({ steering: [], followUp: [] });
       const texts = [...(result?.steering ?? []), ...(result?.followUp ?? [])];
       if (texts.length > 0) {
-        opts.chatInputRef?.current?.prependText(texts.join("\n\n"));
+        const selections = texts.map(splitPluginSelection);
+        const restoredText = selections.map((item) => item.text).join("\n\n");
+        const images = result?.submissions?.flatMap((item) => item.images ?? []).map(({ data, mimeType }) => ({ data, mimeType }));
+        if (texts.length === 1 && result?.submissions?.length === 1) rememberClarificationSubmission(sid, restoredText, result.submissions[0].clarificationEnabled);
+        opts.chatInputRef?.current?.restoreSubmission(restoredText, images, undefined, undefined, dedupePlugins(selections.flatMap((item) => item.plugins)));
       }
     } catch (e) {
       console.error("Failed to recall queued messages:", e);
@@ -1713,21 +1769,30 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   }, [isNew]);
 
   const handleToolPresetChange = useCallback(async (preset: ToolPreset) => {
-    if (planMode.planModeActive) {
-      addNotice({ type: "warning", message: "规划模式下工具权限已固定为只读。" });
-      return;
+    if (!sessionHookMountedRef.current) return false;
+    if (planMode.planModeActive || planMode.phase === "executing") {
+      addNotice({ type: "warning", message: "计划流程期间暂时无法修改工具权限。" });
+      return false;
     }
     const toolNames = getToolNamesForPreset(preset);
-    setPreferredToolPreset(preset);
-    setToolPresetState(preset);
     const sid = sessionIdRef.current ?? await ensuringNewSessionRef.current;
-    if (!sid) return;
+    if (!sid || !sessionHookMountedRef.current) return false;
     try {
       await sendAgentCommand(sid, { type: "set_tools", toolNames });
+      if (!sessionHookMountedRef.current || sessionIdRef.current !== sid) return false;
+      setToolPresetState(preset);
+      return true;
     } catch (e) {
-      console.error("Failed to set tools:", e);
+      if (sessionHookMountedRef.current && sessionIdRef.current === sid) addNotice({ type: "error", message: `修改工具权限失败：${e instanceof Error ? e.message : String(e)}` });
+      return false;
     }
-  }, [setToolPresetState, planMode.planModeActive, addNotice]);
+  }, [setToolPresetState, planMode.planModeActive, planMode.phase, addNotice]);
+
+  const loadToolPermissions = useCallback(async () => {
+    const sid = sessionIdRef.current;
+    if (!sid) return false;
+    return loadTools(sid, { preservePreset: planToolsAreTemporarilyRestricted(planMode) });
+  }, [loadTools, planMode]);
 
   const handlePlanModeChange = useCallback(async (planning: boolean) => {
     if (!planning && planMode.phase !== "idle") {
@@ -1766,7 +1831,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     const sid = sessionIdRef.current;
     if (!sid) return null;
     try {
-      const next = await sendAgentCommand<EurekaPlanState>(sid, { type: "submit_plan", content, sourceEntryId });
+      const next = await sendAgentCommand<EurekaPlanState>(sid, { type: "submit_plan", content: normalizePlanForReview(content), sourceEntryId });
       setPlanMode(next);
       return next;
     } catch (error) {
@@ -1774,6 +1839,25 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       return null;
     }
   }, [addNotice]);
+
+  const handleClarificationAction = useCallback(async (type: "answer_clarification" | "retry_clarification" | "cancel_clarification", groupId: string, responses?: UserInputResponse[]): Promise<boolean> => {
+    const sid = sessionIdRef.current;
+    if (!sid) return false;
+    try {
+      await ensureEventsConnected(sid);
+      const next = await sendAgentCommand<ClarificationState>(sid, { type, groupId, responses });
+      if (sessionIdRef.current !== sid) return true;
+      updateClarification(next);
+      void loadSession(sid);
+      return true;
+    } catch (error) {
+      if (sessionIdRef.current === sid) {
+        void sendAgentCommand<ClarificationState>(sid, { type: "get_clarification" }).then(updateClarification).catch(() => {});
+        addNotice({ type: "error", message: error instanceof Error ? error.message : String(error) });
+      }
+      return false;
+    }
+  }, [addNotice, ensureEventsConnected, loadSession, updateClarification]);
 
   const handlePlanQuestionAnswer = useCallback(async (questions: EurekaPlanQuestion[], answers: EurekaPlanQuestionResponse[]): Promise<boolean> => {
     const sid = sessionIdRef.current;
@@ -1892,6 +1976,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           if (agentState.state.thinkingLevel !== undefined) setThinkingLevel((agentState.state.thinkingLevel as ThinkingLevelOption) ?? "auto");
           if (agentState.state.extensionStatuses !== undefined) setExtensionStatuses(agentState.state.extensionStatuses ?? []);
           if (agentState.state.extensionWidgets !== undefined) setExtensionWidgets(agentState.state.extensionWidgets ?? []);
+          if (agentState.state.clarification !== undefined) updateClarification(agentState.state.clarification);
           if (agentState.state.planMode !== undefined) setPlanMode(agentState.state.planMode);
           if (agentState.state.queuedMessages !== undefined) setQueuedMessages(normalizeQueuedMessages(agentState.state.queuedMessages));
         }
@@ -2013,7 +2098,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     agentRunning, modelNames, modelList, modelError, modelScopeWarnings, modelThinkingLevels, modelThinkingLevelMaps, newSessionModel, toolPreset, thinkingLevel,
     retryInfo, contextUsage, systemPrompt, forkingEntryId,
     isCompacting, compactError, compactResult, currentModel, displayModel, modelSwitching, sessionStats,
-    slashCommands, slashCommandsLoading, queuedMessages, planMode,
+    slashCommands, slashCommandsLoading, queuedMessages, planMode, clarification, handleClarificationAction,
     extensionDialog, extensionCustomUi, extensionStatuses, extensionWidgets, respondToExtensionUi, sendExtensionCustomInput,
     isAutoModelSelection: isNew && newSessionModel === null,
     agentPhase,
@@ -2026,7 +2111,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     handleCompact, handleSteer, handleFollowUp, handlePromptWithStreamingBehavior, handleAbortCompaction,
     handleRecallQueue,
     handleBuiltinSlashCommand,
-    handleToolPresetChange, handleThinkingLevelChange, loadTools, loadSlashCommands, setActiveLeafId, setData, setMessages,
+    handleToolPresetChange, loadToolPermissions, handleThinkingLevelChange, loadTools, loadSlashCommands, setActiveLeafId, setData, setMessages,
     handlePlanModeChange, handleSubmitPlan, handlePlanQuestionAnswer, handlePlanReviewUpdate, handleReturnPlanForRevision, handleApprovePlan, handleAbandonPlan,
     scrollToBottom, followTail,
     dispatch, setAgentRunning, setForkingEntryId,

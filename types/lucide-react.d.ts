@@ -3,6 +3,9 @@ declare module "lucide-react" {
 
   type LucideIcon = ComponentType<SVGProps<SVGSVGElement> & { size?: number | string; strokeWidth?: number | string }>;
 
+  export const ArrowLeftIcon: LucideIcon;
+  export const ArrowRightIcon: LucideIcon;
+  export const GlobeIcon: LucideIcon;
   export const CheckIcon: LucideIcon;
   export const AlertCircleIcon: LucideIcon;
   export const AlertTriangleIcon: LucideIcon;

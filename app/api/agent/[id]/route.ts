@@ -1,3 +1,4 @@
+import { readAuthSession } from "@/lib/auth/session";
 import { NextResponse } from "next/server";
 import { resolveSessionPath } from "@/lib/session-reader";
 import { startRpcSession, getRpcSession } from "@/lib/rpc-manager";
@@ -13,6 +14,7 @@ export async function POST(
 
   try {
     const body = await req.json() as { type: string; [key: string]: unknown };
+    if (body.selectedPlugins && !await readAuthSession()) return NextResponse.json({ error: "请先登录 Haze", code: "prompt_rejected", accepted: false }, { status: 401 });
     commandType = typeof body.type === "string" ? body.type : undefined;
     const isPromptCommand = body.type === "prompt" || body.type === "execute_plan";
 

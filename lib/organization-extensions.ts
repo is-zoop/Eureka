@@ -2,17 +2,15 @@ import "server-only";
 
 import { getAuthConfig } from "@/lib/auth/config";
 import { hasMarketplaceAccess, refreshMarketplaceSession } from "@/lib/auth/marketplace";
-import { getIdentityProvider } from "@/lib/auth/provider";
-import { readRuntimeHazeSession, writeRuntimeHazeSession } from "@/lib/auth/runtime-session";
 import type { AuthSession } from "@/lib/auth/types";
 import { readGuestSession } from "@/lib/auth/session";
 
-export type OrganizationExtensionType = "skill" | "mcp";
+export type OrganizationExtensionType = "skill" | "mcp" | "plugin";
 
 export type OrganizationExtension = {
   id: string;
   name: string;
-  type: "Skill" | "MCP";
+  type: "Skill" | "MCP" | "Plugin";
   description: string;
   author: string;
   department: string | null;
@@ -66,27 +64,12 @@ export class OrganizationExtensionsError extends Error {
 
 export type HazeMarketplaceSession = { accessToken: string; session: AuthSession };
 
-async function refreshRuntimeMarketplaceSession(): Promise<AuthSession | null> {
-  const session = readRuntimeHazeSession();
-  const provider = getIdentityProvider();
-  if (!session || !provider) return null;
-  try {
-    const tokens = await provider.refresh(session.refreshToken);
-    const principal = await provider.userInfo(tokens.accessToken);
-    const refreshed = { ...session, accessToken: tokens.accessToken, refreshToken: tokens.refreshToken, expiresAt: Date.now() + tokens.expiresIn * 1000, principal };
-    writeRuntimeHazeSession(refreshed);
-    return refreshed;
-  } catch { return null; }
-}
-
 export async function getHazeMarketplaceSession(): Promise<HazeMarketplaceSession> {
   if (await readGuestSession()) throw new OrganizationExtensionsError("unauthenticated");
-  // The encrypted Eureka cookie deliberately omits access tokens, so every
-  // marketplace proxy request refreshes a short-lived token server-side. The
-  // shared auth helper deduplicates concurrent refreshes from profile, list,
-  // and icon requests so rotating Haze refresh tokens do not race each other.
+  // Resolve the cookie-bound login through the shared host session. MCP child
+  // processes and marketplace requests coordinate the same token rotation.
   const refreshed = await refreshMarketplaceSession(true);
-  const session = refreshed?.session.accessToken ? refreshed.session : await refreshRuntimeMarketplaceSession();
+  const session = refreshed?.session;
   if (!session?.accessToken) throw new OrganizationExtensionsError("unauthenticated");
   if (!hasMarketplaceAccess(session)) throw new OrganizationExtensionsError("forbidden");
   return { accessToken: session.accessToken, session };
@@ -111,7 +94,8 @@ function mapCapability(item: HazeCapability): OrganizationExtension | null {
   const id = stringValue(item.id);
   const name = stringValue(item.name).trim();
   if (!/^\d+$/.test(id) || !name) return null;
-  const type = item.type === "MCP" ? "MCP" : "Skill";
+  if (item.type !== "Skill" && item.type !== "MCP" && item.type !== "Plugin") return null;
+  const type = item.type;
   const hasIcon = typeof item.icon === "string" && item.icon.startsWith("/");
   return {
     id,

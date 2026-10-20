@@ -17,6 +17,8 @@ const nextConfig: NextConfig = {
   ...(process.env.EUREKA_DESKTOP_BUILD === "1" ? { output: "standalone" } : {}),
   outputFileTracingRoot: configDir,
   serverExternalPackages: [
+    "playwright",
+    "playwright-core",
     "undici",
     "@earendil-works/pi-coding-agent",
     "@earendil-works/pi-agent-core",

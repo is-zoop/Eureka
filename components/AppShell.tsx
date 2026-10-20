@@ -8,6 +8,9 @@ import { useState, useCallback, useRef, useEffect, useLayoutEffect } from "react
 import { useRouter, useSearchParams } from "next/navigation";
 import { useGlobalKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { SessionSidebar } from "./SessionSidebar";
+import { LabelTooltip } from "./LabelTooltip";
+import { BrowserPanel } from "./BrowserPanel";
+import type { BrowserEvent } from "@/lib/browser-types";
 import { ChatWindow } from "./ChatWindow";
 import type { PlanReviewControls } from "./ChatWindow";
 import { FileViewer } from "./FileViewer";
@@ -16,8 +19,12 @@ import { openFileTab, saveFileViewerState } from "./file-tab-state";
 import { ExtensionsCenter } from "./ExtensionsCenter";
 import { OrganizationExtensionDetails, type OrganizationExtensionDetailItem } from "./OrganizationExtensionDetails";
 import { PlanReviewPanel } from "./PlanReviewPanel";
+import { TurnChangesPanel } from "./TurnChangesPanel";
+import type { TurnChangesRequest } from "@/lib/turn-written-files";
 import type { EurekaPlanState } from "@/lib/plan-mode";
 import { SettingsPage, type SettingsSection } from "./SettingsPage";
+import { SessionToolPermissionsMenu, SessionToolPermissionsButton } from "./ToolPermissions";
+import type { SessionToolPermissions } from "@/lib/tool-permissions";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "./ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 import { Skeleton } from "./ui/skeleton";
@@ -268,6 +275,11 @@ export function AppShell({ initialGuest = false }: { initialGuest?: boolean }) {
   const autoNameTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const activeSessionIdRef = useRef<string | null>(selectedSession?.id ?? null);
   activeSessionIdRef.current = selectedSession?.id ?? null;
+  const [toolPermissionControls, setToolPermissionControls] = useState<SessionToolPermissions | null>(null);
+  const handleToolPermissionsChange = useCallback((sessionId: string, controls: SessionToolPermissions | null) => {
+    if (activeSessionIdRef.current === sessionId) setToolPermissionControls(controls);
+  }, []);
+  const currentToolPermissions = toolPermissionControls?.sessionId === selectedSession?.id ? toolPermissionControls : null;
   const handleSessionStatsChange = useCallback((stats: SessionStatsInfo | null) => {
     setSessionStats(stats);
   }, []);
@@ -345,7 +357,10 @@ export function AppShell({ initialGuest = false }: { initialGuest?: boolean }) {
     setMobileToolbarMoreOpen((open) => !open);
   }, []);
 
-  const [rightPanelMode, setRightPanelMode] = useState<"files" | "extension" | "plan">("files");
+  const [rightPanelMode, setRightPanelMode] = useState<"files" | "extension" | "plan" | "changes" | "browser">("files");
+
+
+  const [turnChanges, setTurnChanges] = useState<(TurnChangesRequest & { revision: number }) | null>(null);
   const [extensionDetails, setExtensionDetails] = useState<{ item: OrganizationExtensionDetailItem; onFavoriteChange: (id: string, isFavorite: boolean) => void } | null>(null);
   const [planReview, setPlanReview] = useState<{ plan: EurekaPlanState; controls: PlanReviewControls; readOnly: boolean } | null>(null);
 
@@ -361,13 +376,23 @@ export function AppShell({ initialGuest = false }: { initialGuest?: boolean }) {
       if (!rightPanelOpen) setRightPanelOpen(true);
       return;
     }
-    if (rightPanelMode === "plan") {
+    if (rightPanelMode === "plan" || rightPanelMode === "changes") {
       setRightPanelMode("files");
       if (!rightPanelOpen) setRightPanelOpen(true);
       return;
     }
     setRightPanelOpen((open) => !open);
   }, [isMobile, rightPanelMode, rightPanelOpen]);
+
+  useEffect(() => {
+    if (!turnChanges || (turnChanges.sessionId === selectedSession?.id
+      && turnChanges.cwd === (selectedSession?.cwd ?? newSessionCwd ?? undefined))) return;
+    setTurnChanges(null);
+    if (rightPanelMode === "changes") {
+      setRightPanelOpen(false);
+      setRightPanelMode("files");
+    }
+  }, [selectedSession?.id, selectedSession?.cwd, newSessionCwd, turnChanges, rightPanelMode]);
 
   useEffect(() => {
     if (!mobileToolbarMoreOpen) return;
@@ -932,6 +957,23 @@ export function AppShell({ initialGuest = false }: { initialGuest?: boolean }) {
     handleOpenFile(filePath, getFileName(filePath), { sourceSessionId: selectedSession?.id ?? null });
   }, [handleOpenFile, selectedSession?.id]);
 
+  const handleOpenTurnChanges = useCallback((request: TurnChangesRequest) => {
+    setTurnChanges((previous) => ({
+      ...request,
+      sessionId: request.sessionId ?? selectedSession?.id,
+      cwd: request.cwd ?? selectedSession?.cwd ?? newSessionCwd ?? undefined,
+      revision: (previous?.revision ?? 0) + 1,
+    }));
+    setRightPanelMode("changes");
+    setRightPanelOpen(true);
+    setExtensionDetails(null);
+    if (isMobile) {
+      setSidebarOpen(false);
+      setActiveTopPanel(null);
+      setMobileToolbarMoreOpen(false);
+    }
+  }, [selectedSession?.id, selectedSession?.cwd, newSessionCwd, isMobile]);
+
   const handleOpenComposerReference = useCallback((reference: ChatDraftReference) => {
     if (reference.isDir) {
       setRevealDirectoryPath(reference.path);
@@ -970,6 +1012,22 @@ export function AppShell({ initialGuest = false }: { initialGuest?: boolean }) {
   const newSessionDraftKey = selectedSession === null && effectiveNewSessionCwd
     ? `new:${newSessionDraftId}:${effectiveNewSessionCwd}`
     : null;
+  const browserSessionId = selectedSession?.id ?? "";
+  useEffect(() => {
+    if (guest || !browserSessionId) return;
+    let lastOpened = 0;
+    const source = new EventSource(`/api/browser/events?sessionId=${encodeURIComponent(browserSessionId)}&frames=0`);
+    source.onmessage = (message) => {
+      const event = JSON.parse(message.data) as BrowserEvent;
+      if (event.type !== "state") return;
+      const revision = event.state.openRevision ?? 0;
+      if (event.state.tabs.length && revision > lastOpened) {
+        lastOpened = revision;
+        setRightPanelMode("browser"); setRightPanelOpen(true);
+      }
+    };
+    return () => source.close();
+  }, [browserSessionId, guest]);
   useLayoutEffect(() => {
     activeNewSessionDraftKeyRef.current = newSessionDraftKey;
   }, [newSessionDraftKey]);
@@ -1190,17 +1248,12 @@ export function AppShell({ initialGuest = false }: { initialGuest?: boolean }) {
               <Skeleton className="size-4 shrink-0 rounded-full" />
               <Skeleton className="h-3.5 w-36" />
             </div>
-          ) : <Tooltip>
-            <TooltipTrigger
-              render={
-                <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0, height: "100%", padding: "0 14px", color: "var(--text)" }}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}><path d="M2.992 16.342a2 2 0 0 1 .094 1.167l-1.065 3.29a1 1 0 0 0 1.236 1.168l3.413-.998a2 2 0 0 1 1.099.092 10 10 0 1 0-4.777-4.719" /><path d="M8 12h.01" /><path d="M12 12h.01" /><path d="M16 12h.01" /></svg>
-                  <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 14, fontWeight: 600, letterSpacing: "-0.01em" }}>{sessionTitle}</span>
-                </div>
-              }
-            />
-            <TooltipContent>{sessionTitle}</TooltipContent>
-          </Tooltip>}
+          ) : <LabelTooltip content={sessionTitle}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0, height: "100%", padding: "0 14px", color: "var(--text)" }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}><path d="M2.992 16.342a2 2 0 0 1 .094 1.167l-1.065 3.29a1 1 0 0 0 1.236 1.168l3.413-.998a2 2 0 0 1 1.099.092 10 10 0 1 0-4.777-4.719" /><path d="M8 12h.01" /><path d="M12 12h.01" /><path d="M16 12h.01" /></svg>
+              <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 14, fontWeight: 600, letterSpacing: "-0.01em" }}>{sessionTitle}</span>
+            </div>
+          </LabelTooltip>}
           {titleLoading ? <Skeleton className="ml-1 size-7 rounded-[var(--radius-control)]" /> : <DropdownMenu>
             <Tooltip>
               <DropdownMenuTrigger render={<TooltipTrigger render={<button type="button" aria-label={translate("chat.moreControls")} style={{ display: "grid", placeItems: "center", width: 34, height: 34, marginLeft: -4, padding: 0, border: "none", borderRadius: "var(--radius-control)", background: "transparent", color: "var(--text-muted)", cursor: "pointer" }} onMouseEnter={(event) => { event.currentTarget.style.background = "var(--bg-hover)"; event.currentTarget.style.color = "var(--text)"; }} onMouseLeave={(event) => { event.currentTarget.style.background = "transparent"; event.currentTarget.style.color = "var(--text-muted)"; }}><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.5" /><circle cx="12" cy="12" r="1.5" /><circle cx="19" cy="12" r="1.5" /></svg></button>} />} />
@@ -1215,6 +1268,7 @@ export function AppShell({ initialGuest = false }: { initialGuest?: boolean }) {
               <DropdownMenuGroup>
                 <DropdownMenuItem onClick={() => toggleTopPanel("branches")}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="6" y1="3" x2="6" y2="15" /><circle cx="18" cy="6" r="3" /><circle cx="6" cy="18" r="3" /><path d="M18 9a9 9 0 0 1-9 9" /></svg>{translate("i18n.branches")}</DropdownMenuItem>
                 <DropdownMenuItem onClick={() => handleSystemPromptToggle()}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="8" y1="13" x2="16" y2="13" /><line x1="8" y1="17" x2="13" y2="17" /></svg>{translate("system.label")}</DropdownMenuItem>
+                <SessionToolPermissionsMenu key={selectedSession?.id} controls={currentToolPermissions} />
               </DropdownMenuGroup>
             </DropdownMenuContent>
           </DropdownMenu>}
@@ -1439,6 +1493,7 @@ export function AppShell({ initialGuest = false }: { initialGuest?: boolean }) {
           </svg>
           {!mobile && <span>{translate("system.label")}</span>}
         </button>
+        {mobile && selectedSession && <SessionToolPermissionsButton key={selectedSession.id} controls={currentToolPermissions} />}
       </div>
     );
   };
@@ -2199,6 +2254,7 @@ export function AppShell({ initialGuest = false }: { initialGuest?: boolean }) {
               onSessionStatsPanelOpen={openSessionStatsPanel}
               onContextUsageChange={handleContextUsageChange}
               onOpenFile={handleOpenLinkedFile}
+              onOpenChanges={handleOpenTurnChanges}
               onOpenComposerReference={handleOpenComposerReference}
               soundEnabled={soundEnabled}
               onSoundToggle={onSoundToggle}
@@ -2207,6 +2263,7 @@ export function AppShell({ initialGuest = false }: { initialGuest?: boolean }) {
               onPlanStateChange={handlePlanStateChange}
               onOpenPlanReview={handleOpenPlanReview}
               onContentLoadingChange={setSessionContentLoading}
+              onToolPermissionsChange={handleToolPermissionsChange}
             />
           ) : initialCwdStatus === "validating" ? (
             <div
@@ -2262,7 +2319,16 @@ export function AppShell({ initialGuest = false }: { initialGuest?: boolean }) {
           background: "var(--chat-bg)",
         } as React.CSSProperties}
       >
-        {rightPanelMode === "plan" && planReview ? (
+        {rightPanelMode === "browser" && browserSessionId && rightPanelOpen ? (
+          <BrowserPanel key={browserSessionId} sessionId={browserSessionId} onHide={() => setRightPanelOpen(false)} />
+        ) : rightPanelMode === "browser" ? null : rightPanelMode === "changes" && turnChanges ? (
+          <TurnChangesPanel
+            key={turnChanges.revision}
+            request={turnChanges}
+            onClose={() => setRightPanelOpen(false)}
+            onOpenFile={(filePath) => handleOpenFile(filePath, getFileName(filePath), { sourceSessionId: turnChanges.sessionId ?? null })}
+          />
+        ) : rightPanelMode === "plan" && planReview ? (
           <PlanReviewPanel
             plan={planReview.plan}
             onClose={() => { setRightPanelOpen(false); }}
@@ -2274,6 +2340,7 @@ export function AppShell({ initialGuest = false }: { initialGuest?: boolean }) {
           />
         ) : rightPanelMode === "extension" && extensionDetails ? (
           <OrganizationExtensionDetails
+            sessionId={selectedSession?.id ?? null}
             item={extensionDetails.item}
             cwd={activeCwd ?? ""}
             onClose={() => { setExtensionDetails(null); setRightPanelOpen(false); }}

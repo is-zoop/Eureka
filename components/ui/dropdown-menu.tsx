@@ -194,9 +194,11 @@ function DropdownMenuRadioItem({
   className,
   children,
   inset,
+  indicatorPosition = "end",
   ...props
 }: MenuPrimitive.RadioItem.Props & {
   inset?: boolean
+  indicatorPosition?: "start" | "end"
 }) {
   return (
     <MenuPrimitive.RadioItem
@@ -211,6 +213,7 @@ function DropdownMenuRadioItem({
       <span
         className="pointer-events-none absolute right-2 flex items-center justify-center"
         data-slot="dropdown-menu-radio-item-indicator"
+        style={indicatorPosition === "start" ? { left: 8, right: "auto" } : undefined}
       >
         <MenuPrimitive.RadioItemIndicator>
           <CheckIcon

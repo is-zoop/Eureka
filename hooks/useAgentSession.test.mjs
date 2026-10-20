@@ -14,6 +14,10 @@ test("restores persisted plan snapshots when opening a closed session", () => {
   assert.match(source, /if \(d\.planMode !== undefined\) setPlanMode\(d\.planMode\)/);
 });
 
+test("submits a normalized plan so live sessions also receive verification checklists", () => {
+  assert.match(source, /type: "submit_plan", content: normalizePlanForReview\(content\), sourceEntryId/);
+});
+
 test("syncs plan progress from the live streaming assistant message", () => {
   const planProgressSource = source.slice(
     source.indexOf("  useEffect(() => {\n    if (planMode.phase !== \"executing\")"),
@@ -68,7 +72,7 @@ test("keeps the session event stream open through the idle grace window", () => 
   assert.match(promptDoneSource, /scheduleEventStreamClose\(sid\)/);
   assert.match(sendSource, /const definitivelyRejected = !promptRequestStarted/);
   assert.match(sendSource, /if \(!definitivelyRejected && sentSessionId\) \{[\s\S]*?waitForPromptSettlement/);
-  assert.match(sendSource, /restoreSubmission\(message, images, (?:references, )?composerDraftKey\);[\s\S]*?if \(sentSessionId\) \{[\s\S]*?reconcileAgentState\(sentSessionId\);[\s\S]*?return;[\s\S]*?\}[\s\S]*?closeEvents\(\)/);
+  assert.match(sendSource, /restoreSubmission\(message, images, (?:references, )?composerDraftKey(?:, selectedPlugins)?\);[\s\S]*?if \(sentSessionId\) \{[\s\S]*?reconcileAgentState\(sentSessionId\);[\s\S]*?return;[\s\S]*?\}[\s\S]*?closeEvents\(\)/);
   assert.doesNotMatch(
     sendSource,
     /rpcPromptPendingRef\.current = false;\s*agentRunningRef\.current = false;\s*closeEvents\(\)/,
@@ -149,7 +153,7 @@ test("fresh sessions restore the preferred tool preset without overriding existi
     preferenceSource,
     /useLayoutEffect\(\(\) => \{\s*if \(!isNew \|\| sessionIdRef\.current\) return;\s*setToolPresetState\(getPreferredToolPreset\(\)\)/,
   );
-  assert.match(changeSource, /setPreferredToolPreset\(preset\)/);
+  assert.doesNotMatch(changeSource, /setPreferredToolPreset/);
   assert.match(changeSource, /sendAgentCommand\(sid, \{ type: "set_tools", toolNames \}\)/);
   assert.doesNotMatch(loadToolsSource, /setPreferredToolPreset/);
 });
@@ -244,7 +248,7 @@ test("streaming submissions cannot be stranded in an idle direct queue", () => {
 
   assert.match(queueSource, /type: "prompt"/);
   assert.match(queueSource, /streamingBehavior: behavior/);
-  assert.match(queueSource, /if \(!promptRequestStarted \|\| isPromptRejectedError\(e\)\) restore\(\)/);
+  assert.match(queueSource, /if \(!promptRequestStarted \|\| isPromptRejectedError\(e\)\) \{[\s\S]*?rememberClarificationSubmission[\s\S]*?restore\(\)/);
   assert.doesNotMatch(queueSource, /type: "steer"/);
   assert.doesNotMatch(queueSource, /type: "follow_up"/);
 });
@@ -401,7 +405,7 @@ test("the real message tail has no artificial trailing spacer", () => {
   assert.match(tailFollowSource, /container\.scrollTo\(\{ top: Math\.max\(0, container\.scrollHeight - container\.clientHeight\), behavior \}\)/);
   assert.doesNotMatch(tailFollowSource, /scrollIntoView/);
   assert.match(chatWindowSource, /<div ref=\{messagesEndRef\} \/>/);
-  assert.match(chatWindowSource, /justifyContent: "flex-end"/);
+  assert.match(chatWindowSource, /<div ref=\{messageContentRef\}[^\n]*justifyContent: "flex-start"/);
 });
 
 test("new messages and completion follow only when the viewport is attached", () => {

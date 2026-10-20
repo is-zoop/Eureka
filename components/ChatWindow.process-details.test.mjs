@@ -23,3 +23,7 @@ test("does not render a plan card inside a split final response's process detail
   assert.match(source, /summaryExcludedMessageIndices: protectedPlanIndices/);
   assert.match(source, /keyPrefix: "final-answer"/);
 });
+
+test("only offers submission for a reviewable assistant plan, not clarification prose", () => {
+  assert.match(source, /const canSubmitPlan[\s\S]*?isReviewablePlan\(getAssistantText\(msg as AssistantMessage\)\)/);
+});

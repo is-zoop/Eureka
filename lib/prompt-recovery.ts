@@ -1,3 +1,4 @@
+import { splitPluginSelection } from "./plugin-selection";
 import type { AgentMessage } from "@/lib/types";
 
 function extractMessageText(message: Partial<AgentMessage>): string {
@@ -38,10 +39,10 @@ function imageSignature(block: unknown): string {
 
 export function userMessageKey(message: Partial<AgentMessage>): string {
   const content = (message as { content?: unknown }).content;
-  if (typeof content === "string") return JSON.stringify({ text: content, images: [] });
+  if (typeof content === "string") return JSON.stringify({ text: splitPluginSelection(content).text, images: [] });
   if (!Array.isArray(content)) return JSON.stringify({ text: "", images: [] });
   return JSON.stringify({
-    text: extractMessageText(message),
+    text: splitPluginSelection(extractMessageText(message)).text,
     images: content.map(imageSignature).filter(Boolean),
   });
 }

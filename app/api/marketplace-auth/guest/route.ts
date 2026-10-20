@@ -9,6 +9,6 @@ export async function POST(request: Request) {
   const body = await request.json().catch(() => null);
   if (!body || typeof body !== "object" || Array.isArray(body)) return NextResponse.json({ error: "Invalid request" }, { status: 400 });
   const response = NextResponse.json({ guest: true, returnTo: guestReturnTo(body.returnTo) }, { headers: { "Cache-Control": "no-store" } });
-  writeGuestSession(response.cookies);
+  await writeGuestSession(response.cookies);
   return response;
 }

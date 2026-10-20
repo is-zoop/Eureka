@@ -1,14 +1,26 @@
+import { selectionEnvelope } from "./plugin-selection";
+import { ClarificationRuntime, clarificationRuntime } from "./clarification-runtime";
+import { type ClarificationGroup, type ClarificationQueuedInput } from "./clarification";
+import { userInputSummary, type UserInputResponse } from "./user-input";
+import { readRuntimeHazeSession } from "./auth/runtime-session";
+import { installPluginBrowserHandoff } from "./plugin-browser";
+import { prepareSelectedPlugins, taskPluginSelection, taskAllowsClarification } from "./composer-plugins";
+import { annotateOrganizationSkills } from "./haze-capability-presentation";
+import type { OrganizationCapabilityRef } from "./organization-capability";
+import { applyHazeProjectSkillOverrides } from "./haze-skill-overrides";
+import { applyOrganizationPluginSkills, clearPluginSnapshot } from "./haze-plugin-resources";
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
-import { createAgentSessionFromServices, createAgentSessionServices, getAgentDir, initTheme, loadSkillsFromDir, SessionManager, Theme } from "@earendil-works/pi-coding-agent";
+import { createAgentSessionFromServices, createAgentSessionServices, getAgentDir, initTheme, SessionManager, Theme } from "@earendil-works/pi-coding-agent";
 import { KeybindingsManager as TuiKeybindingsManager, TUI_KEYBINDINGS } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
-import { installBuiltInMcpAdapter, MCP_STATUS_EVENT } from "./mcp-adapter";
+import { installBuiltInMcpAdapter } from "./mcp-adapter";
 import { installHazeManagedMcpRuntime } from "./haze-mcp-runtime";
 import { EUREKA_TASK_PROGRESS_EXTENSION } from "./task-progress";
-import { clearMcpRuntime, updateMcpRuntime } from "./mcp-runtime";
+import { EUREKA_WRITE_DIFF_EXTENSION } from "./write-diff";
+import { clearMcpRuntime, installMcpStatusRuntime } from "./mcp-runtime";
 import { randomUUID } from "crypto";
 import { existsSync, realpathSync, writeFileSync } from "fs";
-import { dirname, relative, resolve, sep } from "path";
+import { resolve } from "path";
 import { validateAgentImages } from "./image-attachments";
 import { invalidateModelsCache } from "./models-cache";
 import { schedulePiCatalogSync } from "./pi-catalog-sync";
@@ -21,6 +33,7 @@ import {
   getPendingPlanQuestion,
   isReviewablePlan,
   markPlanTodosDone,
+  normalizePlanForReview,
   parsePlanTodos,
   planSnapshot,
   PLAN_EXECUTION_SYSTEM_PROMPT,
@@ -230,7 +243,7 @@ function planReviewContext(state: EurekaPlanState): string {
  * can add their own prompt text after startup, while this message is appended
  * immediately before every planning turn and remains visible to the model.
  */
-const EUREKA_NATIVE_PLAN_EXTENSION: InlineExtension = {
+export const EUREKA_NATIVE_PLAN_EXTENSION: InlineExtension = {
   name: "eureka-native-plan-mode",
   hidden: true,
   factory: (pi) => {
@@ -282,10 +295,11 @@ const EUREKA_NATIVE_PLAN_EXTENSION: InlineExtension = {
     pi.registerTool({
       name: PLAN_MODE_QUESTION_TOOL,
       label: "Request user input",
-      description: "Ask one to four material planning questions with 2 to 4 choices each. The user answers the whole group inside Eureka before planning continues.",
-      promptSnippet: "Ask a compact group of planning clarification questions with selectable choices",
+      executionMode: "sequential",
+      description: "Ask one to four material clarification questions with 2 to 4 choices each. The user answers inside Eureka before the task continues.",
+      promptSnippet: "Clarify missing requirements with selectable choices when this task permits user input",
       promptGuidelines: [
-        "Use request_user_input only when information that materially changes the plan is missing.",
+        "First use available context. Ask only when missing information materially changes the result. Do not repeat questions already answered.",
         "Ask 1 to 4 focused questions at a time. Each question needs 2 to 4 choices and may be single-select or multi-select.",
         "After calling request_user_input, stop and wait for the user's response.",
       ],
@@ -293,7 +307,7 @@ const EUREKA_NATIVE_PLAN_EXTENSION: InlineExtension = {
         // title/question/options remain accepted so existing extensions and
         // older model prompts keep producing a valid one-question group.
         title: Type.Optional(Type.String({ description: "Short question title (legacy single-question form)" })),
-        question: Type.Optional(Type.String({ description: "One planning question (legacy single-question form)" })),
+        question: Type.Optional(Type.String({ description: "One clarification question (legacy single-question form)" })),
         options: Type.Optional(Type.Array(Type.Object({
           id: Type.String({ description: "Stable short option id" }),
           label: Type.String({ description: "Option label" }),
@@ -301,7 +315,7 @@ const EUREKA_NATIVE_PLAN_EXTENSION: InlineExtension = {
         }), { minItems: 2, maxItems: 4 })),
         questions: Type.Optional(Type.Array(Type.Object({
           title: Type.String({ description: "Short question title" }),
-          question: Type.String({ description: "One planning question" }),
+          question: Type.String({ description: "One focused clarification question" }),
           selection: Type.Optional(Type.Union([Type.Literal("single"), Type.Literal("multiple")])),
           options: Type.Array(Type.Object({
             id: Type.String({ description: "Stable short option id" }),
@@ -312,9 +326,6 @@ const EUREKA_NATIVE_PLAN_EXTENSION: InlineExtension = {
       }),
       execute: async (toolCallId, params, _signal, _onUpdate, ctx) => {
         const state = readPlanState(ctx.sessionManager.getEntries() as SessionEntry[]);
-        if (state.phase !== "planning") {
-          return { content: [{ type: "text" as const, text: "This interaction tool is available only in Eureka planning mode." }], details: { accepted: false } };
-        }
         if (getPendingPlanQuestion(state)) {
           return { content: [{ type: "text" as const, text: "A planning question is already awaiting the user's answer. Stop and wait." }], details: { accepted: false } };
         }
@@ -341,6 +352,13 @@ const EUREKA_NATIVE_PLAN_EXTENSION: InlineExtension = {
         if (!valid) {
           return { content: [{ type: "text" as const, text: "Provide 1 to 4 non-empty questions, each with 2 to 4 choices with unique ids, labels, and descriptions." }], details: { accepted: false } };
         }
+        if (state.phase !== "planning") {
+          const runtime = clarificationRuntime(ctx.sessionManager);
+          if (!runtime) throw new Error("问题澄清运行时尚未就绪");
+          runtime.ask(toolCallId, questions);
+          invalidateSessionListCache();
+          return { content: [{ type: "text" as const, text: "Questions are displayed in Eureka. Execution is paused until the user answers. Do not open a browser or ask again in prose." }], details: { accepted: true, groupId: toolCallId }, terminate: true };
+        }
         const now = new Date().toISOString();
         const next = {
           ...state,
@@ -349,13 +367,29 @@ const EUREKA_NATIVE_PLAN_EXTENSION: InlineExtension = {
           }))],
           updatedAt: now,
         };
+        const runtime = clarificationRuntime(ctx.sessionManager);
+        if (runtime) runtime.pauseRequested = true;
         pi.appendEntry("eureka_plan", next);
         invalidateSessionListCache();
         return {
           content: [{ type: "text" as const, text: "The question group is now displayed in Eureka. Stop this turn and wait for the user's answers." }],
           details: { accepted: true },
+          terminate: true,
         };
       },
+    });
+
+    pi.on("tool_call", (_event, ctx) => {
+      const runtime = clarificationRuntime(ctx.sessionManager);
+      if (runtime?.pauseRequested || runtime?.blocked || getPendingPlanQuestion(readPlanState(ctx.sessionManager.getEntries() as SessionEntry[]))) {
+        return { block: true, reason: "请先回答或取消当前澄清问题。", terminate: true };
+      }
+      if (_event.toolName === PLAN_MODE_QUESTION_TOOL && readPlanState(ctx.sessionManager.getEntries() as SessionEntry[]).phase !== "planning") {
+        try {
+          if (!runtime?.allowed || !runtime.task || !taskAllowsClarification(ctx.cwd, ctx.sessionManager.getSessionId(), runtime.task)) return { block: true, reason: "当前任务未开放问题澄清。", terminate: true };
+        } catch (error) { return { block: true, reason: error instanceof Error ? error.message : "澄清权限已变化", terminate: true }; }
+      }
+      return undefined;
     });
 
     pi.on("before_agent_start", async (_event, ctx) => {
@@ -388,6 +422,9 @@ const EUREKA_NATIVE_PLAN_EXTENSION: InlineExtension = {
           },
         };
       }
+      const runtime = clarificationRuntime(ctx.sessionManager);
+      if (runtime?.allowed) return { message: { customType: "eureka-clarification-framing", display: false, content: "[EUREKA USER INPUT] For this task only, request_user_input is available. Use existing context first. Ask a compact group only when missing information materially changes the result. Never invent business choices. After asking, wait for the user. A skipped answer supplies no business assumption. On continuation, reuse the existing business session and scope; do not create or reset them merely because clarification occurred." } };
+      if (pi.getActiveTools().length > 0 && state.phase === "idle") return { message: { customType: "eureka-clarification-framing", display: false, content: "[EUREKA USER INPUT OFF] request_user_input is unavailable for this task. Any earlier task's permission to display clarification cards no longer applies." } };
       return undefined;
     });
 
@@ -425,45 +462,8 @@ const EUREKA_NATIVE_PLAN_EXTENSION: InlineExtension = {
 const EUREKA_MCP_EXTENSION: InlineExtension = {
   name: "eureka-native-mcp-status",
   hidden: true,
-  factory: (pi) => {
-    // The adapter publishes sanitized, read-only snapshots on Pi's shared event bus.
-    // The session id is available when the extension lifecycle begins.
-    pi.on("session_start", (_event, ctx) => {
-      const sessionId = (ctx.sessionManager as { getSessionId?: () => string }).getSessionId?.();
-      if (!sessionId) return;
-      (pi.events as { on?: (name: string, listener: (value: unknown) => void) => void }).on?.(MCP_STATUS_EVENT, (snapshot) => updateMcpRuntime(sessionId, snapshot as Parameters<typeof updateMcpRuntime>[1]));
-    });
-  },
+  factory: (pi) => installMcpStatusRuntime(pi),
 };
-
-/** Pi normally keeps the first matching skill name (global before project).
- * Haze Skill roots are their market slugs, so reload a matching project root
- * and replace the global result before it reaches the session. */
-function applyHazeProjectSkillOverrides(cwd: string, base: { skills: import("@earendil-works/pi-coding-agent").Skill[]; diagnostics: import("@earendil-works/pi-coding-agent").ResourceDiagnostic[] }) {
-  const globalRoot = resolve(getAgentDir(), "skills");
-  const projectRoot = resolve(cwd, ".pi", "skills");
-  const overriddenRoots = new Set<string>();
-  for (const skill of base.skills) {
-    const globalRelative = relative(globalRoot, dirname(skill.filePath));
-    const rootName = globalRelative.split(sep)[0];
-    if (globalRelative.startsWith("..") || !globalRelative) continue;
-    const projectSkillRoot = resolve(projectRoot, rootName);
-    if (existsSync(resolve(projectSkillRoot, "SKILL.md"))) overriddenRoots.add(rootName);
-  }
-  if (!overriddenRoots.size) return base;
-  const skills = base.skills.filter((skill) => {
-    const globalRelative = relative(globalRoot, dirname(skill.filePath));
-    const projectRelative = relative(projectRoot, dirname(skill.filePath));
-    return ![globalRelative, projectRelative].some((path) => overriddenRoots.has(path.split(sep)[0]));
-  });
-  const diagnostics = [...base.diagnostics];
-  for (const rootName of overriddenRoots) {
-    const result = loadSkillsFromDir({ dir: resolve(projectRoot, rootName), source: "project" });
-    skills.push(...result.skills);
-    diagnostics.push(...result.diagnostics);
-  }
-  return { skills, diagnostics };
-}
 
 function withExtensionTools(session: AgentSessionLike, toolNames: string[]): string[] {
   if (toolNames.length === 0) return [];
@@ -505,9 +505,29 @@ export class AgentSessionWrapper {
   private _alive = true;
   private planModeState: EurekaPlanState;
   private baseSystemPrompt: string | null = null;
+  private clarification: ClarificationRuntime;
+  private queuePumpRunning = false;
   private planExecutionEntryOffset: number | null = null;
 
   constructor(public readonly inner: AgentSessionLike) {
+    this.clarification = new ClarificationRuntime(inner.sessionManager, (state) => {
+      invalidateSessionListCache();
+      this.emit({ type: "clarification_state", state });
+      this.emit({ type: "queue_update", steering: state.queue.filter((q) => q.behavior === "steer").map((q) => selectionEnvelope(q.message, q.selectedPlugins ?? [])), followUp: state.queue.filter((q) => q.behavior === "followUp").map((q) => selectionEnvelope(q.message, q.selectedPlugins ?? [])) });
+    });
+    const previousStop = inner.agent.shouldStopAfterTurn;
+    inner.agent.shouldStopAfterTurn = async (context, signal) => {
+      if (this.clarification.pauseRequested || this.clarification.blocked || getPendingPlanQuestion(readPlanState(inner.sessionManager.getEntries() as SessionEntry[]))) {
+        // External requests are owned by the durable host queue. Hold any SDK
+        // extension-injected continuations too, before the SDK drains them.
+        const held = inner.clearQueue();
+        for (const [behavior, messages] of [["steer", held.steering], ["followUp", held.followUp]] as const) {
+          for (const message of messages) this.clarification.enqueue({ id: randomUUID(), behavior, message, clarificationEnabled: false });
+        }
+        return true;
+      }
+      return this.clarification.state.queue.some((q) => !q.paused && q.behavior === "steer") || (await previousStop?.(context, signal)) === true;
+    };
     this.planModeState = readPlanState(this.inner.sessionManager.getEntries() as SessionEntry[]);
     // A live execution cannot survive a server/session recreation. Archive it
     // immediately so a later ordinary prompt never inherits its plan framing.
@@ -555,7 +575,7 @@ export class AgentSessionWrapper {
         invalidateSessionListCache();
       }
       if (IDLE_RESET_EVENT_TYPES.has(event.type)) this.resetIdleTimer();
-      this.emit(event);
+      this.emit(event.type === "queue_update" ? { ...event, steering: [...(event.steering as string[] ?? []), ...this.queuedInput("steer")], followUp: [...(event.followUp as string[] ?? []), ...this.queuedInput("followUp")] } : event);
       if (RUNNING_STATE_EVENT_TYPES.has(event.type)) notifyRunningChange();
     });
     this.resetIdleTimer();
@@ -576,6 +596,64 @@ export class AgentSessionWrapper {
   private refreshPlanModeState(): EurekaPlanState {
     this.planModeState = readPlanState(this.inner.sessionManager.getEntries() as SessionEntry[]);
     return this.planModeState;
+  }
+
+  private queuedInput(behavior: "steer" | "followUp"): string[] {
+    return this.clarification.state.queue.filter((q) => q.behavior === behavior).map((q) => selectionEnvelope(q.message, q.selectedPlugins ?? []));
+  }
+
+  private finishClarificationTask(groupId?: string, error?: string): void {
+    if (groupId) this.clarification.finish(groupId, error);
+    this.clarification.task = null;
+    this.clarification.allowed = false;
+    this.clarification.pauseRequested = false;
+    if (!this.planModeState.planModeActive && this.inner.getActiveToolNames().includes(PLAN_MODE_QUESTION_TOOL)) this.inner.setActiveToolsByName(this.inner.getActiveToolNames().filter((name) => name !== PLAN_MODE_QUESTION_TOOL));
+    this.applyForcedEmptySystemPrompt();
+  }
+
+  private async continueClarification(id: string, retry: boolean): Promise<void> {
+    const group = this.clarification.group(id);
+    if (group.status !== "answered") throw new Error("请先提交本组问题的回答");
+    if (group.continuation === "running" || group.continuation === "completed") return;
+    if (group.continuation === "failed" && !retry) return;
+    if (this.isRunning()) throw new Error("请等待当前运行结束后重试继续，回答已保存");
+    // Set synchronously before the first await: duplicate submissions cannot
+    // enter preflight twice, including when the HTTP response is lost.
+    this.clarification.update({ ...group, continuation: "running", error: undefined });
+    try {
+      const skills = this.inner.resourceLoader.getSkills().skills;
+      prepareSelectedPlugins(this.cwd, this.sessionId, group.task.plugins, skills, "");
+      if (this.forceEmptySystemPrompt || !taskAllowsClarification(this.cwd, this.sessionId, group.task)) throw new Error("当前权限或插件状态不允许继续，请重新授权后重试；回答已保留");
+      await this.send({ type: "prompt", message: `已回答问题澄清：\n${userInputSummary(group.questions)}\n继续原任务，复用已有业务会话和选数范围。已跳过的问题不代表同意任何选项。` }, group);
+    } catch (error) {
+      this.clarification.finish(id, error instanceof Error ? error.message : String(error));
+      throw error;
+    }
+  }
+
+  private async pumpInputQueue(): Promise<void> {
+    if (this.queuePumpRunning || !this._alive || this.isRunning() || this.clarification.blocked || getPendingPlanQuestion(this.refreshPlanModeState())) return;
+    this.queuePumpRunning = true;
+    let failed = false;
+    try {
+      const queued = this.clarification.shift();
+      if (!queued) return;
+      try {
+        if (queued.owner) {
+          const identity = readRuntimeHazeSession();
+          if (!identity || queued.owner.subject !== identity.principal.subject || queued.owner.source !== process.env.EUREKA_AUTH_HAZE_ISSUER?.replace(/\/$/, "")) throw new Error("排队请求的身份已变化");
+        }
+        await this.send({ ...queued, type: "prompt" });
+      }
+      catch (error) {
+        failed = true;
+        this.clarification.enqueue(queued);
+        this.emit({ type: "prompt_error", errorMessage: `排队请求未执行：${error instanceof Error ? error.message : String(error)}。请求已保留，可从队列取回。` });
+      }
+    } finally {
+      this.queuePumpRunning = false;
+      if (!failed && this._alive && !this.isRunning() && !this.clarification.blocked && this.clarification.state.queue.some((q) => !q.paused)) queueMicrotask(() => void this.pumpInputQueue());
+    }
   }
 
   private applyPlanModeRuntime(): void {
@@ -829,7 +907,7 @@ export class AgentSessionWrapper {
     this.onDestroyCallback = cb;
   }
 
-  async send(command: Record<string, unknown>): Promise<unknown> {
+  async send(command: Record<string, unknown>, continuation?: ClarificationGroup): Promise<unknown> {
     this.resetIdleTimer();
     const type = command.type as string;
     if (this.shouldWaitForExtensions(type)) await this.waitForExtensionsBound();
@@ -843,6 +921,9 @@ export class AgentSessionWrapper {
       case "prompt":
       case "execute_plan": {
         const isPlanExecution = type === "execute_plan";
+        if (command.clarificationEnabled !== undefined && typeof command.clarificationEnabled !== "boolean") throw new Error("clarificationEnabled 必须为布尔值");
+        this.clarification.refresh();
+        if (this.clarification.blocked && !continuation) throw new Error("请先回答、重试继续或取消当前澄清问题");
         this.refreshPlanModeState();
         if (isPlanExecution) {
           if (this.planModeState.phase !== "executing" || !this.planModeState.approvedAt) {
@@ -858,21 +939,34 @@ export class AgentSessionWrapper {
         if (getPendingPlanQuestion(this.planModeState)) {
           throw new Error("Please answer the current planning question before sending another message.");
         }
-        // Serialize only admission. Once the preceding prompt has either
-        // passed or failed preflight, the SDK can atomically decide whether
-        // this submission starts a run or joins its streaming queue.
+        // Serialize admission. Each queued request owns its preference and
+        // plugin identity; only the promoted request configures model tools.
         const releaseAdmission = await this.acquirePromptAdmission();
         try {
+          if (this.clarification.blocked && !continuation) throw new Error("请先完成或取消当前澄清");
           if (this.inner.isBashRunning) {
             throw new Error("Cannot send a prompt while a shell command is running");
           }
           const promptImages = isPlanExecution
             ? undefined
             : command.images as Array<{ type: "image"; data: string; mimeType: string }> | undefined;
-          const streamingBehavior = isPlanExecution
-            ? undefined
-            : command.streamingBehavior as "steer" | "followUp" | undefined;
-          const promptMessage = isPlanExecution ? PLAN_EXECUTION_TRIGGER : command.message as string;
+          const skills = this.inner.resourceLoader.getSkills().skills;
+          const selectedPlugins = isPlanExecution ? [] : continuation?.task.plugins ?? taskPluginSelection(this.cwd, this.sessionId, command.selectedPlugins, skills, String(command.message ?? ""));
+          const promptMessage = isPlanExecution ? PLAN_EXECUTION_TRIGGER : prepareSelectedPlugins(this.cwd, this.inner.sessionId, selectedPlugins, this.inner.resourceLoader.getSkills().skills, command.message as string);
+          if (this.isRunning()) {
+            if (!command.streamingBehavior || continuation) throw new Error("请等待当前运行结束");
+            const queueIdentity = readRuntimeHazeSession();
+            this.clarification.enqueue({ ...(queueIdentity ? { owner: { source: process.env.EUREKA_AUTH_HAZE_ISSUER?.replace(/\/$/, "") ?? "", subject: queueIdentity.principal.subject } } : {}), id: randomUUID(), message: String(command.message ?? ""), selectedPlugins, clarificationEnabled: command.clarificationEnabled === true, images: command.images as ClarificationQueuedInput["images"], behavior: command.streamingBehavior === "steer" ? "steer" : "followUp" });
+            this.emit({ type: "queue_update", steering: this.queuedInput("steer"), followUp: this.queuedInput("followUp") });
+            return null;
+          }
+          const identity = readRuntimeHazeSession();
+          const task = continuation?.task ?? { id: randomUUID(), plugins: selectedPlugins, clarificationEnabled: command.clarificationEnabled === true, ...(identity ? { owner: { source: process.env.EUREKA_AUTH_HAZE_ISSUER?.replace(/\/$/, "") ?? "", subject: identity.principal.subject } } : {}) };
+          this.clarification.task = task;
+          this.clarification.allowed = !this.forceEmptySystemPrompt && this.inner.getActiveToolNames().some((name) => name !== PLAN_MODE_QUESTION_TOOL) && !this.planModeState.planModeActive && !isPlanExecution && taskAllowsClarification(this.cwd, this.sessionId, task);
+          const tools = this.inner.getActiveToolNames().filter((name) => name !== PLAN_MODE_QUESTION_TOOL);
+          if (!this.planModeState.planModeActive && !isPlanExecution && this.inner.getActiveToolNames().includes(PLAN_MODE_QUESTION_TOOL) !== this.clarification.allowed) this.inner.setActiveToolsByName(this.clarification.allowed ? [...tools, PLAN_MODE_QUESTION_TOOL] : tools);
+          this.applyForcedEmptySystemPrompt();
           let preflightAccepted = false;
           let preflightSettled = false;
           let promptSettled = false;
@@ -913,7 +1007,7 @@ export class AgentSessionWrapper {
             }
             prompt = this.inner.prompt(promptMessage, {
               ...(promptImages?.length ? { images: promptImages } : {}),
-              ...(streamingBehavior ? { streamingBehavior } : {}),
+
               source: "rpc",
               // Match pi's RPC contract: acknowledge only after synchronous prompt
               // validation and extension preflight have accepted the submission.
@@ -931,9 +1025,11 @@ export class AgentSessionWrapper {
               this.planExecutionEntryOffset = null;
             }
             finishPrompt();
+            this.finishClarificationTask(continuation?.id, error instanceof Error ? error.message : String(error));
             throw error;
           }
 
+          const runEntryOffset = this.inner.sessionManager.getEntries().length;
           void prompt.then(() => {
             // Compatibility fallback if a future SDK resolves without invoking
             // the internal callback. This waits for the run, but never acks early.
@@ -943,7 +1039,11 @@ export class AgentSessionWrapper {
               activePlanExecutionManagers.delete(this.inner.sessionManager as object);
               this.finishPlanExecution();
             }
-            if (!streamingBehavior) this.emit({ type: "prompt_done" });
+            const lastAssistant = [...this.inner.sessionManager.getEntries().slice(runEntryOffset)].reverse().find((entry) => entry.type === "message" && entry.message.role === "assistant") as SessionMessageEntry | undefined;
+            const assistant = lastAssistant?.message as { stopReason?: string; errorMessage?: string } | undefined;
+            this.finishClarificationTask(continuation?.id, assistant && ["error", "aborted"].includes(assistant.stopReason ?? "") ? assistant.errorMessage ?? "继续执行已中断，回答已保存，可重试继续。" : undefined);
+            this.emit({ type: "prompt_done" });
+            void this.pumpInputQueue();
           }, (error) => {
             rejectPreflight(error);
             finishPrompt();
@@ -954,13 +1054,15 @@ export class AgentSessionWrapper {
             invalidateSessionListCache();
             // A preflight rejection is returned by the POST itself. Only an
             // unexpected failure after acceptance needs the asynchronous event.
+            this.finishClarificationTask(continuation?.id, error instanceof Error ? error.message : String(error));
             if (preflightAccepted) {
               this.emit({
                 type: "prompt_error",
                 errorMessage: error instanceof Error ? error.message : String(error),
               });
-              if (!streamingBehavior) this.emit({ type: "prompt_done" });
+              this.emit({ type: "prompt_done" });
             }
+            void this.pumpInputQueue();
           }).catch((error) => {
             console.error(
               "[pi-web] prompt completion handler failed:",
@@ -1000,6 +1102,7 @@ export class AgentSessionWrapper {
 
       case "get_state": {
         this.refreshPlanModeState();
+        this.clarification.refresh();
         const model = this.inner.model;
         const contextUsage = this.inner.getContextUsage();
         return {
@@ -1015,8 +1118,8 @@ export class AgentSessionWrapper {
           messageCount: 0,
           pendingMessageCount: this.inner.pendingMessageCount,
           queuedMessages: {
-            steering: [...this.inner.getSteeringMessages()],
-            followUp: [...this.inner.getFollowUpMessages()],
+            steering: [...this.inner.getSteeringMessages(), ...this.queuedInput("steer")],
+            followUp: [...this.inner.getFollowUpMessages(), ...this.queuedInput("followUp")],
           },
           contextUsage: contextUsage
             ? { percent: contextUsage.percent, contextWindow: contextUsage.contextWindow, tokens: contextUsage.tokens }
@@ -1026,8 +1129,28 @@ export class AgentSessionWrapper {
           extensionStatuses: this.getExtensionStatuses(),
           extensionWidgets: this.getExtensionWidgets(),
           planMode: this.planModeState,
+          clarification: this.clarification.state,
         };
       }
+
+      case "get_clarification":
+        this.clarification.refresh();
+        return this.clarification.state;
+      case "answer_clarification": {
+        this.clarification.refresh();
+        const group = this.clarification.answer(command.groupId, command.responses as UserInputResponse[]);
+        if (group.continuation === "ready") await this.continueClarification(group.id, false);
+        return this.clarification.state;
+      }
+      case "retry_clarification":
+        await this.continueClarification(String(command.groupId), true);
+        return this.clarification.state;
+      case "cancel_clarification":
+        this.clarification.refresh();
+        this.clarification.cancel(command.groupId);
+        // Cancellation ends this task; queued requests remain visible for recall
+        // or an explicit subsequent submission, and never query automatically.
+        return this.clarification.state;
 
       case "get_plan_mode":
         this.refreshPlanModeState();
@@ -1035,6 +1158,7 @@ export class AgentSessionWrapper {
 
       case "set_plan_mode": {
         this.refreshPlanModeState();
+        if (this.clarification.blocked) throw new Error("请先完成或取消当前澄清");
         if (this.isRunning()) throw new Error("Wait for the current agent run to finish before changing plan mode");
         const requested = command.phase as EurekaPlanPhase;
         if (requested === "planning") {
@@ -1094,7 +1218,7 @@ export class AgentSessionWrapper {
       case "submit_plan": {
         this.refreshPlanModeState();
         if (!this.planModeState.planModeActive || this.planModeState.phase !== "planning") throw new Error("Plans can only be submitted while planning");
-        const content = typeof command.content === "string" ? command.content.trim() : "";
+        const content = normalizePlanForReview(typeof command.content === "string" ? command.content.trim() : "");
         if (!content) throw new Error("计划内容不能为空。");
         if (!isReviewablePlan(content)) {
           throw new Error("当前回复是需求澄清或普通说明，尚不能提交评审。请先回答 Agent 的问题；待它输出包含“目标、实施步骤、未勾选清单、验证”的计划后，再点击“提交评审”。");
@@ -1248,6 +1372,8 @@ export class AgentSessionWrapper {
           throw new Error("Cannot navigate while a shell command is running");
         }
         const result = await this.inner.navigateTree(command.targetId as string, {});
+        this.clarification.refresh();
+        this.emit({ type: "clarification_state", state: this.clarification.state });
         return { cancelled: result.cancelled };
       }
 
@@ -1301,20 +1427,15 @@ export class AgentSessionWrapper {
       case "clear_queue": {
         // Full clear only: pi has no single-item dequeue, and clear+requeue
         // races against the agent loop pulling messages mid-flight.
-        return this.inner.clearQueue();
+        const sdk = this.inner.clearQueue();
+        const result = { steering: [...sdk.steering, ...this.queuedInput("steer")], followUp: [...sdk.followUp, ...this.queuedInput("followUp")], submissions: this.clarification.state.queue };
+        this.clarification.save({ ...this.clarification.state, queue: [] });
+        return result;
       }
 
-      case "steer": {
-        const steerImages = command.images as Array<{ type: "image"; data: string; mimeType: string }> | undefined;
-        await this.inner.steer(command.message as string, steerImages?.length ? steerImages : undefined);
-        return null;
-      }
-
-      case "follow_up": {
-        const followImages = command.images as Array<{ type: "image"; data: string; mimeType: string }> | undefined;
-        await this.inner.followUp(command.message as string, followImages?.length ? followImages : undefined);
-        return null;
-      }
+      case "steer":
+      case "follow_up":
+        return this.send({ ...command, type: "prompt", streamingBehavior: type === "steer" ? "steer" : "followUp" });
 
       case "get_tools": {
         const all: ToolInfo[] = this.inner.getAllTools();
@@ -1327,7 +1448,7 @@ export class AgentSessionWrapper {
       }
 
       case "get_commands": {
-        const commands: SlashCommandInfo[] = [];
+        const commands: Array<SlashCommandInfo & { organizationCapability?: OrganizationCapabilityRef }> = [];
         for (const registered of this.inner.extensionRunner.getRegisteredCommands()) {
           commands.push({
             name: registered.invocationName,
@@ -1344,11 +1465,12 @@ export class AgentSessionWrapper {
             sourceInfo: template.sourceInfo,
           });
         }
-        for (const skill of this.inner.resourceLoader.getSkills().skills) {
+        for (const skill of annotateOrganizationSkills(this.cwd, this.inner.resourceLoader.getSkills().skills)) {
           commands.push({
             name: `skill:${skill.name}`,
             description: skill.description,
             source: "skill",
+            organizationCapability: skill.organizationCapability,
             sourceInfo: skill.sourceInfo,
           });
         }
@@ -1361,6 +1483,7 @@ export class AgentSessionWrapper {
         }
         const toolNames = command.toolNames as string[];
         this.setForceEmptySystemPrompt(toolNames.length === 0);
+        if (toolNames.length === 0) this.clarification.allowed = false;
         this.inner.setActiveToolsByName(withExtensionTools(this.inner, toolNames));
         this.applyForcedEmptySystemPrompt();
         return null;
@@ -1435,7 +1558,9 @@ export class AgentSessionWrapper {
   destroy(): void {
     if (!this._alive) return;
     this._alive = false;
+    this.clarification.dispose();
     clearMcpRuntime(this.inner.sessionId);
+    clearPluginSnapshot(this.inner.sessionId);
     if (this.idleTimer) clearTimeout(this.idleTimer);
     if (this.inner.isBashRunning) this.inner.abortBash();
     this.unsubscribe?.();
@@ -2276,8 +2401,8 @@ export async function startRpcSession(
       cwd: sessionCwd,
       agentDir,
       resourceLoaderOptions: {
-        extensionFactories: [installBuiltInMcpAdapter, installHazeManagedMcpRuntime, EUREKA_NATIVE_PLAN_EXTENSION, EUREKA_MCP_EXTENSION, EUREKA_TASK_PROGRESS_EXTENSION],
-        skillsOverride: (base) => applyHazeProjectSkillOverrides(sessionCwd, base),
+        extensionFactories: [EUREKA_NATIVE_PLAN_EXTENSION, installBuiltInMcpAdapter, installHazeManagedMcpRuntime, installPluginBrowserHandoff, EUREKA_MCP_EXTENSION, EUREKA_TASK_PROGRESS_EXTENSION, EUREKA_WRITE_DIFF_EXTENSION],
+        skillsOverride: (base) => applyOrganizationPluginSkills(sessionCwd, applyHazeProjectSkillOverrides(sessionCwd, base)),
       },
       ...(trustReloadOptions ? { resourceLoaderReloadOptions: trustReloadOptions } : {}),
     });

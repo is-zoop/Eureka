@@ -1,10 +1,10 @@
+import { browserOwner, clearBrowserIdentity } from "../browser-runtime";
 import "server-only";
 
 import { cookies } from "next/headers";
 import { AUTH_SESSION_COOKIE, AUTH_TRANSACTION_COOKIE, getAuthConfig, MARKETPLACE_PERMISSION } from "@/lib/auth/config";
 import { seal, unseal } from "@/lib/auth/crypto";
 import { readAuthSessionValue } from "@/lib/auth/session-value";
-import { rememberHazeAccessSession } from "@/lib/auth/access-token-cache";
 import { clearRuntimeHazeSession, writeRuntimeHazeSession } from "@/lib/auth/runtime-session";
 import type { AuthSession, AuthTransaction } from "@/lib/auth/types";
 import { GUEST_SESSION_COOKIE, GUEST_SESSION_MAX_AGE, isGuestSessionValue } from "@/lib/auth/guest";
@@ -36,8 +36,8 @@ export function clearGuestSession(store: CookieWriter) {
   store.set(GUEST_SESSION_COOKIE, "", authCookieOptions(0));
 }
 
-export function writeGuestSession(store: CookieWriter) {
-  clearAuthSession(store);
+export async function writeGuestSession(store: CookieWriter) {
+  await clearAuthSession(store);
   clearTransaction(store);
   store.set(GUEST_SESSION_COOKIE, "1", authCookieOptions(GUEST_SESSION_MAX_AGE));
 }
@@ -60,13 +60,13 @@ export async function readAuthSession(): Promise<AuthSession | null> {
   return session;
 }
 
-export function writeAuthSession(store: CookieWriter, session: AuthSession) {
+export async function writeAuthSession(store: CookieWriter, session: AuthSession) {
   const config = getAuthConfig();
   if (!config) throw new Error("Marketplace identity provider is not configured");
-  // Haze access tokens may carry a large capability list. Persisting them with
-  // the refresh token can exceed browsers' 4 KB cookie limit and silently drop
-  // the whole session. A future market API can mint a short-lived access token
-  // server-side from this encrypted refresh token when needed.
+  const newLogin = !session.runtimeId;
+  if (newLogin) session = await writeRuntimeHazeSession(session);
+  // Keep the cookie small; access tokens stay in the encrypted host state.
+  // Its login id, rather than this refresh-token snapshot, resolves rotation.
   const persistedSession = {
     ...session,
     accessToken: undefined,
@@ -82,14 +82,14 @@ export function writeAuthSession(store: CookieWriter, session: AuthSession) {
         : [],
     },
   };
-  rememberHazeAccessSession(session);
-  writeRuntimeHazeSession(session);
+  if (newLogin) clearBrowserIdentity(browserOwner(config.issuer, session.principal.subject));
   store.set(AUTH_SESSION_COOKIE, seal(persistedSession, config.sessionSecret), authCookieOptions(YEAR));
   clearGuestSession(store);
 }
 
-export function clearAuthSession(store: CookieWriter) {
-  clearRuntimeHazeSession();
+export async function clearAuthSession(store: CookieWriter, binding?: AuthSession | null) {
+  const cleared = await clearRuntimeHazeSession(binding);
+  if (cleared !== false) clearBrowserIdentity();
   store.set(AUTH_SESSION_COOKIE, "", authCookieOptions(0));
 }
 

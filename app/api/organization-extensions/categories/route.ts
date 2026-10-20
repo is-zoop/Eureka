@@ -12,7 +12,7 @@ export async function GET() {
     const { accessToken, session } = await getHazeMarketplaceSession();
     const items = await listOrganizationExtensionCategories(accessToken);
     const response = NextResponse.json({ items });
-    writeAuthSession(response.cookies, session);
+    await writeAuthSession(response.cookies, session);
     return response;
   } catch (error) {
     return errorResponse(error instanceof OrganizationExtensionsError ? error : new OrganizationExtensionsError("unavailable"));

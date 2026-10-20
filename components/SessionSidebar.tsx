@@ -7,11 +7,13 @@ import { useEffect, useLayoutEffect, useState, useCallback, useMemo, useRef, typ
 import type { SessionInfo } from "@/lib/types";
 import { loadExplorerOpen, saveExplorerOpen } from "@/lib/file-explorer-state";
 import { dispatchSessionRowContextMenu } from "@/lib/session-row-context-menu";
+import { splitPluginSelection } from "@/lib/plugin-selection";
 import { skillExpansionToCommand } from "@/lib/slash-display";
 import { clearLastSelectedProject, getLastSelectedProject, setLastSelectedProject } from "@/lib/workspace-memory";
 import { useI18n } from "@/hooks/useI18n";
 import { DirectoryPicker } from "./DirectoryPicker";
 import { ProjectLabel } from "./ProjectLabel";
+import { LabelTooltip } from "./LabelTooltip";
 import { FileExplorer, type FileExplorerHandle } from "./FileExplorer";
 import {
   DropdownMenu,
@@ -107,10 +109,7 @@ function ToolbarIconButton({
 
 function SidebarActionTooltip({ content, children }: { content: string; children: React.ReactElement }) {
   return (
-    <Tooltip>
-      <TooltipTrigger render={children} />
-      <TooltipContent side="right">{content}</TooltipContent>
-    </Tooltip>
+    <LabelTooltip content={content} side="right">{children}</LabelTooltip>
   );
 }
 
@@ -958,7 +957,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
   const normalizedSessionSearch = sessionSearchQuery.trim().toLocaleLowerCase();
   const filteredSessions = normalizedSessionSearch
     ? projectSessions.filter((session) => {
-        const firstMessage = skillExpansionToCommand(session.firstMessage) ?? session.firstMessage;
+        const firstMessage = skillExpansionToCommand(session.firstMessage) ?? splitPluginSelection(session.firstMessage).text;
         const title = session.name || firstMessage || session.id;
         return title.toLocaleLowerCase().includes(normalizedSessionSearch);
       })
@@ -2239,7 +2238,7 @@ function SessionItem({
   // A stored first message may be an SDK-expanded <skill> block; collapse it
   // back to the compact /skill:name args command the user typed before using
   // it as the auto-name fallback, mirroring MessageView's rendering.
-  const displayFirstMessage = skillExpansionToCommand(session.firstMessage) ?? session.firstMessage;
+  const displayFirstMessage = skillExpansionToCommand(session.firstMessage) ?? splitPluginSelection(session.firstMessage).text;
   const title = session.name || displayFirstMessage.slice(0, 50) || session.id.slice(0, 12);
 
   const startRename = useCallback((e: React.MouseEvent) => {
@@ -2342,6 +2341,7 @@ function SessionItem({
           </div>
         </AlertDialogContent>
       </AlertDialog>
+    <LabelTooltip content={title} disabled={renaming || confirmDelete || actionMenuOpen} side="right">
     <div
       ref={sessionRowRef}
       onClick={confirmDelete || renaming ? undefined : (event) => {
@@ -2406,31 +2406,24 @@ function SessionItem({
             </svg>
           )}
           <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 8 }}>
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 5,
-                      minWidth: 0,
-                      flex: 1,
-                      fontSize: 13,
-                      fontWeight: 400,
-                      lineHeight: "16px",
-                      color: "var(--text)",
-                    }}
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 5,
+                  minWidth: 0,
+                  flex: 1,
+                  fontSize: 13,
+                  fontWeight: 400,
+                  lineHeight: "16px",
+                  color: "var(--text)",
+                }}
 
-                  >
-                    <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>
-                      {title}
-                    </span>
-                  </div>
-                }
-              />
-              <TooltipContent>{title}</TooltipContent>
-            </Tooltip>
+              >
+                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>
+                  {title}
+                </span>
+              </div>
             {(isRunning || isUnread) && <span aria-label={isRunning ? t("sidebar.agentRunning") : t("sidebar.newSessionActivity")} style={{ width: 6, height: 6, flexShrink: 0, borderRadius: "50%", background: isRunning ? "var(--accent)" : "#f59e0b" }} />}
             <span onMouseEnter={() => setMetaHovered(true)} onMouseLeave={() => setMetaHovered(false)} style={{ flexShrink: 0, color: "var(--text-muted)", fontSize: 10, whiteSpace: "nowrap", visibility: metaHovered || actionMenuOpen ? "hidden" : "visible" }}>{relativeTime}</span>
           </div>
@@ -2572,10 +2565,12 @@ function SessionItem({
                     {t("sidebar.rename")}
                   </button>
                   <div style={{ height: 1, margin: "2px 0", background: "var(--border)" }} />
-                  <button role="menuitem" title={t("sidebar.deleteWithShiftClick")} onClick={(event) => { handleDeleteClick(event); setActionMenuOpen(false); }} style={{ display: "flex", alignItems: "center", gap: 7, width: "100%", height: 24, padding: "0 8px", background: "transparent", border: "none", borderRadius: 5, color: "var(--danger)", cursor: "pointer", textAlign: "left", fontSize: 11, fontWeight: 600 }} onMouseEnter={(event) => { event.currentTarget.style.background = "var(--danger-hover)"; }} onMouseLeave={(event) => { event.currentTarget.style.background = "transparent"; }}>
+                  <SidebarActionTooltip content={t("sidebar.deleteWithShiftClick")}>
+                  <button role="menuitem" onClick={(event) => { handleDeleteClick(event); setActionMenuOpen(false); }} style={{ display: "flex", alignItems: "center", gap: 7, width: "100%", height: 24, padding: "0 8px", background: "transparent", border: "none", borderRadius: 5, color: "var(--danger)", cursor: "pointer", textAlign: "left", fontSize: 11, fontWeight: 600 }} onMouseEnter={(event) => { event.currentTarget.style.background = "var(--danger-hover)"; }} onMouseLeave={(event) => { event.currentTarget.style.background = "transparent"; }}>
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path fill="none" stroke="var(--danger)" strokeMiterlimit="10" strokeWidth="1.8" d="M16.88 22.5H7.12a1.9 1.9 0 0 1-1.9-1.8L4.36 5.32h15.28l-.86 15.38a1.9 1.9 0 0 1-1.9 1.8ZM2.45 5.32h19.1M10.09 1.5h3.82a1.91 1.91 0 0 1 1.91 1.91v1.91H8.18V3.41a1.91 1.91 0 0 1 1.91-1.91ZM12 8.18v11.46m3.82-11.46v11.46M8.18 8.18v11.46" /></svg>
                     {t("sidebar.delete")}
                   </button>
+                  </SidebarActionTooltip>
                 </div>
               )}
               <div style={{ display: "none" }}>
@@ -2640,6 +2635,7 @@ function SessionItem({
         </>
       )}
     </div>
+    </LabelTooltip>
     </>
   );
 }

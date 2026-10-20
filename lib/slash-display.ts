@@ -1,3 +1,4 @@
+import { splitPluginSelection } from "./plugin-selection";
 /**
  * Display-only restoration for the exact envelope emitted by pi's
  * `_expandSkillCommand`. The expanded text remains the stored session input.
@@ -14,6 +15,7 @@ const SKILL_EXPANSION_RE = /^<skill name="([^"\n]+)" location="([^"\n]+)">\nRefe
  * when a skill body contains an example `</skill>` tag.
  */
 export function skillExpansionToCommand(text: string): string | null {
+  text = splitPluginSelection(text).text;
   const match = text.match(SKILL_EXPANSION_RE);
   if (!match) return null;
 

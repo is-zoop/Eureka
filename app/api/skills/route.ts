@@ -1,3 +1,4 @@
+import { isManagedPluginPath } from "@/lib/haze-plugin-paths";
 import { NextResponse } from "next/server";
 import { existsSync, readFileSync, writeFileSync } from "fs";
 import { homedir } from "os";
@@ -33,6 +34,7 @@ export async function PATCH(req: Request) {
     const body = await req.json() as { filePath: string; disableModelInvocation: boolean };
     const { filePath, disableModelInvocation } = body;
     if (!filePath) return NextResponse.json({ error: "filePath required" }, { status: 400 });
+    if (await isManagedPluginPath(filePath)) return NextResponse.json({ error: "此技能由组织插件管理，请在组织插件中操作" }, { status: 409 });
     if (!existsSync(filePath)) return NextResponse.json({ error: "file not found" }, { status: 404 });
     const allowedRoots = new Set(await getAllowedFileRoots());
     allowedRoots.add(getAgentDir());

@@ -21,43 +21,15 @@ export interface EurekaPlanTodo {
   done: boolean;
 }
 
-export interface EurekaPlanQuestionOption {
-  id: string;
-  label: string;
-  description: string;
-}
-
-export type EurekaPlanQuestionSelection = "single" | "multiple";
-
-export interface EurekaPlanQuestionAnswer {
-  /** Kept for compatibility with sessions created before multi-select support. */
-  optionId?: string;
-  optionIds?: string[];
-  text: string;
-  custom: boolean;
-  skipped?: boolean;
-}
-
-export interface EurekaPlanQuestionResponse {
-  questionId: string;
-  optionIds?: string[];
-  customAnswer?: string;
-  skipped?: boolean;
-}
-
-export interface EurekaPlanQuestion {
-  id: string;
-  toolCallId: string;
-  title: string;
-  question: string;
-  options: EurekaPlanQuestionOption[];
-  /** Missing on historical entries means the original single-choice behavior. */
-  selection?: EurekaPlanQuestionSelection;
-  status: "pending" | "answered";
-  answer?: EurekaPlanQuestionAnswer;
-  askedAt: string;
-  answeredAt?: string;
-}
+export type {
+  UserInputOption as EurekaPlanQuestionOption,
+  UserInputSelection as EurekaPlanQuestionSelection,
+  UserInputAnswer as EurekaPlanQuestionAnswer,
+  UserInputResponse as EurekaPlanQuestionResponse,
+  UserInputQuestion as EurekaPlanQuestion,
+} from "./user-input";
+import type { UserInputQuestion as EurekaPlanQuestion, UserInputAnswer as EurekaPlanQuestionAnswer } from "./user-input";
+export { validateUserInputResponse as validatePlanQuestionResponse } from "./user-input";
 
 export interface EurekaPlanState {
   phase: EurekaPlanPhase;
@@ -132,17 +104,53 @@ export function isDraftPlanEntry(state: EurekaPlanState, entryIds: readonly stri
   return messageIndex > boundaryIndex;
 }
 
-export function parsePlanTodos(content: string): EurekaPlanTodo[] {
-  const todos: EurekaPlanTodo[] = [];
-  let inExecutableSection = false;
+type PlanSection = "goal" | "steps" | "verification" | null;
+
+/** Keep review validation, normalization, and progress on the same sections. */
+function getPlanLines(content: string): { line: string; section: PlanSection }[] {
+  let section: PlanSection = null;
+  let fence: { marker: string; length: number } | null = null;
+  const lines: { line: string; section: PlanSection }[] = [];
   for (const line of content.split(/\r?\n/)) {
+    const fenceMatch = line.match(/^\s{0,3}(`{3,}|~{3,})/);
+    if (fence || fenceMatch) {
+      if (!fence && fenceMatch) {
+        fence = { marker: fenceMatch[1][0], length: fenceMatch[1].length };
+      } else if (fence && fenceMatch && fenceMatch[1][0] === fence.marker
+        && fenceMatch[1].length >= fence.length && !line.slice(fenceMatch[0].length).trim()) {
+        fence = null;
+      }
+      lines.push({ line, section: null });
+      continue;
+    }
     const heading = line.match(/^\s{0,3}#{1,6}\s+(.+?)\s*#*\s*$/);
     if (heading) {
       const title = heading[1].trim().replace(/[：:]$/, "");
-      inExecutableSection = /^(?:实施(?:步骤|清单)?|实现(?:步骤|清单)?|implementation steps?|验证(?:方式)?|verification)$/i.test(title);
-      continue;
+      section = /^(?:目标|goal)$/i.test(title) ? "goal"
+        : /^(?:实施(?:步骤|清单)?|实现(?:步骤|清单)?|implementation steps?)$/i.test(title) ? "steps"
+          : /^(?:验证(?:方式)?|verification)$/i.test(title) ? "verification" : null;
+      lines.push({ line, section: null });
+    } else {
+      lines.push({ line, section });
     }
-    if (!inExecutableSection) continue;
+  }
+  return lines;
+}
+
+/** Models sometimes use ordinary verification bullets in an otherwise valid plan. */
+export function normalizePlanForReview(content: string): string {
+  return getPlanLines(content).map(({ line, section }) => {
+    if (section !== "verification") return line;
+    const bullet = line.match(/^(\s*)(?:[-*+]|\d+[.)])\s+(\S.*)$/);
+    if (!bullet || /^\[[ xX]\](?:\s|$)/.test(bullet[2])) return line;
+    return `${bullet[1]}- [ ] ${bullet[2]}`;
+  }).join("\n");
+}
+
+export function parsePlanTodos(content: string): EurekaPlanTodo[] {
+  const todos: EurekaPlanTodo[] = [];
+  for (const { line, section } of getPlanLines(content)) {
+    if (section !== "steps" && section !== "verification") continue;
     // A plan may contain bullets for affected areas and risks.  Those describe
     // context, not work the agent can complete, so only explicit task-list
     // items from executable sections become progress entries.
@@ -155,11 +163,10 @@ export function parsePlanTodos(content: string): EurekaPlanTodo[] {
 
 /** A reviewable plan needs a goal, an actionable checklist, and verification. */
 export function isReviewablePlan(content: string): boolean {
-  const hasGoal = /(?:^|\n)#{1,6}\s*(?:目标|Goal)(?:\s|$)/im.test(content);
-  const hasSteps = /(?:^|\n)#{1,6}\s*(?:实施(?:步骤|清单)?|实现(?:步骤|清单)?|Implementation steps?)(?:\s|$)/im.test(content)
-    && /^\s*[-*+]\s+\[ \]\s+.+$/m.test(content);
-  const hasVerification = /(?:^|\n)#{1,6}\s*(?:验证(?:方式)?|Verification)(?:\s|$)/im.test(content)
-    && /^\s*[-*+]\s+\[ \]\s+.+$/m.test(content.slice(content.search(/(?:^|\n)#{1,6}\s*(?:验证(?:方式)?|Verification)(?:\s|$)/im)));
+  const lines = getPlanLines(normalizePlanForReview(content));
+  const hasGoal = lines.some(({ line, section }) => section === "goal" && Boolean(line.trim()));
+  const hasSteps = lines.some(({ line, section }) => section === "steps" && /^\s*[-*+]\s+\[ \]\s+.+$/.test(line));
+  const hasVerification = lines.some(({ line, section }) => section === "verification" && /^\s*[-*+]\s+\[ \]\s+.+$/.test(line));
   return hasGoal && hasSteps && hasVerification;
 }
 
@@ -234,36 +241,6 @@ export function getPlanQuestionOptionIds(answer?: EurekaPlanQuestionAnswer): str
   if (!answer) return [];
   if (Array.isArray(answer.optionIds)) return answer.optionIds;
   return answer.optionId ? [answer.optionId] : [];
-}
-
-/** Validates one answer before a whole question group is persisted atomically. */
-export function validatePlanQuestionResponse(
-  question: EurekaPlanQuestion,
-  response: EurekaPlanQuestionResponse,
-): EurekaPlanQuestionAnswer {
-  const optionIds = Array.isArray(response.optionIds)
-    ? [...new Set(response.optionIds.filter((id): id is string => typeof id === "string" && id.length > 0))]
-    : [];
-  const customAnswer = typeof response.customAnswer === "string" ? response.customAnswer.trim() : "";
-  if (response.skipped === true) {
-    if (optionIds.length > 0 || customAnswer) throw new Error("A skipped question cannot also include an answer");
-    return { optionIds: [], text: "Skipped", custom: false, skipped: true };
-  }
-  if (customAnswer) {
-    if (optionIds.length > 0) throw new Error("A custom answer cannot be combined with selected options");
-    return { optionIds: [], text: customAnswer, custom: true, skipped: false };
-  }
-  if (optionIds.length === 0) throw new Error("Choose an option, provide a custom answer, or skip the question");
-  if ((question.selection ?? "single") === "single" && optionIds.length !== 1) throw new Error("This question accepts exactly one option");
-  const selectedOptions = optionIds.map((id) => question.options.find((option) => option.id === id));
-  if (selectedOptions.some((option) => !option)) throw new Error("The selected option is not available for this question");
-  return {
-    optionId: optionIds.length === 1 ? optionIds[0] : undefined,
-    optionIds,
-    text: selectedOptions.map((option) => option!.label).join("、"),
-    custom: false,
-    skipped: false,
-  };
 }
 
 function isPlanState(value: unknown): value is EurekaPlanState {

@@ -1,3 +1,4 @@
+import { dedupePlugins, type SelectedPlugin } from "./plugin-selection";
 import {
   MAX_ATTACHED_IMAGES,
   isBase64ImageWithinLimits,
@@ -18,6 +19,7 @@ export interface ChatDraft {
   value: string;
   images: ChatDraftImage[];
   references?: ChatDraftReference[];
+  selectedPlugins?: SelectedPlugin[];
 }
 
 const drafts = new Map<string, ChatDraft>();
@@ -25,6 +27,7 @@ const drafts = new Map<string, ChatDraft>();
 function cloneDraft(draft: ChatDraft): ChatDraft {
   const references = (draft.references ?? []).map((reference) => ({ ...reference }));
   return {
+    ...(draft.selectedPlugins?.length ? { selectedPlugins: dedupePlugins(draft.selectedPlugins) } : {}),
     value: draft.value,
     images: draft.images.map((image) => ({ ...image })),
     ...(references.length ? { references } : {}),
@@ -32,7 +35,7 @@ function cloneDraft(draft: ChatDraft): ChatDraft {
 }
 
 function isEmptyDraft(draft: ChatDraft): boolean {
-  return !draft.value && draft.images.length === 0 && (draft.references?.length ?? 0) === 0;
+  return !(draft.selectedPlugins?.length) && !draft.value && draft.images.length === 0 && (draft.references?.length ?? 0) === 0;
 }
 
 export function getDraft(key: string): ChatDraft | null {
@@ -65,6 +68,8 @@ export function mergeRestoredSubmissionDraft(
   currentImages: ChatDraftImage[],
   submittedReferences?: ChatDraftReference[],
   currentReferences: ChatDraftReference[] = [],
+  submittedPlugins: SelectedPlugin[] = [],
+  currentPlugins: SelectedPlugin[] = [],
 ): ChatDraft {
   const images = [...(submittedImages ?? []), ...currentImages]
     .filter(isBase64ImageWithinLimits)
@@ -72,6 +77,7 @@ export function mergeRestoredSubmissionDraft(
     .map(({ data, mimeType }) => ({ data, mimeType }));
 
   return {
+    ...([...submittedPlugins, ...currentPlugins].length ? { selectedPlugins: dedupePlugins([...submittedPlugins, ...currentPlugins]) } : {}),
     value: mergeRestoredSubmissionText(submittedText, currentText),
     images,
     ...(dedupeReferences([...(submittedReferences ?? []), ...(currentReferences ?? [])]).length
@@ -95,6 +101,7 @@ export function restoreDraftSubmission(
   text: string,
   images?: ChatDraftImage[],
   references?: ChatDraftReference[],
+  selectedPlugins?: SelectedPlugin[],
 ): ChatDraft {
   const current = getDraft(key) ?? { value: "", images: [], references: [] };
   const restored = mergeRestoredSubmissionDraft(
@@ -104,6 +111,8 @@ export function restoreDraftSubmission(
     current.images,
     references,
     current.references,
+    selectedPlugins,
+    current.selectedPlugins,
   );
   setDraft(key, restored);
   return restored;
@@ -125,7 +134,7 @@ export function rekeyDraft(
   if (!previous) return next;
 
   const merged = next
-    ? mergeRestoredSubmissionDraft(next.value, next.images, previous.value, previous.images, next.references, previous.references)
+    ? mergeRestoredSubmissionDraft(next.value, next.images, previous.value, previous.images, next.references, previous.references, next.selectedPlugins, previous.selectedPlugins)
     : previous;
   setDraft(nextKey, merged);
   return cloneDraft(merged);

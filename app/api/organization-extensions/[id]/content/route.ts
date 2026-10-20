@@ -15,7 +15,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const { accessToken, session } = await getHazeMarketplaceSession();
     const content = await fetchOrganizationExtensionContent(id, file, accessToken);
     const response = NextResponse.json(content);
-    writeAuthSession(response.cookies, session);
+    await writeAuthSession(response.cookies, session);
     return response;
   } catch (error) {
     return errorResponse(error instanceof OrganizationExtensionsError ? error : new OrganizationExtensionsError("unavailable"));

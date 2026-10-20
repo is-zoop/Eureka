@@ -61,7 +61,8 @@ test("historical thinking duration is approximate and missing timing is explicit
     content: [{ type: "thinking", thinking: "one" }] };
   const estimated = renderThinkingRecord(message, 0, { completedAt: 4900 });
   assert.match(estimated, /~4s/);
-  assert.match(estimated, /title="Estimated:/);
+  assert.match(estimated, /class="tool-activity-duration"[^>]*data-slot="tooltip-trigger"/);
+  assert.doesNotMatch(estimated, /title=/);
   const multi = renderThinkingRecord({ ...message, content: [...message.content, { type: "thinking", thinking: "two" }] }, 1, { completedAt: 4900 });
   assert.match(multi, /Time not recorded/);
   assert.doesNotMatch(multi, /~4s/);
@@ -78,7 +79,9 @@ test("remounted deferred thinking retains its summary and completed duration wit
     preview: "Querying 2025 platform category data" }] }, 0, { sessionId });
   for (const html of [first, remounted]) {
     assert.match(html, /tool-activity-duration">7s/);
-    assert.match(html, /tool-activity-preview" title="Querying 2025 platform category data">Querying 2025 platform category data/);
+    assert.match(html, /tool-activity-preview">Querying 2025 platform category data/);
+    assert.match(html, /class="tool-activity-summary"[^>]*data-slot="tooltip-trigger"/);
+    assert.doesNotMatch(html, /title=/);
     assert.doesNotMatch(html, /\*\*|Time not recorded|thinking-activity-content/);
   }
   rememberThinkingDuration("estimate-retained:1500:0", 4);
@@ -101,7 +104,8 @@ test("reopening a stage restores streamed summaries when history has no preview 
       rememberMessageThinkingPreviews(sessionId, saved, "thought-entry");
       for (let reopen = 0; reopen < 2; reopen++) {
         const html = renderThinkingRecord(saved, 0, { sessionId });
-        assert.match(html, /tool-activity-preview" title="Formulating query for shop and category metrics">Formulating query for shop and category metrics/);
+        assert.match(html, /tool-activity-preview">Formulating query for shop and category metrics/);
+        assert.match(html, /class="tool-activity-summary"[^>]*data-slot="tooltip-trigger"/);
         assert.doesNotMatch(html, /thinking-activity-content|\*\*/);
       }
     }
@@ -131,7 +135,7 @@ function renderTool(toolName, input, { result = true, isError = false, isStreami
   });
 }
 
-test("completed file tools render a compact summary with basename chips and full path tooltips", () => {
+test("completed file tools render a compact summary with basename chips and library tooltip triggers", () => {
   for (const [tool, input, label] of [
     ["read", { path: "C:\\work\\deployment.md" }, "Read file"],
     ["edit", { path: "/work/deployment.md", oldText: "old", newText: "new" }, "Edit file"],
@@ -141,7 +145,8 @@ test("completed file tools render a compact summary with basename chips and full
     assert.match(html, /class="tool-activity" data-status="completed"/);
     assert.match(html, /class="tool-activity-file"[^>]*>deployment\.md<\/span>/);
     assert.match(html, new RegExp(label));
-    assert.ok(html.includes(`title="${input.path ?? input.file_path}"`));
+    assert.match(html, /class="tool-activity-summary"[^>]*data-slot="tooltip-trigger"/);
+    assert.doesNotMatch(html, /title=/);
     assert.match(html, /aria-expanded="false"/);
     assert.match(html, /class="tool-activity-duration">1s/);
     assert.doesNotMatch(html, /Detailed output stays collapsed|tool-activity-details|rgba\(34,197,94/);

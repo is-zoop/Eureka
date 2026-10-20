@@ -1,3 +1,5 @@
+import { readClarificationState } from "@/lib/clarification";
+import { closeSessionBrowsers } from "@/lib/browser-runtime";
 import { NextResponse } from "next/server";
 import { existsSync, readdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from "fs";
 import { dirname, join } from "path";
@@ -76,6 +78,7 @@ export async function GET(
       tree,
       context,
       planMode,
+      clarification: readClarificationState(sm.getBranch() as never),
       totalActiveMs,
     });
   } catch (error) {
@@ -150,6 +153,7 @@ export async function DELETE(
       }
     } catch { /* skip if dir unreadable */ }
 
+    await closeSessionBrowsers(id);
     await getRpcSession(id)?.shutdown();
     unlinkSync(filePath);
     invalidateSessionPathCache(id);

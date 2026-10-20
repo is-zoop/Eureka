@@ -1,3 +1,4 @@
+import { createRequire } from "node:module";
 import { spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, rmSync, copyFileSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -34,6 +35,12 @@ for (const packageName of piPackageNames) {
     throw new Error(`@earendil-works/${packageName} is not installed in the repository root.`);
   }
 }
+// Resolve the exact browser revision used by the production dependency.
+const require = createRequire(import.meta.url);
+const { chromium } = require(join(rootDir, "node_modules", "playwright"));
+const chromiumExecutable = chromium.executablePath();
+if (!existsSync(chromiumExecutable)) throw new Error("Chromium is missing. Run npm run browser:install before packaging.");
+const chromiumRevisionDir = dirname(dirname(chromiumExecutable));
 mkdirSync(buildHome, { recursive: true });
 
 const build = spawnSync(process.execPath, [nextBin, "build", "--webpack"], {
@@ -77,7 +84,27 @@ for (const packageName of piPackageNames) {
 // output tracer cannot discover. Copy the package (and its nested production
 // dependencies) explicitly so AgentSession startup works after installation.
 cpSync(mcpAdapterDir, join(appDir, "node_modules", "pi-mcp-adapter"), { recursive: true });
+// Header hooks run as plain Node children, outside Next's bundled modules.
+mkdirSync(join(appDir, "lib", "auth"), { recursive: true });
+for (const file of ["haze-mcp-request-headers.mjs", "haze-plugin-auth.mjs", "auth/haze-runtime-store.mjs"]) {
+  copyFileSync(join(rootDir, "lib", file), join(appDir, "lib", file));
+}
+// Include dependencies used by the unbundled hook even if Next inlines them.
+for (const name of ["@next/env", "proper-lockfile", "graceful-fs", "retry", "signal-exit"]) {
+  cpSync(join(rootDir, "node_modules", name), join(appDir, "node_modules", name), { recursive: true });
+}
 cpSync(join(rootDir, "public"), join(appDir, "public"), { recursive: true });
 cpSync(join(rootDir, ".next", "static"), join(appDir, ".next", "static"), { recursive: true });
 if (existsSync(runtimeEnvFile)) copyFileSync(runtimeEnvFile, join(appDir, ".env.local"));
 copyFileSync(process.execPath, join(nodeDir, process.platform === "win32" ? "node.exe" : "node"));
+
+// Playwright is imported dynamically by the server. Include its runtime and the
+// matching Chromium revision; never require a first-run browser download.
+for (const name of ["playwright", "playwright-core"]) {
+  cpSync(join(rootDir, "node_modules", name), join(appDir, "node_modules", name), { recursive: true });
+}
+cpSync(chromiumRevisionDir, join(appDir, "browser", "chromium"), { recursive: true });
+const browserRelativeExecutable = chromiumExecutable.slice(chromiumRevisionDir.length + 1);
+// The sidecar resolves this relative path under its own application directory.
+const { writeFileSync } = await import("node:fs");
+writeFileSync(join(appDir, "browser", "runtime.json"), JSON.stringify({ executable: join("chromium", browserRelativeExecutable) }));

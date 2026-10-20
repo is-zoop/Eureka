@@ -1,4 +1,5 @@
 import type { ResourceDiagnostic } from "@earendil-works/pi-coding-agent";
+import type { OrganizationCapabilityRef } from "./organization-capability";
 
 export interface SkillSearchResult {
   package: string;
@@ -36,6 +37,8 @@ export interface SkillUpdateResult {
 }
 
 export interface SkillInfo {
+  organizationCapability?: OrganizationCapabilityRef;
+  managedPlugin?: { capabilityId: string; name: string; scope: "project" | "global" };
   name: string;
   description: string;
   filePath: string;
@@ -139,11 +142,28 @@ export interface McpServerSummary extends McpServerInput {
   error?: string;
 }
 
+export type McpListenState = "active" | "dropped" | "re-establishing" | "legacy" | "not-listening" | "disconnected";
+
+export interface McpRuntimeServerStatus {
+  name: string;
+  state: McpServerRuntimeState;
+  toolCount: number;
+  disabled: boolean;
+  directToolCount?: number;
+  resourceCount?: number;
+  failedAgoSeconds?: number;
+  listenState?: McpListenState;
+  catalogStale?: boolean;
+}
+
 export interface McpRuntimeStatus {
   sessionId: string;
   updatedAt: string;
-  servers: Array<{ name: string; state: McpServerRuntimeState; toolCount: number; disabled: boolean }>;
+  servers: McpRuntimeServerStatus[];
   totalTools: number;
+  totalResources?: number;
+  connectedCount?: number;
+  disabledCount?: number;
 }
 
 export interface McpServersResponse {
@@ -151,11 +171,13 @@ export interface McpServersResponse {
   configPath: string;
   servers: McpServerSummary[];
   managedServers?: HazeManagedMcpSummary[];
+  pluginServers?: Array<{ capabilityId: string; organizationCapability?: OrganizationCapabilityRef; pluginName: string; name: string; url: string; disabled: boolean }>;
   diagnostics: string[];
 }
 
 /** An HTTP MCP installed from Haze. It is runtime-managed and cannot be edited as a normal MCP server. */
 export interface HazeManagedMcpSummary {
+  organizationCapability?: OrganizationCapabilityRef;
   capabilityId: string;
   name: string;
   version: string;

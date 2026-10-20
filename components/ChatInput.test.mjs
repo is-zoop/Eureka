@@ -55,10 +55,11 @@ test("keeps the model selector visible when a model error leaves no options", ()
   );
 
   assert.match(html, />No models</);
-  assert.match(html, /title="No available models"/);
+  // Tooltip help is portaled; server markup contains the trigger and visible state.
+  assert.match(html, /data-base-ui-tooltip-trigger=""/);
 });
 
-test("renders the read-only tool preset as the active selection", () => {
+test("keeps tool permissions and manual compaction out of the bottom toolbar", () => {
   const html = renderToStaticMarkup(
     React.createElement(
       I18nProvider,
@@ -67,14 +68,17 @@ test("renders the read-only tool preset as the active selection", () => {
         onSend() {},
         onAbort() {},
         onToolPresetChange() {},
+        onCompact() {},
         isStreaming: false,
         toolPreset: "read-only",
       }),
     ),
   );
 
-  assert.match(html, /title="Change tool preset: read-only"/);
-  assert.match(html, />read-only<\/span>/);
+  assert.doesNotMatch(html, /aria-label="Change tool preset"/);
+  assert.doesNotMatch(html, /aria-label="Compact context"/);
+  assert.doesNotMatch(html, />Read-only<\/span>/);
+  assert.match(html, /aria-label="Add images or commands"/);
 });
 
 test("shows and locks the optimistic model while a switch is pending", () => {
@@ -94,7 +98,7 @@ test("shows and locks the optimistic model while a switch is pending", () => {
     ),
   );
 
-  assert.match(html, /title="Switching model"/);
+  assert.match(html, /data-base-ui-tooltip-trigger=""/);
   assert.match(html, /aria-busy="true"/);
   assert.match(html, /disabled=""/);
   assert.match(html, />DeepSeek V4 Flash</);

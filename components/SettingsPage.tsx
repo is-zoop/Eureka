@@ -4,10 +4,12 @@ import Link from "next/link";
 import { useState } from "react";
 import { ModelsConfig } from "@/components/ModelsConfig";
 import { UsageStatisticsPage } from "@/components/UsageStatistics";
-import { Combobox, ComboboxContent, ComboboxInput, ComboboxItem, ComboboxList } from "@/components/ui/combobox";
+import { SettingsSelect } from "./SettingsSelect";
 import { useI18n } from "@/hooks/useI18n";
 import { type ThemePreference, useTheme } from "@/hooks/useTheme";
 import { FontSizeSettings } from "./FontSizeSettings";
+import { DefaultToolPermissionsSettings } from "./ToolPermissions";
+import { ClarificationSettings } from "./ClarificationSettings";
 
 export type SettingsSection = "system" | "models" | "usage";
 
@@ -29,7 +31,6 @@ export function SettingsPage({ onBack, initialSection = "system" }: { onBack?: (
   const { locale, setLocale, supportedLocales, t } = useI18n();
   const { preference, setPreference } = useTheme();
   const [section, setSection] = useState<SettingsSection>(initialSection);
-  const selectedLocale = supportedLocales.find((plugin) => plugin.id === locale);
   const sections: { id: SettingsSection; label: string }[] = [
     { id: "system", label: t("settings.system") },
     { id: "models", label: t("settings.models") },
@@ -64,7 +65,17 @@ export function SettingsPage({ onBack, initialSection = "system" }: { onBack?: (
             <div className="mt-9 space-y-7">
               <section><h2 className="mb-3 text-base font-semibold">{t("settings.appearance")}</h2><div className="overflow-hidden rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-panel)] p-2"><div className="grid grid-cols-3 gap-2">{(["light", "dark", "auto"] as ThemePreference[]).map((item) => <button key={item} type="button" onClick={() => setPreference(item)} className="flex min-h-20 flex-col items-center justify-center gap-2 rounded-[var(--radius-control)] px-3 text-sm transition-colors" style={{ background: preference === item ? "var(--bg-selected)" : "transparent", color: "var(--text)" }} onMouseEnter={(event) => { if (preference !== item) event.currentTarget.style.background = "var(--bg-hover)"; }} onMouseLeave={(event) => { if (preference !== item) event.currentTarget.style.background = "transparent"; }}><ThemeIcon preference={item} /><span>{t(`settings.theme.${item}`)}</span></button>)}</div></div></section>
               <FontSizeSettings />
-              <section><h2 className="mb-3 text-base font-semibold">{t("settings.language")}</h2><div className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-panel)] px-4 py-3"><div className="flex items-center justify-between gap-5 text-sm"><div><span id="display-language-label" className="block font-medium">{t("settings.displayLanguage")}</span><span className="mt-1 block text-xs text-[var(--text-muted)]">{t("settings.languageDescription")}</span></div><Combobox items={supportedLocales.map((plugin) => plugin.label)} value={selectedLocale?.label ?? ""} onValueChange={(value) => { const nextLocale = supportedLocales.find((plugin) => plugin.label === value); if (nextLocale) setLocale(nextLocale.id as typeof locale); }}><ComboboxInput aria-labelledby="display-language-label" className="h-9 w-32 shrink-0 text-sm" placeholder={t("settings.displayLanguage")} /><ComboboxContent align="end"><ComboboxList>{(item: string) => <ComboboxItem key={item} value={item} className="text-sm">{item}</ComboboxItem>}</ComboboxList></ComboboxContent></Combobox></div></div></section>
+              <section>
+                <h2 className="mb-3 text-base font-semibold">{t("settings.general")}</h2>
+                <div style={{ border: "1px solid var(--border)", borderRadius: "var(--radius-card)", background: "var(--bg-panel)", padding: "0 16px" }}>
+                  <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: "10px 20px", padding: "14px 0", borderBottom: "1px solid var(--border)" }}>
+                    <div style={{ flex: "1 1 220px", minWidth: 0 }}><span style={{ display: "block", fontSize: 13, fontWeight: 500 }}>{t("settings.displayLanguage")}</span><span style={{ display: "block", marginTop: 4, fontSize: 11, color: "var(--text-muted)", lineHeight: 1.6 }}>{t("settings.languageDescription")}</span></div>
+                    <SettingsSelect label={t("settings.displayLanguage")} value={locale} options={supportedLocales.map((plugin) => ({ value: plugin.id, label: plugin.label }))} onValueChange={(value) => { const nextLocale = supportedLocales.find((plugin) => plugin.id === value); if (nextLocale) setLocale(nextLocale.id as typeof locale); }} />
+                  </div>
+                  <DefaultToolPermissionsSettings />
+                  <ClarificationSettings />
+                </div>
+              </section>
             </div>
           </div>
         ) : section === "models" ? <ModelsConfig embedded onClose={() => setSection("system")} /> : <UsageStatisticsPage />}

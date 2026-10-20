@@ -33,6 +33,6 @@ export async function POST(request: NextRequest) {
   if (!result) return NextResponse.json({ status: "expired" }, { status: 410, headers });
   if (result.status !== "complete") return NextResponse.json(result, { headers });
   const response = NextResponse.json({ status: "complete", returnTo: result.returnTo }, { headers });
-  writeAuthSession(response.cookies, result.session);
+  await writeAuthSession(response.cookies, result.session);
   return response;
 }

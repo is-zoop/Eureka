@@ -9,12 +9,12 @@ function errorResponse(error: OrganizationExtensionsError) {
 
 export async function GET(request: NextRequest) {
   const type = request.nextUrl.searchParams.get("type");
-  if (type !== "skill" && type !== "mcp") return NextResponse.json({ error: "invalid_type" }, { status: 400 });
+  if (type !== "skill" && type !== "mcp" && type !== "plugin") return NextResponse.json({ error: "invalid_type" }, { status: 400 });
   try {
     const { accessToken, session } = await getHazeMarketplaceSession();
     const items = await listOrganizationExtensions(type as OrganizationExtensionType, accessToken);
     const response = NextResponse.json({ items });
-    writeAuthSession(response.cookies, session);
+    await writeAuthSession(response.cookies, session);
     return response;
   } catch (error) {
     return errorResponse(error instanceof OrganizationExtensionsError ? error : new OrganizationExtensionsError("unavailable"));

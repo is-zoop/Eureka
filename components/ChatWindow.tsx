@@ -1,4 +1,7 @@
 "use client";
+import { ClarificationGroupCard } from "./ClarificationGroupCard";
+import { blockingClarification } from "@/lib/clarification";
+import { splitPluginSelection } from "@/lib/plugin-selection";
 
 import { NotificationNotice } from "@/components/Notifications";
 
@@ -8,24 +11,27 @@ import type { AgentMessage, AssistantContentBlock, AssistantMessage, BashExecuti
 import { normalizeCustomPanelLines, parseAnsiLine } from "@/lib/ansi";
 import { asBracketedPaste, toTerminalKeyData } from "@/lib/terminal-input";
 import { buildTaskPhases, type TaskPhaseSource } from "@/lib/task-phases";
-import { extractTurnWrittenFiles, type WrittenFile } from "@/lib/turn-written-files";
+import { extractTurnWrittenFiles, type OpenTurnChanges, type WrittenFile } from "@/lib/turn-written-files";
 import { MessageView } from "./MessageView";
 import { TaskTurnView } from "./TaskTurnView";
 import { AgentActivityStatus } from "./AgentActivity";
 import { PlanCard } from "./PlanCard";
 import { PlanQuestionCard } from "./PlanQuestionCard";
+import { TurnWrittenFiles } from "./TurnWrittenFiles";
 import { ChatInput, type ChatInputHandle } from "./ChatInput";
 import { ChatMinimap, useMessageRefs } from "./ChatMinimap";
 import { ExtensionStatusBar } from "./ExtensionStatusBar";
 import { useI18n } from "@/hooks/useI18n";
 import { useTheme } from "@/hooks/useTheme";
 import { useAgentSession } from "@/hooks/useAgentSession";
+import { useSessionToolPermissions } from "@/hooks/useSessionToolPermissions";
+import type { SessionToolPermissions } from "@/lib/tool-permissions";
 import { useDragDrop } from "@/hooks/useDragDrop";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { Skeleton } from "./ui/skeleton";
 import type { SessionStatsInfo } from "@/lib/pi-types";
 import type { ChatDraftReference } from "@/lib/draft-store";
-import { getPendingPlanQuestionGroup, getSessionPlans, isDraftPlanEntry, type EurekaPlanAnnotation, type EurekaPlanQuestion, type EurekaPlanState } from "@/lib/plan-mode";
+import { getPendingPlanQuestionGroup, getSessionPlans, isDraftPlanEntry, isReviewablePlan, type EurekaPlanAnnotation, type EurekaPlanQuestion, type EurekaPlanState } from "@/lib/plan-mode";
 import {
   captureScrollDistance,
   getNextVisibleCount,
@@ -52,6 +58,7 @@ interface Props {
   onSessionStatsPanelOpen?: () => void;
   onContextUsageChange?: (usage: { percent: number | null; contextWindow: number; tokens: number | null } | null) => void;
   onOpenFile?: (filePath: string) => void;
+  onOpenChanges?: OpenTurnChanges;
   onOpenComposerReference?: (reference: ChatDraftReference) => void;
   /** Completion sound state + controls, owned by AppShell so tasks finishing in
    *  a non-active workspace can still ring. */
@@ -62,6 +69,7 @@ interface Props {
   onPlanStateChange?: (plan: EurekaPlanState, controls: PlanReviewControls) => void;
   onOpenPlanReview?: (plan: EurekaPlanState, controls: PlanReviewControls, readOnly?: boolean) => void;
   onContentLoadingChange?: (loading: boolean) => void;
+  onToolPermissionsChange?: (sessionId: string, controls: SessionToolPermissions | null) => void;
 }
 
 export interface PlanReviewControls {
@@ -86,15 +94,17 @@ function getAssistantText(message: AssistantMessage): string {
 function getUserInputText(message: AgentMessage): string | null {
   if (message.role !== "user") return null;
   if (typeof message.content === "string") {
-    const text = message.content.trim();
-    return text.length > 0 ? text : null;
+    const text = splitPluginSelection(message.content).text.trim();
+    const visible = splitPluginSelection(text).text;
+  return visible.length > 0 ? visible : null;
   }
   const text = message.content
     .filter((block) => block.type === "text")
     .map((block) => block.text)
     .join("\n")
     .trim();
-  return text.length > 0 ? text : null;
+  const visible = splitPluginSelection(text).text;
+  return visible.length > 0 ? visible : null;
 }
 
 function getPlanQuestionsForMessage(message: AgentMessage, questions: EurekaPlanQuestion[]): EurekaPlanQuestion[] {
@@ -141,7 +151,7 @@ function withAssistantBlocks(
   return next;
 }
 
-export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionDraftKey, onAgentEnd, onAttentionNeeded, onSessionCreated, onSessionForked, modelsRefreshKey, chatInputRef, onBranchDataChange, onSystemPromptChange, onSystemPromptLoaderChange, onSessionStatsChange, onSessionStatsPanelOpen, onContextUsageChange, onOpenFile, onOpenComposerReference, soundEnabled = true, onSoundToggle, playDoneSound = () => {}, unlockAudio, onPlanStateChange, onOpenPlanReview, onContentLoadingChange }: Props) {
+export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionDraftKey, onAgentEnd, onAttentionNeeded, onSessionCreated, onSessionForked, modelsRefreshKey, chatInputRef, onBranchDataChange, onSystemPromptChange, onSystemPromptLoaderChange, onSessionStatsChange, onSessionStatsPanelOpen, onContextUsageChange, onOpenFile, onOpenChanges, onOpenComposerReference, soundEnabled = true, onSoundToggle, playDoneSound = () => {}, unlockAudio, onPlanStateChange, onOpenPlanReview, onContentLoadingChange, onToolPermissionsChange }: Props) {
   const { t } = useI18n();
   const { isDark } = useTheme();
   const isMobile = useIsMobile();
@@ -172,7 +182,7 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
     agentRunning, bashRunning, pendingBash, modelNames, modelList, modelError, modelScopeWarnings, modelThinkingLevels, modelThinkingLevelMaps, toolPreset, thinkingLevel,
     retryInfo, contextUsage, forkingEntryId,
     isCompacting, compactError, compactResult, displayModel: displayModelValue, modelSwitching, sessionStats,
-    slashCommands, slashCommandsLoading, queuedMessages, planMode,
+    slashCommands, slashCommandsLoading, queuedMessages, planMode, clarification, handleClarificationAction,
     extensionDialog, extensionCustomUi, extensionStatuses, extensionWidgets, respondToExtensionUi, sendExtensionCustomInput,
     isAutoModelSelection,
     agentPhase,
@@ -182,7 +192,7 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
     handleCompact, handleSteer, handleFollowUp, handlePromptWithStreamingBehavior, handleAbortCompaction,
     handleRecallQueue,
     handleBuiltinSlashCommand,
-    handleToolPresetChange, handleThinkingLevelChange, loadSlashCommands,
+    handleToolPresetChange, loadToolPermissions, handleThinkingLevelChange, loadSlashCommands,
     handlePlanModeChange, handleSubmitPlan, handlePlanQuestionAnswer, handlePlanReviewUpdate, handleReturnPlanForRevision, handleApprovePlan, handleAbandonPlan,
   } = useAgentSession({
     session, sessionRunning, newSessionCwd, newSessionDraftKey, onAgentEnd: wrappedOnAgentEnd, onAttentionNeeded, onSessionCreated, onSessionForked,
@@ -204,6 +214,22 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
     onPlanStateChange?.(planMode, planReviewControls);
   }, [onPlanStateChange, planMode, planReviewControls]);
   const sessionBusy = agentRunning || bashRunning;
+  const toolPermissions = useSessionToolPermissions({
+    sessionId: session?.id ?? sessionIdRef.current,
+    preset: toolPreset,
+    busy: sessionBusy || isCompacting,
+    locked: planMode.planModeActive || planMode.phase === "executing",
+    load: loadToolPermissions,
+    apply: handleToolPresetChange,
+  });
+  useEffect(() => {
+    if (toolPermissions) onToolPermissionsChange?.(toolPermissions.sessionId, toolPermissions);
+  }, [onToolPermissionsChange, toolPermissions]);
+  useEffect(() => {
+    const id = session?.id ?? sessionIdRef.current;
+    return () => { if (id) onToolPermissionsChange?.(id, null); };
+  }, [session?.id, sessionIdRef, onToolPermissionsChange]);
+
   const runningToolIds = useMemo<ReadonlySet<string>>(() => new Set(
     agentPhase?.kind === "running_tools" ? agentPhase.tools.map((tool) => tool.id) : [],
   ), [agentPhase]);
@@ -351,10 +377,11 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
     : null;
   const pendingPlanQuestions = getPendingPlanQuestionGroup(planMode);
 
-  const planQuestionElement = pendingPlanQuestions.length > 0 ? (
+  const pendingQuestionGroup = blockingClarification(clarification);
+  const planQuestionElement = pendingQuestionGroup || pendingPlanQuestions.length > 0 ? (
     <div style={{ flexShrink: 0, padding: "0 16px 1px", paddingRight: isMobile ? 16 : CHAT_INPUT_RIGHT_PADDING }}>
       <div style={{ width: "100%", maxWidth: 820, margin: "0 auto" }}>
-        <PlanQuestionCard questions={pendingPlanQuestions} onAnswer={handlePlanQuestionAnswer} />
+        {pendingQuestionGroup ? <ClarificationGroupCard key={pendingQuestionGroup.id} group={pendingQuestionGroup} onAction={handleClarificationAction} /> : <PlanQuestionCard questions={pendingPlanQuestions} onAnswer={handlePlanQuestionAnswer} />}
       </div>
     </div>
   ) : null;
@@ -368,7 +395,7 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
       onFollowUp={agentRunning ? handleFollowUp : undefined}
       onPromptWithStreamingBehavior={agentRunning ? handlePromptWithStreamingBehavior : undefined}
       isStreaming={sessionBusy}
-      inputLocked={planMode.questions.some((question) => question.status === "pending")}
+      inputLocked={Boolean(pendingQuestionGroup) || planMode.questions.some((question) => question.status === "pending")}
       model={displayModelValue}
       isAutoModelSelection={isAutoModelSelection}
       modelNames={modelNames}
@@ -384,8 +411,6 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
       compactResult={compactResult}
       soundEnabled={soundEnabled}
       onSoundToggle={onSoundToggle}
-      toolPreset={toolPreset}
-      onToolPresetChange={session || isNew ? handleToolPresetChange : undefined}
       planMode={planMode}
       onPlanModeChange={session || isNew ? handlePlanModeChange : undefined}
       onCancelPlan={session || isNew ? handleAbandonPlan : undefined}
@@ -403,6 +428,7 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
       onBuiltinCommand={handleBuiltinSlashCommand}
       onAudioUnlock={unlockAudio}
       draftKey={session?.id ?? newSessionDraftKey ?? undefined}
+      sessionId={session?.id ?? sessionIdRef.current ?? undefined}
       cwd={session?.cwd ?? newSessionCwd}
       onOpenReference={onOpenComposerReference}
     />
@@ -503,7 +529,7 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
             </div>
             {planQuestionElement}
             {chatInputElement}
-            <ExtensionStatusBar statuses={extensionStatuses} widgets={extensionWidgets} />
+            <ExtensionStatusBar statuses={extensionStatuses} widgets={extensionWidgets} sessionId={session?.id ?? sessionIdRef.current} />
           </div>
         </div>
       ) : (
@@ -511,7 +537,7 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
       <div className="relative flex min-w-0 flex-1 overflow-hidden">
         <div ref={scrollContainerRef} className="min-w-0 flex-1 overflow-x-hidden overflow-y-auto pt-4 [scrollbar-width:none]">
           <div style={{ minWidth: 0, minHeight: "100%", display: "flex", flexDirection: "column", padding: `0 ${CHAT_COLUMN_PADDING}px` }}>
-            <div ref={messageContentRef} style={{ width: "100%", minWidth: 0, maxWidth: 820, margin: "0 auto", flex: "1 0 auto", display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
+            <div ref={messageContentRef} style={{ width: "100%", minWidth: 0, maxWidth: 820, margin: "0 auto", flex: "1 0 auto", display: "flex", flexDirection: "column", justifyContent: "flex-start" }}>
             {(() => {
               let streamingConsumed = false;
               // Compaction summaries may anchor a live segment after the last user prompt.
@@ -576,6 +602,7 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
                     prevTimestamp={idx > 0 ? (messages[idx - 1] as AgentMessage & { timestamp?: number }).timestamp : undefined}
                     sessionId={session?.id ?? sessionIdRef.current ?? undefined}
                     writtenFiles={options.writtenFiles}
+                    onOpenChanges={onOpenChanges}
                   />
                 );
                 const canSubmitPlan = planMode.planModeActive
@@ -587,7 +614,7 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
                   && isDraftPlanEntry(planMode, entryIds, idx)
                   && !sessionBusy
                   && Boolean(onOpenPlanReview)
-                  && getAssistantText(msg as AssistantMessage).length > 0;
+                  && isReviewablePlan(getAssistantText(msg as AssistantMessage));
                 // A final assistant entry may be rendered twice: once for its
                 // thinking/tool process and once for its final text. The plan
                 // belongs to the final text only, never the process duplicate.
@@ -627,9 +654,11 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
                     primaryAction={planPrimaryAction}
                   />
                 ) : messageView;
-                const view = planQuestionGroups.length > 0 ? (
+                const questionGroups = clarification.groups.filter((group) => group.id !== pendingQuestionGroup?.id && getPlanQuestionsForMessage(msg, group.questions).length > 0);
+                const view = planQuestionGroups.length > 0 || questionGroups.length > 0 ? (
                   <div>
                     {content}
+                    {questionGroups.map((group) => <ClarificationGroupCard key={group.id} group={group} history />)}
                     {planQuestionGroups.map((questions) => (
                       <PlanQuestionCard
                         key={questions[0]?.toolCallId}
@@ -717,6 +746,7 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
                         const indices = new Set([...phase.summary, ...phase.items].map((ref) => ref.source.messageIndex));
                         const phaseToolIds = new Set(phase.items.flatMap((ref) => ref.block.type === "toolCall" ? [ref.block.toolCallId] : []));
                         return <>
+                          {clarification.groups.filter((group) => group.id !== pendingQuestionGroup?.id && phaseToolIds.has(group.id)).map((group) => <ClarificationGroupCard key={group.id} group={group} history />)}
                           {extraIndices.filter((sourceIdx) => sourceIdx >= start && sourceIdx < end).map((sourceIdx) => renderMessage(sourceIdx, { attachRef: false }))}
                           {[...indices].filter((sourceIdx) => sourceIdx < messages.length && !protectedPlanIndices.has(sourceIdx)).flatMap((sourceIdx) =>
                             groupPlanQuestions(getPlanQuestionsForMessage(messages[sourceIdx], planMode.questions).filter((question) => question.status === "answered" && phaseToolIds.has(question.toolCallId)))
@@ -730,15 +760,21 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
                 for (const sourceIdx of protectedPlanIndices) {
                   if (sourceIdx !== turn.answerSource?.messageIndex) rendered.push(renderMessage(sourceIdx));
                 }
+                const turnContent = sources.flatMap((source) => source.message.content ?? []);
+                const writtenFiles = extractTurnWrittenFiles(turnContent, toolResultsMap, messageCwd);
                 if (turn.answerSource) {
                   const finalAssistant = turn.answerSource.message;
                   const finalAnswer = withAssistantBlocks(finalAssistant, turn.answerBlockIndices.map((blockIndex) => finalAssistant.content[blockIndex]));
-                  const turnContent = sources.flatMap((source) => source.message.content ?? []);
-                  const writtenFiles = extractTurnWrittenFiles(turnContent, toolResultsMap, messageCwd);
                   rendered.push(renderMessage(turn.answerSource.messageIndex, {
                     messageOverride: finalAnswer, writtenFiles, isStreaming: turn.answerSource.isStreaming,
                     keyPrefix: "final-answer",
                   }));
+                } else if (writtenFiles.length > 0) {
+                  rendered.push(
+                    <div key={`turn-files-${entryIds[userIdx] ?? userIdx}`} className="mb-4">
+                      <TurnWrittenFiles files={writtenFiles} cwd={messageCwd} sessionId={session?.id ?? sessionIdRef.current ?? undefined} onOpenFile={onOpenFile} onOpenChanges={onOpenChanges} />
+                    </div>,
+                  );
                 }
                 idx = endIdx;
               }
@@ -796,7 +832,7 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
       <div className="relative">
         {planQuestionElement}
         {chatInputElement}
-        <ExtensionStatusBar statuses={extensionStatuses} widgets={extensionWidgets} />
+        <ExtensionStatusBar statuses={extensionStatuses} widgets={extensionWidgets} sessionId={session?.id ?? sessionIdRef.current} />
       </div>
       </>
       )}

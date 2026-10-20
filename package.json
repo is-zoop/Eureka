@@ -38,7 +38,8 @@
     "desktop:bundle": "npm --prefix desktop run bundle",
     "lint": "eslint .",
     "test": "node --experimental-strip-types --test \"app/**/*.test.mjs\" \"components/**/*.test.mjs\" \"hooks/**/*.test.mjs\" \"lib/**/*.test.mjs\" \"public/**/*.test.mjs\"",
-    "release": "npm version patch --no-git-tag-version && npm run build && npm publish --access public"
+    "release": "npm version patch --no-git-tag-version && npm run build && npm publish --access public",
+    "browser:install": "playwright install chromium --no-shell"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",
@@ -57,6 +58,7 @@
     "material-file-icons": "^2.4.0",
     "next": "16.2.12",
     "pi-mcp-adapter": "2.33.0",
+    "playwright": "1.64.1",
     "proper-lockfile": "4.1.2",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",

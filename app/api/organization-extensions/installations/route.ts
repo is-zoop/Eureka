@@ -1,3 +1,6 @@
+import { pluginPresentation } from "@/lib/haze-plugin-resources";
+import { getAuthConfig } from "@/lib/auth/config";
+import { readRuntimeHazeSession } from "@/lib/auth/runtime-session";
 import { NextResponse } from "next/server";
 import { getAllowedFileRoots, isExistingFilePathAllowed } from "@/lib/file-access";
 import { listHazeManagedInstalls, type HazeCapabilityType, type HazeInstallScope } from "@/lib/haze-managed-capabilities";
@@ -9,7 +12,7 @@ function scope(value: string | null): HazeInstallScope | null {
 }
 
 function type(value: string | null): HazeCapabilityType | null {
-  return value === "skill" ? "Skill" : value === "mcp" ? "MCP" : null;
+  return value === "skill" ? "Skill" : value === "mcp" ? "MCP" : value === "plugin" ? "Plugin" : null;
 }
 
 /** Lists only presentation-safe managed-install data. Secrets and local paths stay server-side. */
@@ -25,8 +28,8 @@ export async function GET(request: Request) {
     const installs = await listHazeManagedInstalls(cwd);
     return NextResponse.json({
       items: installs[selectedScope]
-        .filter((item) => item.type === selectedType)
-        .map(({ capabilityId, name, type: capabilityType, version, scope: installScope, installedAt, disabled, lifecycle, idleTimeout }) => ({ capabilityId, name, type: capabilityType, version, scope: installScope, installedAt, disabled: Boolean(disabled), ...(capabilityType === "MCP" ? { lifecycle, idleTimeout } : {}) })),
+        .filter((item) => item.type === selectedType && (item.type !== "Plugin" || item.plugin?.source === getAuthConfig()?.issuer.replace(/\/$/, "")))
+        .map((item) => ({ capabilityId: item.capabilityId, name: item.name, type: item.type, version: item.version, scope: item.scope, installedAt: item.installedAt, disabled: Boolean(item.disabled), ...(item.type === "MCP" ? { lifecycle: item.lifecycle, idleTimeout: item.idleTimeout } : {}), ...(item.type === "Plugin" ? { plugin: pluginPresentation(item, searchParams.get("sessionId"), readRuntimeHazeSession()?.principal.subject ?? null) } : {}) })),
     });
   } catch {
     return NextResponse.json({ error: "Unable to read installed capabilities" }, { status: 500 });

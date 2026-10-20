@@ -1,33 +1,14 @@
-import { inflateRawSync } from "node:zlib";
 import { existsSync } from "node:fs";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { getAgentDir, parseFrontmatter } from "@earendil-works/pi-coding-agent";
 import { getAuthConfig } from "@/lib/auth/config";
-import { getIdentityProvider } from "@/lib/auth/provider";
-import { readRuntimeHazeSession, writeRuntimeHazeSession } from "@/lib/auth/runtime-session";
-import type { AuthSession } from "@/lib/auth/types";
+import { refreshRuntimeHazeSession } from "@/lib/auth/runtime-session";
 
-export type HazeInstallScope = "global" | "project";
-export type HazeCapabilityType = "Skill" | "MCP";
-export type HazeMcpLifecycle = "lazy" | "eager" | "keep-alive";
-export type HazeMcpRuntimeOptions = { lifecycle: HazeMcpLifecycle; idleTimeout: number };
+import { readHazeRegistry, writeHazeRegistry, withHazeRegistryLock, type HazeManagedInstall, type HazeInstallScope, type HazeCapabilityType, type HazeMcpRuntimeOptions } from "./haze-registry";
+import { readPluginZip } from "./haze-plugin-package";
+export type { HazeManagedInstall, HazeInstallScope, HazeCapabilityType, HazeMcpLifecycle, HazeMcpRuntimeOptions } from "./haze-registry";
 
-export type HazeManagedInstall = {
-  capabilityId: string;
-  name: string;
-  type: HazeCapabilityType;
-  version: string;
-  scope: HazeInstallScope;
-  installedAt: string;
-  disabled?: boolean;
-  skillPath?: string;
-  serverUrl?: string;
-  lifecycle?: HazeMcpLifecycle;
-  idleTimeout?: number;
-};
-
-type Registry = { version: 1; installs: HazeManagedInstall[] };
 export type HazeCapabilityInput = { id: string; name: string; slug?: string | null; type: HazeCapabilityType; version: string; serverUrl?: string | null; connectType?: string | null };
 
 export function hazeMcpRuntimeOptions(lifecycle: unknown, idleTimeout: unknown): HazeMcpRuntimeOptions {
@@ -41,40 +22,11 @@ function storedMcpRuntimeOptions(record: Partial<HazeManagedInstall>): HazeMcpRu
   catch { return { lifecycle: "lazy", idleTimeout: 10 }; }
 }
 
-function registryPath(cwd: string, scope: HazeInstallScope) {
-  return scope === "global"
-    ? join(getAgentDir(), "eureka-haze-capabilities.json")
-    : join(cwd, ".pi", "eureka-haze-capabilities.json");
-}
-
 function skillRoot(cwd: string, scope: HazeInstallScope) {
   return scope === "global" ? join(getAgentDir(), "skills") : join(cwd, ".pi", "skills");
 }
-
-async function readRegistry(cwd: string, scope: HazeInstallScope): Promise<Registry> {
-  try {
-    const value = JSON.parse(await readFile(registryPath(cwd, scope), "utf8")) as { version?: unknown; installs?: unknown };
-    if (value?.version === 1 && Array.isArray(value.installs)) {
-      const installs = value.installs.flatMap((item): HazeManagedInstall[] => {
-        if (!item || typeof item !== "object") return [];
-        const record = item as Partial<HazeManagedInstall>;
-        if (typeof record.capabilityId !== "string" || typeof record.name !== "string" || (record.type !== "Skill" && record.type !== "MCP") || typeof record.version !== "string" || (record.scope !== "global" && record.scope !== "project") || typeof record.installedAt !== "string") return [];
-        const runtime = record.type === "MCP" ? storedMcpRuntimeOptions(record) : undefined;
-        return [{ capabilityId: record.capabilityId, name: record.name, type: record.type, version: record.version, scope: record.scope, installedAt: record.installedAt, disabled: record.disabled === true || undefined, skillPath: typeof record.skillPath === "string" ? record.skillPath : undefined, serverUrl: typeof record.serverUrl === "string" ? record.serverUrl : undefined, ...(runtime ?? {}) }];
-      });
-      return { version: 1, installs };
-    }
-  } catch { /* missing or corrupt registry behaves as empty */ }
-  return { version: 1, installs: [] };
-}
-
-async function writeRegistry(cwd: string, scope: HazeInstallScope, registry: Registry) {
-  const path = registryPath(cwd, scope);
-  await mkdir(dirname(path), { recursive: true });
-  const temporary = `${path}.${process.pid}.${Date.now()}.tmp`;
-  await writeFile(temporary, `${JSON.stringify(registry, null, 2)}\n`, "utf8");
-  await rename(temporary, path);
-}
+const readRegistry = readHazeRegistry;
+const writeRegistry = writeHazeRegistry;
 
 export async function listHazeManagedInstalls(cwd: string) {
   const [global, project] = await Promise.all([readRegistry(cwd, "global"), readRegistry(cwd, "project")]);
@@ -88,52 +40,14 @@ export async function listEffectiveHazeManagedMcps(cwd: string) {
   return [...effective.values()];
 }
 
-function readU16(buffer: Buffer, offset: number) { return buffer.readUInt16LE(offset); }
-function readU32(buffer: Buffer, offset: number) { return buffer.readUInt32LE(offset); }
-
-/** Extract the ordinary ZIP formats emitted by Haze, rejecting unsafe paths. */
 async function extractSkillZip(buffer: Buffer, target: string) {
-  const end = buffer.lastIndexOf(Buffer.from([0x50, 0x4b, 0x05, 0x06]));
-  if (end < 0 || end + 22 > buffer.length) throw new Error("Skill ZIP 文件无效");
-  const entries = readU16(buffer, end + 10);
-  if (entries > 10_000 || buffer.length > 100 * 1024 * 1024) throw new Error("Skill ZIP 文件过大");
-  const centralOffset = readU32(buffer, end + 16);
-  let cursor = centralOffset;
-  let expandedSize = 0;
-  const files: Array<{ path: string; content: Buffer }> = [];
-  for (let index = 0; index < entries; index += 1) {
-    if (cursor + 46 > buffer.length) throw new Error("Skill ZIP 目录无效");
-    if (readU32(buffer, cursor) !== 0x02014b50) throw new Error("Skill ZIP 目录无效");
-    const method = readU16(buffer, cursor + 10);
-    const compressedSize = readU32(buffer, cursor + 20);
-    const uncompressedSize = readU32(buffer, cursor + 24);
-    const nameLength = readU16(buffer, cursor + 28);
-    const extraLength = readU16(buffer, cursor + 30);
-    const commentLength = readU16(buffer, cursor + 32);
-    const localOffset = readU32(buffer, cursor + 42);
-    if (cursor + 46 + nameLength + extraLength + commentLength > buffer.length) throw new Error("Skill ZIP 目录无效");
-    const entryName = buffer.subarray(cursor + 46, cursor + 46 + nameLength).toString("utf8").replace(/\\/g, "/");
-    cursor += 46 + nameLength + extraLength + commentLength;
-    if (!entryName || entryName.endsWith("/")) continue;
-    expandedSize += uncompressedSize;
-    if (expandedSize > 200 * 1024 * 1024) throw new Error("Skill ZIP 解压后过大");
-    if (entryName.startsWith("/") || entryName.split("/").some((part) => !part || part === "." || part === "..")) throw new Error("Skill ZIP 包含不安全路径");
-    if (localOffset + 30 > buffer.length || readU32(buffer, localOffset) !== 0x04034b50) throw new Error("Skill ZIP 条目无效");
-    const localNameLength = readU16(buffer, localOffset + 26);
-    const localExtraLength = readU16(buffer, localOffset + 28);
-    const contentStart = localOffset + 30 + localNameLength + localExtraLength;
-    if (contentStart + compressedSize > buffer.length) throw new Error("Skill ZIP 条目无效");
-    const compressed = buffer.subarray(contentStart, contentStart + compressedSize);
-    const content = method === 0 ? compressed : method === 8 ? inflateRawSync(compressed) : (() => { throw new Error("Skill ZIP 使用了不支持的压缩格式"); })();
-    files.push({ path: entryName, content });
-  }
-  if (!files.some((file) => file.path === "SKILL.md")) throw new Error("Skill 包根目录必须包含 SKILL.md");
+  const files = readPluginZip(buffer);
+  if (!files.has("SKILL.md")) throw new Error("Skill 包根目录必须包含 SKILL.md");
   await mkdir(target, { recursive: true });
-  for (const file of files) {
-    const destination = resolve(target, ...file.path.split("/"));
-    if (relative(target, destination).startsWith(`..${sep}`) || relative(target, destination) === "..") throw new Error("Skill ZIP 包含不安全路径");
+  for (const [file, content] of files) {
+    const destination = resolve(target, ...file.split("/"));
     await mkdir(dirname(destination), { recursive: true });
-    await writeFile(destination, file.content);
+    await writeFile(destination, content);
   }
 }
 
@@ -163,17 +77,12 @@ async function setSkillModelInvocationDisabled(cwd: string, scope: HazeInstallSc
 
 async function hazeAccessToken() {
   const config = getAuthConfig();
-  const session = readRuntimeHazeSession();
-  const provider = getIdentityProvider();
-  if (!config || !session || !provider) throw new Error("请先登录 Haze 后再安装组织能力");
-  const tokens = await provider.refresh(session.refreshToken);
-  const principal = await provider.userInfo(tokens.accessToken);
-  const refreshed: AuthSession = { ...session, accessToken: tokens.accessToken, refreshToken: tokens.refreshToken, expiresAt: Date.now() + tokens.expiresIn * 1000, principal };
-  writeRuntimeHazeSession(refreshed);
-  return { config, accessToken: tokens.accessToken };
+  const session = await refreshRuntimeHazeSession();
+  if (!config || !session?.accessToken) throw new Error("请先登录 Haze 后再安装组织能力");
+  return { config, accessToken: session.accessToken };
 }
 
-async function downloadSkill(id: string, activeAccessToken?: string) {
+export async function downloadHazePackage(id: string, activeAccessToken?: string) {
   const config = getAuthConfig();
   if (!config) throw new Error("请先登录 Haze 后再安装组织能力");
   const accessToken = activeAccessToken ?? (await hazeAccessToken()).accessToken;
@@ -183,13 +92,26 @@ async function downloadSkill(id: string, activeAccessToken?: string) {
   const linkResponse = await fetch(`${config.issuer}/api/marketplace/capabilities/${encodeURIComponent(id)}/access-prompt`, { headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/json" }, cache: "no-store" });
   const linkPayload = await linkResponse.json().catch(() => null) as { data?: { download_url?: unknown }; message?: unknown } | null;
   if (!linkResponse.ok || typeof linkPayload?.data?.download_url !== "string") throw new Error(typeof linkPayload?.message === "string" ? linkPayload.message : "无法获取 Skill 下载链接");
-  const packageResponse = await fetch(linkPayload.data.download_url, { cache: "no-store" });
+  const packageResponse = await fetch(linkPayload.data.download_url, { cache: "no-store", signal: AbortSignal.timeout(60_000) });
   if (!packageResponse.ok) throw new Error("Skill 下载链接已失效，请重试");
-  return Buffer.from(await packageResponse.arrayBuffer());
+  if (!packageResponse.body) throw new Error("扩展下载内容为空");
+  const reader = packageResponse.body.getReader(), chunks: Buffer[] = [];
+  let size = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > 100 * 1024 * 1024) throw new Error("扩展下载超过 100 MiB");
+      chunks.push(Buffer.from(value));
+    }
+  } finally { await reader.cancel(); }
+  return Buffer.concat(chunks);
 }
 
-export async function installHazeCapability(cwd: string, scope: HazeInstallScope, capability: HazeCapabilityInput, runtimeOptions?: HazeMcpRuntimeOptions, activeAccessToken?: string) {
+async function installHazeCapabilityUnlocked(cwd: string, scope: HazeInstallScope, capability: HazeCapabilityInput, runtimeOptions?: HazeMcpRuntimeOptions, activeAccessToken?: string) {
   if (!/^\d+$/.test(capability.id)) throw new Error("无效的 Haze 能力 ID");
+  if (capability.type === "Plugin") throw new Error("插件必须先准备并确认安装");
   const registry = await readRegistry(cwd, scope);
   const previous = registry.installs.find((item) => item.capabilityId === capability.id && item.type === capability.type);
   let install: HazeManagedInstall;
@@ -200,7 +122,7 @@ export async function installHazeCapability(cwd: string, scope: HazeInstallScope
     const temporary = `${destination}.installing-${process.pid}-${Date.now()}`;
     await rm(temporary, { recursive: true, force: true });
     try {
-      await extractSkillZip(await downloadSkill(capability.id, activeAccessToken), temporary);
+      await extractSkillZip(await downloadHazePackage(capability.id, activeAccessToken), temporary);
       await rm(destination, { recursive: true, force: true });
       await mkdir(dirname(destination), { recursive: true });
       await rename(temporary, destination);
@@ -221,7 +143,7 @@ export async function installHazeCapability(cwd: string, scope: HazeInstallScope
   return install;
 }
 
-export async function uninstallHazeCapability(cwd: string, scope: HazeInstallScope, capabilityId: string, type: HazeCapabilityType) {
+async function uninstallHazeCapabilityUnlocked(cwd: string, scope: HazeInstallScope, capabilityId: string, type: HazeCapabilityType) {
   const registry = await readRegistry(cwd, scope);
   const install = registry.installs.find((item) => item.capabilityId === capabilityId && item.type === type);
   if (!install) throw new Error("该范围未安装此能力");
@@ -230,7 +152,7 @@ export async function uninstallHazeCapability(cwd: string, scope: HazeInstallSco
   await writeRegistry(cwd, scope, registry);
 }
 
-export async function setHazeCapabilityDisabled(cwd: string, scope: HazeInstallScope, capabilityId: string, type: HazeCapabilityType, disabled: boolean) {
+async function setHazeCapabilityDisabledUnlocked(cwd: string, scope: HazeInstallScope, capabilityId: string, type: HazeCapabilityType, disabled: boolean) {
   const registry = await readRegistry(cwd, scope);
   const install = registry.installs.find((item) => item.capabilityId === capabilityId && item.type === type);
   if (!install) throw new Error("该范围未安装此能力");
@@ -240,7 +162,7 @@ export async function setHazeCapabilityDisabled(cwd: string, scope: HazeInstallS
   return install;
 }
 
-export async function configureHazeManagedMcp(cwd: string, scope: HazeInstallScope, capabilityId: string, options: HazeMcpRuntimeOptions) {
+async function configureHazeManagedMcpUnlocked(cwd: string, scope: HazeInstallScope, capabilityId: string, options: HazeMcpRuntimeOptions) {
   const registry = await readRegistry(cwd, scope);
   const install = registry.installs.find((item) => item.capabilityId === capabilityId && item.type === "MCP");
   if (!install) throw new Error("该范围未安装此 MCP");
@@ -248,4 +170,20 @@ export async function configureHazeManagedMcp(cwd: string, scope: HazeInstallSco
   install.idleTimeout = options.idleTimeout;
   await writeRegistry(cwd, scope, registry);
   return install;
+}
+
+export async function installHazeCapability(cwd: string, scope: HazeInstallScope, capability: HazeCapabilityInput, runtimeOptions?: HazeMcpRuntimeOptions, activeAccessToken?: string) {
+  return withHazeRegistryLock(cwd, scope, () => installHazeCapabilityUnlocked(cwd, scope, capability, runtimeOptions, activeAccessToken));
+}
+
+export async function uninstallHazeCapability(cwd: string, scope: HazeInstallScope, capabilityId: string, type: HazeCapabilityType) {
+  return withHazeRegistryLock(cwd, scope, () => uninstallHazeCapabilityUnlocked(cwd, scope, capabilityId, type));
+}
+
+export async function setHazeCapabilityDisabled(cwd: string, scope: HazeInstallScope, capabilityId: string, type: HazeCapabilityType, disabled: boolean) {
+  return withHazeRegistryLock(cwd, scope, () => setHazeCapabilityDisabledUnlocked(cwd, scope, capabilityId, type, disabled));
+}
+
+export async function configureHazeManagedMcp(cwd: string, scope: HazeInstallScope, capabilityId: string, options: HazeMcpRuntimeOptions) {
+  return withHazeRegistryLock(cwd, scope, () => configureHazeManagedMcpUnlocked(cwd, scope, capabilityId, options));
 }

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { hasMarketplaceAccess, refreshMarketplaceSession } from "@/lib/auth/marketplace";
-import { clearAuthSession, readGuestSession } from "@/lib/auth/session";
+import { clearAuthSession, readAuthSession, readGuestSession } from "@/lib/auth/session";
 import { GUEST_AVATAR_URL, GUEST_NAME } from "@/lib/auth/guest";
 
 function safeAvatarUrl(value: string | null | undefined): string | null {
@@ -23,7 +23,7 @@ export async function GET() {
   const result = await refreshMarketplaceSession(true);
   if (!result) {
     const response = NextResponse.json({ authenticated: false }, { status: 401 });
-    clearAuthSession(response.cookies);
+    await clearAuthSession(response.cookies, await readAuthSession());
     return response;
   }
   const { session } = result;
@@ -40,7 +40,7 @@ export async function GET() {
   });
   if (result.refreshed) {
     const { writeAuthSession } = await import("@/lib/auth/session");
-    writeAuthSession(response.cookies, session);
+    await writeAuthSession(response.cookies, session);
   }
   return response;
 }

@@ -4,6 +4,8 @@ import { hasJsonContentType, isApiRequestAllowed } from "@/lib/request-security"
 import { listMcpServers, mutateMcpServers } from "@/lib/mcp-config";
 import { listHazeManagedInstalls } from "@/lib/haze-managed-capabilities";
 import type { McpConfigScope, McpServerInput } from "@/lib/api-types";
+import { getAuthConfig } from "@/lib/auth/config";
+import { pluginMcpName } from "@/lib/haze-plugin-resources";
 
 export const dynamic = "force-dynamic";
 const scope = (value: string | null | undefined): McpConfigScope => value === "global" ? "global" : "project";
@@ -19,9 +21,10 @@ export async function GET(request: Request) {
     const [config, managed] = await Promise.all([listMcpServers(cwd, selectedScope), listHazeManagedInstalls(cwd)]);
     return NextResponse.json({
       ...config,
+      pluginServers: managed[selectedScope].flatMap((item) => item.type === "Plugin" && item.plugin && item.plugin.source === getAuthConfig()?.issuer.replace(/\/$/, "") ? item.plugin.manifest.servers.map((server) => ({ capabilityId: item.capabilityId, organizationCapability: { capabilityId: item.capabilityId, source: item.plugin!.source }, pluginName: item.name, name: pluginMcpName(item, server.name), url: server.url, disabled: Boolean(item.disabled) })) : []),
       managedServers: managed[selectedScope]
         .filter((item) => item.type === "MCP" && typeof item.serverUrl === "string")
-        .map((item) => ({ capabilityId: item.capabilityId, name: item.name, version: item.version, scope: selectedScope, serverUrl: item.serverUrl!, disabled: Boolean(item.disabled) })),
+        .map((item) => ({ capabilityId: item.capabilityId, organizationCapability: { capabilityId: item.capabilityId, source: getAuthConfig()?.issuer }, name: item.name, version: item.version, scope: selectedScope, serverUrl: item.serverUrl!, disabled: Boolean(item.disabled) })),
     });
   }
   catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : String(error) }, { status: 500 }); }

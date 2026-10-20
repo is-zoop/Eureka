@@ -1,8 +1,17 @@
 import { hasTrustRequiringProjectResources, ProjectTrustStore } from "@earendil-works/pi-coding-agent";
 import type { ProjectTrustStatus } from "./api-types";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
+function hasOrganizationPlugins(cwd: string): boolean {
+  try {
+    const registry = JSON.parse(readFileSync(join(cwd, ".pi", "eureka-haze-capabilities.json"), "utf8"));
+    return Array.isArray(registry.installs) && registry.installs.some((item: { type?: string }) => item?.type === "Plugin");
+  } catch (error) { return (error as NodeJS.ErrnoException).code !== "ENOENT"; }
+}
 
 export function getProjectTrustStatus(cwd: string, agentDir: string): ProjectTrustStatus {
-  const requiresTrust = Boolean(cwd) && hasTrustRequiringProjectResources(cwd);
+  const requiresTrust = Boolean(cwd) && (hasTrustRequiringProjectResources(cwd) || hasOrganizationPlugins(cwd));
   if (!requiresTrust) return { requiresTrust: false, trusted: true };
 
   const trustStore = new ProjectTrustStore(agentDir);

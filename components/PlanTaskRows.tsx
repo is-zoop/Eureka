@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useI18n } from "@/hooks/useI18n";
 import type { EurekaPlanTodo } from "@/lib/plan-mode";
+import { InlineMarkdown } from "./InlineMarkdown";
 
 type TaskStatus = "completed" | "running" | "pending";
 
@@ -66,12 +67,12 @@ export function PlanTaskRows({ todos, isStreaming }: { todos: EurekaPlanTodo[]; 
         return <div key={todo.index} ref={(node) => { if (node) rowRefs.current.set(todo.index, node); else rowRefs.current.delete(todo.index); }} className="border-b border-[var(--border)] last:border-b-0">
           <button type="button" className="flex h-[46px] w-full items-center gap-3 px-4 text-left transition-colors hover:bg-[var(--bg-hover)]" aria-expanded={open} aria-label={t("plan.toggleTask", { task: todo.text, status: statusLabel })} onClick={() => setOpenIndex((current) => current === todo.index ? null : todo.index)}>
             <StatusIcon status={status} index={todo.index} />
-            <span className="min-w-0 flex-1 truncate text-sm font-medium text-[var(--text)]">{todo.text}</span>
+            <InlineMarkdown className="min-w-0 flex-1 truncate text-sm font-medium text-[var(--text)]">{todo.text}</InlineMarkdown>
             {status === "completed" && <span className="inline-flex h-5 shrink-0 items-center rounded-full bg-[#e8f8ef] px-2 text-[11px] font-medium text-[#15803d]">{statusLabel}</span>}
             <Chevron open={open} />
           </button>
           <div className="grid transition-[grid-template-rows,opacity] duration-200 motion-reduce:transition-none" style={{ gridTemplateRows: open ? "1fr" : "0fr", opacity: open ? 1 : 0 }}>
-            <div className="overflow-hidden"><div className="mx-4 mb-3 ml-[49px] border-l border-[var(--border)] pl-3"><p className="whitespace-pre-wrap text-sm font-medium leading-[1.7] text-[var(--text-muted)]">{todo.text}</p><p className="mt-1 text-[11px] font-medium" style={{ color: status === "completed" ? "#15803d" : status === "running" ? "var(--accent)" : "var(--text-muted)" }}>{statusLabel}</p></div></div>
+            <div className="overflow-hidden"><div className="mx-4 mb-3 ml-[49px] border-l border-[var(--border)] pl-3"><InlineMarkdown className="block whitespace-pre-wrap break-words text-sm font-medium leading-[1.7] text-[var(--text-muted)]">{todo.text}</InlineMarkdown><p className="mt-1 text-[11px] font-medium" style={{ color: status === "completed" ? "#15803d" : status === "running" ? "var(--accent)" : "var(--text-muted)" }}>{statusLabel}</p></div></div>
           </div>
         </div>;
       })}

@@ -25,7 +25,7 @@ exports.getAuthConfig = () => globalThis.__guestAuthConfigEnabled ? {
 await writeFile(path.join(fixtures, "headers.cjs"), "exports.cookies = async () => globalThis.__guestAuthCookies;");
 await writeFile(path.join(fixtures, "lib/auth/runtime-session.ts"), `
 exports.clearRuntimeHazeSession = () => { globalThis.__guestRuntimeCleared = true; };
-exports.writeRuntimeHazeSession = () => {};
+exports.writeRuntimeHazeSession = (session) => ({...session, runtimeId:"test-login"});
 exports.readRuntimeHazeSession = () => { globalThis.__guestRuntimeRead = true; return globalThis.__guestStaleSession; };
 `);
 await writeFile(path.join(fixtures, "lib/auth/provider.ts"), "exports.getIdentityProvider = () => { throw new Error('guest must not contact Haze'); };");
@@ -33,6 +33,7 @@ await writeFile(path.join(fixtures, "lib/auth/marketplace.ts"), `
 exports.refreshMarketplaceSession = async () => { throw new Error("guest must not refresh Haze"); };
 exports.hasMarketplaceAccess = () => false;
 `);
+await writeFile(path.join(fixtures, "lib/browser-runtime.ts"), `exports.browserOwner = (source, subject) => JSON.stringify([source, subject]); exports.clearBrowserIdentity = () => {};`);
 const jiti = createJiti(import.meta.url, { alias: {
   "@": fixtures,
   "next/server": import.meta.resolve("next/server.js"),
@@ -130,10 +131,10 @@ test("successful login replaces guest mode; logout clears both modes", async () 
   const response = NextResponse.json({});
   const session = { providerId: "haze-oidc", refreshToken: "test-refresh", expiresAt: Date.now() + 3600000,
     principal: { subject: "test-user", name: "Test", permissions: [] } };
-  writeAuthSession(response.cookies, session);
+  await writeAuthSession(response.cookies, session);
   assert.equal(response.cookies.get(GUEST_SESSION_COOKIE).maxAge, 0);
   globalThis.__guestAuthCookies = response.cookies;
-  assert.deepEqual(await readAppSession(), { guest: false, session });
+  assert.deepEqual(await readAppSession(), { guest: false, session: { ...session, runtimeId: "test-login" } });
   globalThis.__guestAuthCookies = (await skip()).cookies;
   const loggedOut = await logout();
   assert.equal(loggedOut.cookies.get(GUEST_SESSION_COOKIE).maxAge, 0);
@@ -145,7 +146,7 @@ test("successful login replaces guest mode; logout clears both modes", async () 
 test("an explicit guest choice overrides a residual valid Haze cookie", async () => {
   globalThis.__guestAuthConfigEnabled = true;
   const response = NextResponse.json({});
-  writeAuthSession(response.cookies, { providerId: "haze-oidc", refreshToken: "stale-refresh", expiresAt: Date.now() + 3600000,
+  await writeAuthSession(response.cookies, { providerId: "haze-oidc", refreshToken: "stale-refresh", expiresAt: Date.now() + 3600000,
     principal: { subject: "previous-user", name: "Previous User", permissions: ["page.marketplace"] } });
   response.cookies.set(GUEST_SESSION_COOKIE, "1");
   globalThis.__guestAuthCookies = response.cookies;

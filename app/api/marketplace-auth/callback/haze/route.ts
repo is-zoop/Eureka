@@ -47,7 +47,7 @@ export async function GET(request: NextRequest) {
     }
     const response = NextResponse.redirect(new URL(tx.returnTo, appOrigin));
     clearTransaction(response.cookies);
-    writeAuthSession(response.cookies, session);
+    await writeAuthSession(response.cookies, session);
     const sessionCookie = response.cookies.get(AUTH_SESSION_COOKIE);
     console.info("[marketplace-auth] OAuth session cookie issued:", {
       present: Boolean(sessionCookie?.value),

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { MarkdownBody } from "./MarkdownBody";
+import { InlineMarkdown } from "./InlineMarkdown";
 import { Button } from "./ui/button";
 import { Checkbox } from "./ui/checkbox";
 import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogTitle } from "./ui/alert-dialog";
@@ -105,7 +106,7 @@ export function PlanReviewPanel({ plan, onClose, onUpdate, onReturnForRevision, 
 
         <section className="mt-3 rounded-lg border border-[var(--border)] bg-[var(--bg-panel)] p-3"><label className="mb-2 block text-xs font-medium">{t("plan.generalNote")}</label><textarea value={generalNote} disabled={!reviewing} onChange={(event) => setGeneralNote(event.target.value)} onBlur={() => { if (reviewing) void persist(); }} placeholder={reviewing ? t("plan.generalNotePlaceholder") : t("plan.none")} className="min-h-20 w-full resize-y rounded-md border border-[var(--border)] bg-[var(--bg)] p-2 text-sm outline-none disabled:opacity-70 focus:border-[var(--text-muted)]" /></section>
 
-        {plan.todos.length > 0 && <section className="mt-3 rounded-lg border border-[var(--border)] bg-[var(--bg-panel)] p-3"><div className="mb-2 text-xs font-medium">{t("plan.progress", { completed, total: plan.todos.length })}</div><div className="space-y-1.5">{plan.todos.map((todo) => <div key={todo.index} className="flex items-start gap-2 text-xs text-[var(--text-muted)]"><Checkbox checked={todo.done} disabled aria-label={todo.text} /><span className={todo.done ? "line-through opacity-70" : ""}>{todo.text}</span></div>)}</div></section>}
+        {plan.todos.length > 0 && <section className="mt-3 rounded-lg border border-[var(--border)] bg-[var(--bg-panel)] p-3"><div className="mb-2 text-xs font-medium">{t("plan.progress", { completed, total: plan.todos.length })}</div><div className="space-y-1.5">{plan.todos.map((todo) => <div key={todo.index} className="flex items-start gap-2 text-xs text-[var(--text-muted)]"><Checkbox checked={todo.done} disabled aria-label={todo.text} /><InlineMarkdown className={`min-w-0 flex-1 break-words ${todo.done ? "line-through opacity-70" : ""}`}>{todo.text}</InlineMarkdown></div>)}</div></section>}
       </main>
 
       {reviewing && <footer className="flex shrink-0 gap-2 border-t border-[var(--border)] bg-[var(--sidebar-bg)] p-3"><Button variant="destructive" className="min-w-0 flex-1 justify-center overflow-hidden font-medium" title={t("plan.abandon")} disabled={busy} onClick={() => setAbandonConfirmOpen(true)}><span className="min-w-0 max-w-full truncate text-left">{t("plan.abandon")}</span></Button><Button variant="outline" className="min-w-0 flex-1 justify-center overflow-hidden font-medium" title={t("plan.returnForRevision")} disabled={busy} onClick={() => void withBusy(async () => { await persist(); await onReturnForRevision(); })}><span className="min-w-0 max-w-full truncate text-left">{t("plan.returnForRevision")}</span></Button><Button className="min-w-0 flex-1 justify-center overflow-hidden font-medium" title={t("plan.approveExecute")} disabled={busy} onClick={() => void withBusy(async () => { await persist(); await onApprove(); })}><span className="min-w-0 max-w-full truncate text-left">{t("plan.approveExecute")}</span></Button></footer>}

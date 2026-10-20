@@ -9,6 +9,8 @@ export type AuthPrincipal = {
 
 export type AuthSession = {
   providerId: string;
+  /** Binds the browser cookie to one host login, independent of token rotation. */
+  runtimeId?: string;
   /** Short-lived access tokens are intentionally not persisted in the cookie. */
   accessToken?: string;
   refreshToken: string;

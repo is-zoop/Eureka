@@ -13,7 +13,8 @@ const {
   formatExtensionStatusLine,
   sanitizeExtensionStatusText,
 } = await jiti.import("./ExtensionStatusBar.tsx");
-const { I18nProvider } = await jiti.import("../hooks/useI18n.tsx");
+const { I18nProvider } = await jiti.import("@/hooks/useI18n");
+const { McpStatusDetails } = await jiti.import("./McpStatusPopover.tsx");
 
 function renderStatusBar(props) {
   return renderToStaticMarkup(
@@ -77,4 +78,39 @@ test("renders widgets and status text in one footer", () => {
   assert.match(html, /extension-widget-triggers/);
   assert.match(html, /usage/);
   assert.match(html, /connected/);
+});
+
+test("only the MCP footer entry opens session status while other extensions stay ordinary text", () => {
+  const html = renderStatusBar({ sessionId: "session-a", statuses: [
+    { key: "mcp", text: "MCP: 1 server enabled" },
+    { key: "other", text: "Other extension" },
+  ] });
+  assert.match(html, /<button[^>]+aria-label="View current session MCP status"/);
+  assert.match(html, /MCP: 1 server enabled/);
+  assert.match(html, /Other extension/);
+  assert.equal((html.match(/<button/g) ?? []).length, 1);
+  const noSession = renderStatusBar({ statuses: [{ key: "mcp", text: "MCP" }] });
+  assert.match(noSession, /<button[^>]+disabled/);
+});
+
+test("MCP details distinguish enabled, connected, cached and authentication states", () => {
+  const html = renderToStaticMarkup(React.createElement(I18nProvider, null, React.createElement(McpStatusDetails, { status: {
+    sessionId: "session-a", updatedAt: "2026-10-20T00:00:00Z", totalTools: 9, totalResources: 2,
+    servers: [
+      { name: "atlas", state: "connected", disabled: false, toolCount: 7, directToolCount: 2, resourceCount: 2, listenState: "active", catalogStale: true },
+      { name: "lazy", state: "cached", disabled: false, toolCount: 2 },
+      { name: "protected", state: "needs-auth", disabled: false, toolCount: 0 },
+      { name: "broken", state: "failed", disabled: false, toolCount: 0, failedAgoSeconds: 15 },
+      { name: "off", state: "disabled", disabled: true, toolCount: 0 },
+    ],
+  } })));
+  assert.match(html, /Catalog cached/);
+  assert.match(html, /Needs authentication/);
+  assert.match(html, /Listening/);
+  assert.match(html, /Direct tools/);
+  assert.match(html, /failed 15 seconds earlier/);
+  assert.match(html, /no detailed error text/);
+  assert.match(html, /not been synchronized/);
+  assert.match(html, /—/);
+  assert.doesNotMatch(html, /mcpStatus\./);
 });

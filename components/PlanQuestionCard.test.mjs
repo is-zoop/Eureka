@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 test("planning question card provides grouped navigation and delayed batch submission", async () => {
-  const source = await readFile(new URL("./PlanQuestionCard.tsx", import.meta.url), "utf8");
+  const source = await readFile(new URL("./UserInputCard.tsx", import.meta.url), "utf8");
 
   assert.match(source, /max-w-none/);
   assert.match(source, /text-\[13px\] font-medium leading-5 text-\[var\(--text-dim\)\]/);

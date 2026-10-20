@@ -1,6 +1,7 @@
 "use client";
 
 import { NotificationNotice } from "@/components/Notifications";
+import { OrganizationCapabilityIcon } from "./OrganizationCapabilityIcon";
 
 
 import { useState, useEffect, useCallback, useRef } from "react";
@@ -132,6 +133,8 @@ function SkillDetail({
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+      {skill.managedPlugin ? <p title={t("extensions.pluginManagedSkill")} style={{ fontSize: 12, color: "var(--text-muted)" }}>{skill.managedPlugin.name} · {t("extensions.pluginManagedSkill")}</p> : null}
+      {skill.organizationCapability ? <div className="flex items-center gap-2"><OrganizationCapabilityIcon capability={skill.organizationCapability} type="Skill" size={28} /><span className="text-sm font-medium">{skill.name}</span></div> : null}
       {/* Path + tag + toggle, with a stable status row below. */}
       <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
@@ -166,7 +169,7 @@ function SkillDetail({
           </span>
           <Toggle
             enabled={enabled}
-            loading={toggling}
+            loading={toggling || Boolean(skill.managedPlugin)}
             onToggle={() => onToggle(skill)}
           />
         </div>
@@ -853,6 +856,7 @@ export function SkillsConfig({
   }, [cwd, loadSkills]);
 
   const toggle = useCallback(async (skill: Skill) => {
+    if (skill.managedPlugin) return;
     const next = !skill.disableModelInvocation;
     setToggling((s) => new Set(s).add(skill.filePath));
     setSaveError(null);
@@ -1100,6 +1104,7 @@ export function SkillsConfig({
                             e.currentTarget.style.background = "none";
                         }}
                       >
+                        {skill.organizationCapability ? <OrganizationCapabilityIcon capability={skill.organizationCapability} type="Skill" size={18} /> : null}
                         <span
                           style={{
                             flexShrink: 0,

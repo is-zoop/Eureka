@@ -22,4 +22,5 @@ test("logged-in accounts keep the existing organization landing tab", () => {
   const html = render(false);
   assert.match(html, /<button(?=[^>]*role="tab")(?=[^>]*aria-selected="true")[^>]*>Organization extensions<\/button>/);
   assert.match(html, /Loading organization extensions/);
+  assert.equal((html.match(/>Plugins<\/button>/g) ?? []).length, 1, "the selected organization group exposes its plugin category");
 });

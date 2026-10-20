@@ -1,3 +1,4 @@
+import { readClarificationState } from "@/lib/clarification";
 import { NextResponse } from "next/server";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { resolveSessionPath, buildSessionContext } from "@/lib/session-reader";
@@ -27,7 +28,7 @@ export async function GET(
       deferToolResultImages,
     });
 
-    return NextResponse.json({ context });
+    return NextResponse.json({ context, clarification: readClarificationState(sm.getBranch(leafId) as never) });
   } catch (error) {
     return NextResponse.json({ error: String(error) }, { status: 500 });
   }

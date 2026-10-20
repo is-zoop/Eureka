@@ -6,7 +6,7 @@ import type {
   Theme,
   ModelRuntime,
 } from "@earendil-works/pi-coding-agent";
-import type { AgentMessage as PiAgentMessage } from "@earendil-works/pi-agent-core";
+import type { Agent, AgentMessage as PiAgentMessage } from "@earendil-works/pi-agent-core";
 
 export interface ContextUsage {
   percent: number | null;
@@ -60,6 +60,7 @@ interface PromptTemplateLike {
 
 interface SkillLike {
   name: string;
+  filePath?: string;
   description?: string;
   sourceInfo: SlashCommandInfo["sourceInfo"];
 }
@@ -130,6 +131,7 @@ export interface AgentSessionLike {
   readonly sessionManager: SessionManager;
   readonly settingsManager: SettingsManager;
   readonly agent: {
+    shouldStopAfterTurn?: Agent["shouldStopAfterTurn"];
     state?: {
       systemPrompt?: string;
       thinkingLevel?: string;
