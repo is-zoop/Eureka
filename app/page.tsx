@@ -1,7 +1,6 @@
 import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
-import { I18nProvider } from "@/hooks/useI18n";
 import { readAppSession } from "@/lib/auth/session";
 
 export default async function Home() {
@@ -9,9 +8,7 @@ export default async function Home() {
   if (!session) redirect("/login?returnTo=/");
   return (
     <Suspense>
-      <I18nProvider>
-        <AppShell initialGuest={session.guest} />
-      </I18nProvider>
+      <AppShell initialGuest={session.guest} />
     </Suspense>
   );
 }

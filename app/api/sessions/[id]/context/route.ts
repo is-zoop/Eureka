@@ -1,7 +1,7 @@
 import { readClarificationState } from "@/lib/clarification";
 import { NextResponse } from "next/server";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
-import { resolveSessionPath, buildSessionContext } from "@/lib/session-reader";
+import { resolveSessionPath, buildSessionContext, buildSessionHistory, SessionHistoryCursorError } from "@/lib/session-reader";
 import { getRpcSession } from "@/lib/rpc-manager";
 
 export async function GET(
@@ -23,13 +23,18 @@ export async function GET(
     }
 
     const sm = liveRpc?.inner.sessionManager ?? SessionManager.open(filePath!);
-    const context = buildSessionContext(sm.getEntries() as never, leafId, {
+    const entries = sm.getEntries();
+    const selectedLeaf = leafId ?? sm.getLeafId();
+    const context = buildSessionContext(entries as never, selectedLeaf, {
       deferThinking,
       deferToolResultImages,
     });
 
-    return NextResponse.json({ context, clarification: readClarificationState(sm.getBranch(leafId) as never) });
+    return NextResponse.json({ context,
+      ...(url.searchParams.get("includeHistory") === "1" ? { history: buildSessionHistory(entries as never, selectedLeaf, { deferThinking, deferToolResultImages }) } : {}),
+      clarification: readClarificationState(sm.getBranch(selectedLeaf ?? undefined) as never) });
   } catch (error) {
+    if (error instanceof SessionHistoryCursorError) return NextResponse.json({ error: error.message }, { status: 409 });
     return NextResponse.json({ error: String(error) }, { status: 500 });
   }
 }

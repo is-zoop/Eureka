@@ -1,0 +1,11 @@
+✔ live context uses the existing session and sends counts rather than prompt/tool bodies (113.4144ms)
+✔ trailing tool results and unknown usage are labelled as estimates (2.6607ms)
+✔ history respects branch selection and discards pre-compaction usage (395.8009ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 29506.7824

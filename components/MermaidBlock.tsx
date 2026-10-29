@@ -5,6 +5,7 @@ import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { useTheme } from "@/hooks/useTheme";
 import { useI18n } from "@/hooks/useI18n";
 import { copyText } from "@/lib/clipboard";
+import { CopyFeedbackIcon } from "./CopyFeedbackIcon";
 import { editorDarkTheme, editorLightTheme } from "@/lib/code-theme";
 
 interface MermaidBlockProps {
@@ -304,12 +305,6 @@ function CodeIcon() {
   return <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="m8 9-3 3 3 3M16 9l3 3-3 3M14 5l-4 14" /></svg>;
 }
 
-function CopyIcon({ copied }: { copied: boolean }) {
-  return copied
-    ? <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="m20 6-11 11-5-5" /></svg>
-    : <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="12" height="12" rx="2.5" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>;
-}
-
 function DiffText({ row }: { row: DiffRow }) {
   if (!row.changedRange) return <>{row.text}</>;
   const [start, end] = row.changedRange;
@@ -400,7 +395,7 @@ export const CodeBlock = memo(function CodeBlock({ code, lang, headerAction, isS
             onClick={copy}
             className="markdown-code-action"
           >
-            <CopyIcon copied={copied} />{copied ? t("i18n.copied") : t("i18n.copy")}
+            <CopyFeedbackIcon copied={copied} />{copied ? t("i18n.copied") : t("i18n.copy")}
           </button>
         </div>
       </div>

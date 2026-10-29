@@ -16,9 +16,9 @@ test("uses a compact mobile toolbar with a floating six-action layer", () => {
   }
 });
 
-test("keeps covered statistics and file controls out of interaction and focus", () => {
+test("keeps covered file controls out of interaction and focus", () => {
   assert.match(source, /const covered = mobile && mobileToolbarMoreOpen;/);
-  assert.match(source, /disabled=\{!showChat \|\| covered\}[\s\S]*?tabIndex=\{covered \? -1 : undefined\}/);
+  assert.match(source, /disabled=\{covered\}[\s\S]*?tabIndex=\{covered \? -1 : undefined\}/);
   assert.match(source, /data-mobile-toolbar-file=\{mobile \? "true" : undefined\}[\s\S]*?visibility: covered \? "hidden" : "visible"/);
   assert.match(source, /aria-hidden=\{covered \? true : undefined\}/);
 });
@@ -45,14 +45,14 @@ test("keeps the mobile action layer open after using an expanded action", () => 
   assert.match(source, /toggleTopPanel\("branches", true\)/);
   assert.match(source, /handleSystemPromptToggle\(mobile\)/);
   assert.match(source, /toggleTopPanel\("language", mobile\)/);
-  assert.match(source, /onClick=\{\(\) => toggleTopPanel\("session"\)\}/);
 });
 
-test("prioritizes context and cost when the mobile statistics area narrows", () => {
-  assert.match(source, /\.mobile-session-stats \{[\s\S]*?container-type: inline-size/);
-  assert.match(source, /@container \(max-width: 158px\)[\s\S]*?\.mobile-session-stat-io/);
-  assert.match(source, /@container \(max-width: 88px\)[\s\S]*?\.mobile-session-stat-cost/);
-  assert.match(source, /mobileContextText = percent !== null \? `\$\{percent\.toFixed\(0\)\}%` : null/);
+test("context inspection belongs to the composer rather than a second top-bar panel", async () => {
+  const input = await readFile(new URL("./ChatInput.tsx", import.meta.url), "utf8");
+  const chat = await readFile(new URL("./ChatWindow.tsx", import.meta.url), "utf8");
+  assert.doesNotMatch(source, /renderSessionStatsButton|session-info-popover/);
+  assert.match(input, /data-composer-actions[\s\S]*?\{contextControl\}/);
+  assert.match(chat, /onSessionStatsPanelOpen: openContextPanel/);
 });
 
 test("keeps trust warnings in the global notification layer and the file toggle in toolbar flow", () => {

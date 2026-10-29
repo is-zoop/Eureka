@@ -1,6 +1,7 @@
 import { readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
-import { existsSync, realpathSync } from "node:fs";
+import { existsSync, realpathSync, readFileSync, statSync } from "node:fs";
+import { parsePluginComposer, type PluginComposer } from "./haze-plugin-package";
 import { resolve } from "node:path";
 import { createHash } from "node:crypto";
 import { getAgentDir, loadSkillsFromDir, type Skill, type ResourceDiagnostic } from "@earendil-works/pi-coding-agent";
@@ -11,7 +12,7 @@ import { samePath } from "./paths";
 import { getProjectTrustStatus } from "./project-trust";
 
 type SkillSet = { skills: Skill[]; diagnostics: ResourceDiagnostic[] };
-export type PluginSnapshot = { capabilityId: string; source: string; digest: string; root: string; servers: string[]; capabilities?: { requestUserInput?: boolean }; error?: string };
+export type PluginSnapshot = { capabilityId: string; source: string; digest: string; root: string; servers: string[]; capabilities?: { requestUserInput?: boolean }; composer?: PluginComposer; error?: string };
 declare global { var __eurekaPluginSnapshots: Map<string, { cwd: string; plugins: PluginSnapshot[] }> | undefined; }
 const snapshots: Map<string, { cwd: string; plugins: PluginSnapshot[] }> = globalThis.__eurekaPluginSnapshots ??= new Map();
 export function pluginMcpName(item: HazeManagedInstall, name: string) {
@@ -25,6 +26,15 @@ export function validatedPluginRoot(cwd: string, item: HazeManagedInstall): stri
   if (!isPathWithinRoots(storage, new Set([base]))) throw new Error("插件存储目录越界");
   if (!isPathWithinRoots(root, new Set([storage])) || samePath(root, storage)) throw new Error("插件目录越界");
   return root;
+}
+/** Presentation preference only: local edits never change registered auth or capabilities. */
+export function installedPluginComposer(cwd: string, item: HazeManagedInstall): PluginComposer {
+  const root = validatedPluginRoot(cwd, item);
+  const file = realpathSync(resolve(root, "plugin.json"));
+  if (!isPathWithinRoots(file, new Set([root])) || statSync(file).size > 1024 * 1024) throw new Error("插件清单路径或大小无效");
+  const manifest = JSON.parse(readFileSync(file, "utf8"));
+  if (manifest.name !== item.plugin!.manifest.name || manifest.version !== item.version || manifest.extensions?.["com.eureka"]?.schemaVersion !== 1) throw new Error("插件清单身份或版本不一致，请重新安装");
+  return parsePluginComposer(manifest.extensions["com.eureka"].composer);
 }
 export function applyOrganizationPluginSkills(cwd: string, base: SkillSet, source = process.env.EUREKA_AUTH_HAZE_ISSUER?.replace(/\/$/, "")): SkillSet {
   const skills = [...base.skills], diagnostics = [...base.diagnostics];
@@ -68,7 +78,7 @@ export function pluginPresentation(item: HazeManagedInstall, sessionId?: string 
   else if (loaded) state = servers.some((server) => server.state === "needs-auth") ? "needs-auth" : servers.some((server) => server.state === "failed") ? "failed" : "loaded";
   else if (sessionId && snapshots.has(sessionId)) state = "pending-reload";
   if (!item.disabled && subject !== undefined && plugin.manifest.servers.some((server) => server.auth) && subject !== plugin.subject) state = "needs-auth";
-  return { name: plugin.manifest.name, digest: plugin.digest, skills: plugin.manifest.skillDirectories, servers: plugin.manifest.servers, capabilities: plugin.manifest.capabilities, state, ...(loaded?.error ? { error: loaded.error } : {}) };
+  return { name: plugin.manifest.name, digest: plugin.digest, skills: plugin.manifest.skillDirectories, servers: plugin.manifest.servers, capabilities: plugin.manifest.capabilities, composer: plugin.manifest.composer, state, ...(loaded?.error ? { error: loaded.error } : {}) };
 }
 
 export async function cleanupPluginDirectories(cwd: string, scope: HazeInstallScope) {

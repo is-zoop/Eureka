@@ -1,0 +1,10 @@
+▲ Next.js 16.2.12 (Turbopack)
+- Local:         http://127.0.0.1:8080
+- Network:       http://127.0.0.1:8080
+- Environments: .env.local
+✓ Ready in 4.3s
+○ Compiling proxy ...
+
+○ Compiling /api/agent/running ...
+ GET /api/agent/running 200 in 68s (next.js: 68s, proxy.ts: 209ms, application-code: 11ms)
+ GET /api/agent/running 200 in 68s (next.js: 68s, proxy.ts: 203ms, application-code: 4ms)

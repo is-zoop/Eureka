@@ -5,6 +5,8 @@ import { MarkdownBody } from "./MarkdownBody";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 import { copyText } from "@/lib/clipboard";
 import { useI18n } from "@/hooks/useI18n";
+import { Collapse } from "./Collapse";
+import { CopyFeedbackIcon } from "./CopyFeedbackIcon";
 
 type Props = {
   id: string;
@@ -96,7 +98,7 @@ export function PlanCard({ id, markdown, revision, defaultCollapsed, cwd, onOpen
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 3v12" /><path d="m7 10 5 5 5-5" /><path d="M5 21h14" /></svg>
           </IconButton>
           <IconButton label={copied ? t("i18n.copied") : t("plan.copy")} onClick={handleCopy}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>
+            <CopyFeedbackIcon copied={copied} size={14} />
           </IconButton>
           {primaryAction && <button
             type="button"
@@ -108,9 +110,9 @@ export function PlanCard({ id, markdown, revision, defaultCollapsed, cwd, onOpen
           </button>}
         </div>
       </header>
-      {!collapsed && <div className="border-t border-[var(--border)] px-4 py-3">
+      <Collapse open={!collapsed}>{() => <div className="border-t border-[var(--border)] px-4 py-3">
         <MarkdownBody cwd={cwd} onOpenFile={onOpenFile} className="text-sm leading-6">{markdown}</MarkdownBody>
-      </div>}
+      </div>}</Collapse>
     </section>
   );
 }

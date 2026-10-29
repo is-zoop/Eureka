@@ -2,7 +2,7 @@ import { getAgentDir, loadSkillsFromDir } from "@earendil-works/pi-coding-agent"
 import { realpathSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { effectivePlugins } from "./haze-registry";
-import { validatedPluginRoot, pluginMcpName, pluginPresentation, getPluginSnapshots } from "./haze-plugin-resources";
+import { validatedPluginRoot, pluginMcpName, pluginPresentation, getPluginSnapshots, installedPluginComposer } from "./haze-plugin-resources";
 import { getProjectTrustStatus } from "./project-trust";
 import { isPathWithinRoots } from "./path-security";
 import { readRuntimeHazeSession } from "./auth/runtime-session";
@@ -41,9 +41,11 @@ export function listComposerPlugins(cwd: string, source: string, subject: string
     let state = pluginPresentation(item, sessionId, subject)!.state;
     const skills: string[] = [];
     let description = "";
+    let selectionMode: "once" | "persistent" = p.manifest.composer?.selectionMode ?? "once";
     try {
       if (item.scope === "project" && !getProjectTrustStatus(cwd, getAgentDir()).trusted) throw new Error();
       const root = validatedPluginRoot(cwd, item);
+      selectionMode = installedPluginComposer(cwd, item).selectionMode;
       const manifest = JSON.parse(readFileSync(resolve(root, "plugin.json"), "utf8"));
       description = typeof manifest.description === "string" ? manifest.description.slice(0, 2000) : "";
       for (const dir of p.manifest.skillDirectories) {
@@ -52,7 +54,7 @@ export function listComposerPlugins(cwd: string, source: string, subject: string
         skills.push(...loadSkillsFromDir({ dir: path, source: item.scope }).skills.map((s) => s.name));
       }
     } catch { state = "failed"; }
-    return { source, capabilityId: item.capabilityId, digest: p.digest, name: p.manifest.displayName || item.name, description: description || p.manifest.name, skills, state };
+    return { source, capabilityId: item.capabilityId, digest: p.digest, name: p.manifest.displayName || item.name, description: description || p.manifest.name, skills, state, selectionMode, subject };
   });
 }
 
@@ -69,6 +71,7 @@ export function prepareSelectedPlugins(cwd: string, sessionId: string, raw: unkn
   const seen = new Set<string>();
   for (const ref of raw) {
     if (!ref || typeof ref !== "object") throw new Error("插件选择无效");
+    if (ref.subject !== undefined && ref.subject !== identity.principal.subject) throw new Error("插件当前不可用：选择属于其他账号，请移除后重新选择");
     const entry = available.find((item) => item.source === ref.source && item.capabilityId === ref.capabilityId);
     if (!entry || entry.digest !== ref.digest) throw new Error("所选插件已更改，请重新选择并重载会话");
     if (entry.state !== "loaded") throw new Error(`${entry.name} 当前不可用（${entry.state}），请检查认证、启用状态并重载会话`);

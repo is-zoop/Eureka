@@ -1,10 +1,13 @@
 "use client";
 
+import styles from "./Sidebar.module.css";
+
 import { NotificationNotice } from "@/components/Notifications";
 
 
 import { forwardRef, useState, useCallback, useEffect, useImperativeHandle, useMemo, useRef, type ReactElement } from "react";
 import { getFileIcon, FolderIcon } from "./FileIcons";
+import { FileListSkeleton } from "./FileListSkeleton";
 import {
   encodeFilePathForApi,
   getFileDirectory,
@@ -15,15 +18,14 @@ import {
 } from "@/lib/file-paths";
 import type { GitFileStatus, GitFileStatusKind, GitStatusResponse } from "@/lib/git-types";
 import { useI18n } from "@/hooks/useI18n";
-import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
+import { LabelTooltip } from "./LabelTooltip";
+import { Button } from "./ui/button";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible";
 type Translate = ReturnType<typeof useI18n>["t"];
 
 function FileTooltip({ content, children }: { content: string; children: ReactElement }) {
   return (
-    <Tooltip>
-      <TooltipTrigger render={children} />
-      <TooltipContent side="right">{content}</TooltipContent>
-    </Tooltip>
+    <LabelTooltip content={content} side="right">{children}</LabelTooltip>
   );
 }
 
@@ -210,9 +212,9 @@ function MentionIcon({ size = 11 }: { size?: number }) {
 
 function TreeNode({
   node,
-  depth,
   cwd,
   onOpenFile,
+  selectedPath,
   onAtMention,
   expandedPaths,
   onToggleExpanded,
@@ -223,9 +225,9 @@ function TreeNode({
   t,
 }: {
   node: FileNode;
-  depth: number;
   cwd: string;
   onOpenFile: (filePath: string, fileName: string, options?: OpenFileOptions) => void;
+  selectedPath: string | null;
   onAtMention?: (relativePath: string, isDir: boolean) => void;
   expandedPaths: Set<string>;
   onToggleExpanded: (fullPath: string, open: boolean) => void;
@@ -236,6 +238,7 @@ function TreeNode({
   t: Translate;
 }) {
   const open = expandedPaths.has(node.fullPath);
+  const selected = !node.isDir && selectedPath === node.fullPath;
   const highlighted = highlightedPaths.has(node.fullPath);
   const normalizedPath = normalizeFilePathSlashes(node.fullPath);
   const gitStatus = gitStatusByPath.get(normalizedPath);
@@ -269,64 +272,32 @@ function TreeNode({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refreshToken]);
 
-  const handleClick = useCallback(() => {
-    if (node.isDir) {
-      const next = !open;
-      onToggleExpanded(node.fullPath, next);
-      if (next && !loaded) loadChildren();
-    } else {
-      onOpenFile(node.fullPath, node.name);
-    }
-  }, [node.isDir, node.fullPath, node.name, loaded, open, loadChildren, onOpenFile, onToggleExpanded]);
+  const handleOpenChange = useCallback((next: boolean) => {
+    onToggleExpanded(node.fullPath, next);
+  }, [node.fullPath, onToggleExpanded]);
 
   useEffect(() => {
     if (open && node.isDir && !loaded) void loadChildren();
   }, [open, node.isDir, loaded, loadChildren]);
 
-  return (
-    <div>
-      <div
-        onClick={handleClick}
-        onMouseEnter={() => setHovered(true)}
-        onMouseLeave={() => setHovered(false)}
-        style={{
-          position: "relative",
-          display: "flex",
-          alignItems: "center",
-          gap: 4,
-          paddingLeft: 8 + depth * 14,
-          paddingRight: 8,
-          height: 24,
-          cursor: "pointer",
-          background: hovered ? "var(--bg-hover)" : "transparent",
-          borderRadius: 4,
-          userSelect: "none",
-        }}
-      >
+  const rowButton = (
+    <Button variant="ghost" size="sm" className={styles.treeButton} aria-label={node.name}
+      aria-current={selected ? "true" : undefined}
+      onClick={node.isDir ? undefined : () => onOpenFile(node.fullPath, node.name)}>
         {node.isDir && (
           <svg
-            width="10" height="10" viewBox="0 0 10 10" fill="none"
-            stroke="var(--text-dim)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"
-            style={{ flexShrink: 0, transform: open ? "rotate(90deg)" : "none", transition: "transform 0.1s" }}
+            width="16" height="16" viewBox="0 0 24 24" fill="none"
+            stroke="var(--text-muted)" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"
+            className={styles.treeChevron} data-open={open} aria-hidden="true"
           >
-            <polyline points="3 2 7 5 3 8" />
+            <polyline points="9 6 15 12 9 18" />
           </svg>
         )}
-        {!node.isDir && <span style={{ width: 10, flexShrink: 0 }} />}
         <span style={{ flexShrink: 0, display: "flex", alignItems: "center" }}>
-          {node.isDir ? <FolderIcon size={14} open={open} /> : getFileIcon(node.name, 14)}
+          {node.isDir ? <FolderIcon size={18} open={open} /> : getFileIcon(node.name, 18)}
         </span>
         <FileTooltip content={node.fullPath}>
-          <span
-            style={{
-              fontSize: 12,
-              color: "var(--text)",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-              flex: 1,
-            }}
-          >
+          <span className={styles.treeName}>
             {node.name}
           </span>
         </FileTooltip>
@@ -360,11 +331,21 @@ function TreeNode({
             </span>
           </FileTooltip>
         )}
-        {loading && (
+        {loading && loaded && (
           <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="var(--text-dim)" strokeWidth="2" strokeLinecap="round">
             <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4" />
           </svg>
         )}
+    </Button>
+  );
+
+  return (
+    <Collapsible open={node.isDir && open} onOpenChange={handleOpenChange} className={styles.treeNode}>
+      <div className={`${styles.fileRow} ${styles.treeRow}`} data-tree-row={node.fullPath}
+        data-selected={selected}
+        onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}>
+        {node.isDir ? <CollapsibleTrigger render={rowButton} /> : rowButton}
+        {hovered && (onAtMention || !node.isDir) && <div className={styles.treeActions}>
         {onAtMention && hovered && (
           <FileTooltip content={t("files.insertPath")}>
             <button
@@ -374,26 +355,7 @@ function TreeNode({
                 onAtMention(getRelativeFilePath(node.fullPath, cwd), node.isDir);
               }}
               aria-label={t("files.insertPath")}
-              style={{
-                position: "absolute",
-                right: !node.isDir ? 28 : 4,
-                top: "50%",
-                transform: "translateY(-50%)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 4,
-                padding: "0 8px",
-                height: 20,
-                background: "var(--bg-panel)",
-                border: "1px solid var(--border)",
-                borderRadius: 4,
-                color: "var(--accent)",
-                cursor: "pointer",
-                fontSize: 11,
-                fontWeight: 600,
-                whiteSpace: "nowrap",
-              }}
+              className={`${styles.treeAction} ${styles.treeMention}`}
             >
               <MentionIcon />
               {t("files.mention")}
@@ -407,27 +369,7 @@ function TreeNode({
             download
             onClick={(e) => e.stopPropagation()}
             aria-label={t("files.download")}
-            style={{
-              position: "absolute",
-              right: 4,
-              top: "50%",
-              transform: "translateY(-50%)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: 4,
-              padding: "0 5px",
-              height: 20,
-              background: "var(--bg-panel)",
-              border: "1px solid var(--border)",
-              borderRadius: 4,
-              color: "var(--text-muted)",
-              cursor: "pointer",
-              fontSize: 11,
-              fontWeight: 600,
-              whiteSpace: "nowrap",
-              textDecoration: "none",
-            }}
+            className={styles.treeAction}
           >
             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
@@ -437,16 +379,18 @@ function TreeNode({
           </a>
           </FileTooltip>
         )}
+        </div>}
       </div>
-      {node.isDir && open && (
-        <div>
+      {node.isDir && <CollapsibleContent className={styles.treeContent}>
+        <div className={styles.treeChildren}>
+          {loading && !loaded && <FileListSkeleton label={t("files.loading")} rows={3} />}
           {children.map((child) => (
             <TreeNode
               key={child.fullPath}
               node={child}
-              depth={depth + 1}
               cwd={cwd}
               onOpenFile={onOpenFile}
+              selectedPath={selectedPath}
               onAtMention={onAtMention}
               expandedPaths={expandedPaths}
               onToggleExpanded={onToggleExpanded}
@@ -458,13 +402,13 @@ function TreeNode({
             />
           ))}
           {children.length === 0 && loaded && (
-            <div style={{ paddingLeft: 8 + (depth + 1) * 14, fontSize: 11, color: "var(--text-dim)", height: 22, display: "flex", alignItems: "center" }}>
+            <div className={styles.treeEmpty}>
               empty
             </div>
           )}
         </div>
-      )}
-    </div>
+      </CollapsibleContent>}
+    </Collapsible>
   );
 }
 
@@ -487,31 +431,33 @@ function ChangeRow({
   const name = getFileName(status.filePath);
   const rel = getRelativeFilePath(status.filePath, cwd);
   return (
+    <FileTooltip content={status.filePath}>
     <div
+      className={styles.fileRow}
       onClick={() => onOpenFile(status.filePath, name, { modeHint: "diff" })}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-      title={status.filePath}
       style={{
         display: "flex",
         alignItems: "center",
         gap: 6,
         paddingLeft: 10,
         paddingRight: 8,
-        height: 24,
+        height: 28,
         cursor: "pointer",
         background: hovered ? "var(--bg-hover)" : "transparent",
-        borderRadius: 4,
+        borderRadius: 6,
         userSelect: "none",
       }}
     >
       <GitStatusBadge status={status} t={t} />
       <span style={{ flexShrink: 0, display: "flex", alignItems: "center", opacity: 0.85 }}>
-        {getFileIcon(name, 13)}
+        {getFileIcon(name, 16)}
       </span>
       <span
         style={{
-          fontSize: 12,
+          fontSize: 13,
+          lineHeight: "20px",
           color: "var(--text)",
           overflow: "hidden",
           textOverflow: "ellipsis",
@@ -521,7 +467,14 @@ function ChangeRow({
       >
         {rel}
       </span>
+      {typeof status.additions === "number" && typeof status.deletions === "number" && (
+        <span style={{ display: "inline-flex", flexShrink: 0, gap: 6, fontSize: 11, fontFamily: "var(--font-mono)", fontVariantNumeric: "tabular-nums" }}>
+          <span style={{ color: GIT_STATUS_COLORS.added }}>+{status.additions}</span>
+          <span style={{ color: GIT_STATUS_COLORS.deleted }}>-{status.deletions}</span>
+        </span>
+      )}
     </div>
+    </FileTooltip>
   );
 }
 
@@ -541,6 +494,7 @@ export const FileExplorer = forwardRef<FileExplorerHandle, Props>(function FileE
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set());
+  const [selection, setSelection] = useState<{ cwd: string; path: string } | null>(null);
   const [treeRefreshKey, setTreeRefreshKey] = useState(0);
   const [highlightedPaths, setHighlightedPaths] = useState<Set<string>>(new Set());
   const [gitFiles, setGitFiles] = useState<GitFileStatus[]>([]);
@@ -551,9 +505,15 @@ export const FileExplorer = forwardRef<FileExplorerHandle, Props>(function FileE
   const [uploadSummary, setUploadSummary] = useState<UploadSummary | null>(null);
   const [pendingConflict, setPendingConflict] = useState<PendingConflict | null>(null);
   const prevCwdRef = useRef<string | null>(null);
+  const loadedCwdRef = useRef<string | null>(null);
   const uploadInputRef = useRef<HTMLInputElement>(null);
   const refreshToken = `${refreshKey ?? 0}:${treeRefreshKey}`;
   const uploadBusy = uploadPhase !== "idle";
+
+  const handleTreeOpen = useCallback<OpenFileHandler>((filePath, fileName, options) => {
+    setSelection({ cwd, path: filePath });
+    onOpenFile(filePath, fileName, options);
+  }, [cwd, onOpenFile]);
 
   const gitStatusByPath = useMemo(() => new Map(
     gitFiles.map((status) => [normalizeFilePathSlashes(status.filePath), status]),
@@ -702,11 +662,16 @@ export const FileExplorer = forwardRef<FileExplorerHandle, Props>(function FileE
       setUploadError(null);
     }
 
-    setLoading(cwdChanged);
+    setLoading(loadedCwdRef.current !== cwd);
     setError(null);
     let cancelled = false;
     fetchEntries(cwd)
-      .then((entries) => { if (!cancelled) setRoots(entries); })
+      .then((entries) => {
+        if (!cancelled) {
+          loadedCwdRef.current = cwd;
+          setRoots(entries);
+        }
+      })
       .catch((e) => { if (!cancelled) setError(e instanceof Error ? e.message : String(e)); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
@@ -807,7 +772,7 @@ export const FileExplorer = forwardRef<FileExplorerHandle, Props>(function FileE
       )}
 
       {!changesCollapsed && gitFiles.length > 0 && (
-        <div style={{ padding: "0 4px 2px" }}>
+        <div style={{ padding: "2px 8px 8px" }}>
           <div
             aria-label={t("files.changeStats", {
               count: gitFiles.length,
@@ -829,9 +794,9 @@ export const FileExplorer = forwardRef<FileExplorerHandle, Props>(function FileE
       )}
 
       {(changesCollapsed || gitFiles.length === 0) && (
-        <div style={{ padding: "2px 4px" }}>
+        <div className={styles.treeList}>
           {loading ? (
-            <div style={{ padding: "8px 12px", fontSize: 11, color: "var(--text-dim)" }}>Loading files...</div>
+            <FileListSkeleton label={t("files.loading")} />
           ) : error ? (
             <NotificationNotice message={error} type="error" />
           ) : (
@@ -839,9 +804,9 @@ export const FileExplorer = forwardRef<FileExplorerHandle, Props>(function FileE
               <TreeNode
                 key={node.fullPath}
                 node={node}
-                depth={0}
                 cwd={cwd}
-                onOpenFile={onOpenFile}
+                onOpenFile={handleTreeOpen}
+                selectedPath={selection?.cwd === cwd ? selection.path : null}
                 onAtMention={onAtMention}
                 expandedPaths={expandedPaths}
                 onToggleExpanded={handleToggleExpanded}
@@ -854,7 +819,7 @@ export const FileExplorer = forwardRef<FileExplorerHandle, Props>(function FileE
             ))
           )}
           {!loading && !error && roots.length === 0 && (
-            <div style={{ padding: "8px 12px", fontSize: 11, color: "var(--text-dim)" }}>
+            <div style={{ padding: "8px 12px", fontSize: 12, color: "var(--text-muted)" }}>
               {t("files.noFiles")}
             </div>
           )}

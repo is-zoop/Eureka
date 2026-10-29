@@ -1,18 +1,24 @@
 "use client";
 
-import { dedupePlugins, splitPluginSelection, type ComposerPlugin, type SelectedPlugin } from "@/lib/plugin-selection";
+import { dedupePlugins, retainedPluginSelection, splitPluginSelection, type ComposerPlugin, type SelectedPlugin } from "@/lib/plugin-selection";
 import { NotificationNotice } from "@/components/Notifications";
 import { OrganizationCapabilityIcon } from "./OrganizationCapabilityIcon";
+import { invoke } from "@tauri-apps/api/core";
+import type { ComposerAttachments } from "@/lib/composer-attachments";
+import { getRelativeFilePath } from "@/lib/file-paths";
 import { annotateSkillCommandCapabilities } from "@/lib/organization-capability";
 import { composerCommandLabel, parseComposerCommand, restoreComposerCommand } from "@/lib/composer-command";
 
 
 import React, { useRef, useState, useCallback, useEffect, useLayoutEffect, useImperativeHandle, forwardRef, KeyboardEvent } from "react";
+import { Popover } from "@base-ui/react/popover";
+import { ChevronDownIcon } from "lucide-react";
+import selectorStyles from "./ComposerSelectors.module.css";
+import paletteStyles from "./CommandPalette.module.css";
 import type { BuiltinSlashCommandResult, CompactResultInfo, QueuedMessages, SlashCommandInfo } from "@/hooks/useAgentSession";
 import type { SkillsResponse } from "@/lib/api-types";
 import type { TextContent, UserMessage } from "@/lib/types";
 import {
-  clearDraft,
   getDraft,
   mergeRestoredSubmissionDraft,
   mergeRestoredSubmissionText,
@@ -34,12 +40,14 @@ import {
 import { FolderIcon, getFileIcon } from "./FileIcons";
 import { useTheme } from "@/hooks/useTheme";
 import { useIsMobile } from "@/hooks/useIsMobile";
+import { useFontSize } from "@/hooks/useFontSize";
 import { useI18n } from "@/hooks/useI18n";
 import type { ToolPreset } from "@/lib/tool-presets";
 import type { EurekaPlanState } from "@/lib/plan-mode";
 import {
   DropdownMenu,
-  DropdownMenuCheckboxItem,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuContent,
   DropdownMenuGroup,
   DropdownMenuLabel,
@@ -72,6 +80,7 @@ interface ModelOption {
 }
 
 interface Props {
+  contextControl?: React.ReactNode;
   onSend: (message: string, images?: AttachedImage[], references?: ChatDraftReference[], selectedPlugins?: SelectedPlugin[]) => void;
   onAbort: () => void;
   onSteer?: (message: string, images?: AttachedImage[], references?: ChatDraftReference[], selectedPlugins?: SelectedPlugin[]) => void;
@@ -111,8 +120,6 @@ interface Props {
   slashCommandsLoading?: boolean;
   onLoadSlashCommands?: () => Promise<SlashCommandInfo[]> | SlashCommandInfo[];
   onBuiltinCommand?: (message: string) => Promise<BuiltinSlashCommandResult>;
-  soundEnabled?: boolean;
-  onSoundToggle?: () => void;
   onAudioUnlock?: () => void;
   draftKey?: string;
   /** Session working directory — enables the @ file autocomplete menu */
@@ -127,6 +134,7 @@ export interface ChatInputHandle {
   replaceMessage: (message: UserMessage) => void;
   prependText: (text: string) => void;
   addImages: (files: File[]) => void;
+  addFiles: (files: File[]) => void;
   addReferences: (references: ChatDraftReference[]) => void;
   rekeyDraft: (previousKey: string, nextKey: string) => void;
   restoreSubmission: (text: string, images?: ChatDraftImage[], references?: ChatDraftReference[], targetDraftKey?: string, selectedPlugins?: SelectedPlugin[]) => void;
@@ -282,7 +290,7 @@ function CommandPaletteIcon({ kind, commandName }: { kind: "add" | "plan" | Comm
     viewBox: "0 0 24 24",
     fill: "none",
     stroke: "currentColor",
-    strokeWidth: 2,
+    strokeWidth: 1.6,
     strokeLinecap: "round" as const,
     strokeLinejoin: "round" as const,
     "aria-hidden": true,
@@ -291,7 +299,7 @@ function CommandPaletteIcon({ kind, commandName }: { kind: "add" | "plan" | Comm
   if (kind === "builtin") {
     switch (commandName) {
       case "compact":
-        return <svg {...common}><path d="m15 15 6 6m-6-6v4.8m0-4.8h4.8" /><path d="M9 19.8V15m0 0H4.2M9 15l-6 6" /><path d="M15 4.2V9m0 0h4.8M15 9l6-6" /><path d="M9 4.2V9m0 0H4.2M9 9 3 3" /></svg>;
+        return <svg {...common}><path d="m4 4 5 5M4 9h5V4m11 16-5-5m5 0h-5v5" /></svg>;
       case "copy":
         return <svg {...common}><rect x="9" y="9" width="11" height="11" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>;
       case "name":
@@ -304,7 +312,7 @@ function CommandPaletteIcon({ kind, commandName }: { kind: "add" | "plan" | Comm
   }
 
   if (kind === "add") {
-    return <svg {...common}><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="8.5" cy="8.5" r="1.5" /><path d="m21 15-5-5L5 21" /><path d="M17 4v4M15 6h4" /></svg>;
+    return <svg {...common}><path d="m21.4 11.6-9.2 9.2a6 6 0 0 1-8.5-8.5l10-10a4 4 0 0 1 5.7 5.7l-10 10a2 2 0 0 1-2.8-2.8l9.2-9.2" /></svg>;
   }
   if (kind === "plan") {
     return <svg {...common}><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5" /><path d="M9 18h6" /><path d="M10 22h4" /></svg>;
@@ -319,10 +327,45 @@ function CommandPaletteIcon({ kind, commandName }: { kind: "add" | "plan" | Comm
 }
 
 export function SlashCommandPaletteIcon({ command, source }: { command: SlashCommandPaletteItem; source: CommandPaletteSource }) {
-  if (command.source === "plugin") return <OrganizationCapabilityIcon capability={command.plugin} />;
+  if (command.source === "plugin") return <OrganizationCapabilityIcon capability={command.plugin} size={16} />;
   if ("organizationCapability" in command && command.organizationCapability)
-    return <OrganizationCapabilityIcon capability={command.organizationCapability} type={command.source === "skill" ? "Skill" : "MCP"} />;
+    return <OrganizationCapabilityIcon capability={command.organizationCapability} size={16} type={command.source === "skill" ? "Skill" : "MCP"} />;
   return <CommandPaletteIcon kind={source} commandName={command.source === "builtin" ? command.name : undefined} />;
+}
+
+function CommandPaletteItem({ tooltip, ...props }: Omit<React.ComponentProps<typeof CommandItem>, "title"> & { tooltip?: string }) {
+  const itemRef = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+  const [paletteWidth, setPaletteWidth] = useState<number>();
+  const handleOpenChange = useCallback((nextOpen: boolean) => {
+    if (nextOpen) {
+      const truncated = Array.from(itemRef.current?.querySelectorAll<HTMLElement>("[data-command-description], [data-command-label]") ?? [])
+        .some((element) => element.scrollWidth > element.clientWidth);
+      if (!truncated) return;
+      setPaletteWidth(itemRef.current?.closest("[data-command-palette]")?.getBoundingClientRect().width);
+    }
+    setOpen(nextOpen);
+  }, []);
+  useEffect(() => {
+    const palette = itemRef.current?.closest("[data-command-palette]");
+    if (!open || !palette) return;
+    const observer = new ResizeObserver(() => {
+      setPaletteWidth(palette.getBoundingClientRect().width);
+      const truncated = Array.from(itemRef.current?.querySelectorAll<HTMLElement>("[data-command-description], [data-command-label]") ?? [])
+        .some((element) => element.scrollWidth > element.clientWidth);
+      if (!truncated) setOpen(false);
+    });
+    observer.observe(palette);
+    return () => observer.disconnect();
+  }, [open]);
+  const item = <CommandItem {...props} ref={itemRef} />;
+  if (!tooltip) return item;
+  return (
+    <Tooltip open={open} onOpenChange={handleOpenChange}>
+      <TooltipTrigger render={item} />
+      <TooltipContent className="w-max min-w-0 max-w-[calc(100vw-24px)] whitespace-normal break-words" style={{ maxWidth: paletteWidth ? `min(${paletteWidth}px, calc(100vw - 24px))` : undefined }}>{tooltip}</TooltipContent>
+    </Tooltip>
+  );
 }
 
 function imageToDraftImage(image: AttachedImage): ChatDraftImage {
@@ -436,7 +479,8 @@ export function ModelScopeWarningBanner({ warnings }: { warnings?: string[] }) {
   );
 }
 
-export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
+export const ChatInput = React.memo(forwardRef<ChatInputHandle, Props>(function ChatInput({
+  contextControl,
   onSend, onAbort, onSteer, onFollowUp, isStreaming, inputLocked = false, model, isAutoModelSelection, modelNames, modelList, modelError, modelScopeWarnings, onModelChange, modelSwitching,
   onAbortCompaction, isCompacting, compactError, compactResult,
   planMode, onPlanModeChange, onCancelPlan, onOpenPlanReview,
@@ -444,7 +488,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   retryInfo, queuedMessages, inputHistory = [], onRecallQueue,
   slashCommands, slashCommandsLoading, onLoadSlashCommands,
   onBuiltinCommand,
-  soundEnabled, onSoundToggle, onAudioUnlock,
+  onAudioUnlock,
   onPromptWithStreamingBehavior,
   draftKey,
   cwd, sessionId,
@@ -452,6 +496,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
 }: Props, ref) {
   const { t } = useI18n();
   const isMobile = useIsMobile();
+  const { fontSize } = useFontSize();
   const { isDark } = useTheme();
   const [value, setValue] = useState(() => (draftKey ? getDraft(draftKey)?.value ?? "" : ""));
   const composerCommandNames = React.useMemo(() => [...BUILTIN_SLASH_COMMANDS, ...(slashCommands ?? [])].map((command) => command.name), [slashCommands]);
@@ -461,7 +506,6 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   const composerCommandName = composerCommand?.name;
   const hasComposerCommand = composerCommand !== null;
   const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
-  const [modelDropdownRect, setModelDropdownRect] = useState<{ top: number; left: number; width: number } | null>(null);
   const [modelFilter, setModelFilter] = useState("");
   const [thinkingDropdownOpen, setThinkingDropdownOpen] = useState(false);
   const [controlsMenuOpen, setControlsMenuOpen] = useState(false);
@@ -474,10 +518,16 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     draftKey ? draftImagesToAttachedImages(getDraft(draftKey)?.images) : []
   ));
   const [references, setReferences] = useState<ChatDraftReference[]>(() => draftKey ? getDraft(draftKey)?.references ?? [] : []);
+  const [attachmentError, setAttachmentError] = useState("");
+  const [attachmentJobs, setAttachmentJobs] = useState(0);
+  const attachmentJobsRef = useRef(0);
+  const nativePasteRef = useRef<Promise<boolean> | null>(null);
   const [selectedPlugins, setSelectedPlugins] = useState<SelectedPlugin[]>(() => draftKey ? getDraft(draftKey)?.selectedPlugins ?? [] : []);
   const selectedPluginsRef = useRef(selectedPlugins);
+  const removedPluginSelectionsRef = useRef(new Map<string, Set<string>>());
   selectedPluginsRef.current = selectedPlugins;
   const [composerPlugins, setComposerPlugins] = useState<ComposerPlugin[]>([]);
+  const [composerPluginsReady, setComposerPluginsReady] = useState(false);
   const trimmedValue = value.trimStart();
   const bashMode = attachedImages.length === 0 && trimmedValue.startsWith("!");
   const bashExcluded = bashMode && trimmedValue.startsWith("!!");
@@ -519,8 +569,6 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const commandChipRef = useRef<HTMLSpanElement>(null);
-  const dropdownRef = useRef<HTMLDivElement>(null);
-  const modelDropdownPanelRef = useRef<HTMLDivElement>(null);
   const controlsMenuRef = useRef<HTMLDivElement>(null);
   const addMenuAnchorRef = useRef<HTMLDivElement>(null);
   const addMenuRef = useRef<HTMLDivElement>(null);
@@ -553,14 +601,16 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     // engines that do not support field-sizing.
     if (typeof CSS !== "undefined" && CSS.supports("field-sizing", "content")) {
       target.style.height = "";
-      target.style.overflowY = target.scrollHeight > maxHeight ? "auto" : "hidden";
+      // CSS handles the max-height/scrollbar without forcing a layout read.
+      target.style.overflowY = "auto";
       return;
     }
     // Reset before measuring so deletion can shrink the fallback layout too.
     target.style.height = "auto";
-    const nextHeight = Math.max(minHeight, Math.min(target.scrollHeight, maxHeight));
+    const contentHeight = target.scrollHeight;
+    const nextHeight = Math.max(minHeight, Math.min(contentHeight, maxHeight));
     target.style.height = `${nextHeight}px`;
-    target.style.overflowY = target.scrollHeight > maxHeight ? "auto" : "hidden";
+    target.style.overflowY = contentHeight > maxHeight ? "auto" : "hidden";
   }, [isMobile]);
 
   const removeComposerCommand = useCallback(() => {
@@ -637,6 +687,11 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     },
     rekeyDraft(previousKey: string, nextKey: string) {
       if (previousKey === nextKey) return;
+      const removed = removedPluginSelectionsRef.current.get(previousKey);
+      if (removed) {
+        removedPluginSelectionsRef.current.set(nextKey, new Set([...(removedPluginSelectionsRef.current.get(nextKey) ?? []), ...removed]));
+        removedPluginSelectionsRef.current.delete(previousKey);
+      }
       if (draftKeyRef.current !== previousKey) {
         rekeyStoredDraft(previousKey, nextKey);
         return;
@@ -694,7 +749,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
           : (storedDraft?.images ?? []),
         restoredReferences,
         targetsCurrentComposer ? referencesRef.current : (storedDraft?.references ?? []),
-        restoredPlugins,
+        restoredPlugins?.filter((plugin) => !removedPluginSelectionsRef.current.get(destinationDraftKey ?? "")?.has(`${plugin.source}\0${plugin.capabilityId}`)),
         targetsCurrentComposer ? selectedPluginsRef.current : storedDraft?.selectedPlugins,
       );
       // The first optimistic message switches ChatWindow out of its empty-state
@@ -772,6 +827,9 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     addImages(files: File[]) {
       processImageFiles(files);
     },
+    addFiles(files: File[]) {
+      void processAttachmentFiles(files);
+    },
     addReferences(nextReferences: ChatDraftReference[]) {
       const next = dedupeReferences([...referencesRef.current, ...nextReferences]);
       referencesRef.current = next;
@@ -782,6 +840,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   }));
 
   const processImageFiles = useCallback(async (files: File[]) => {
+    const destination = draftKeyRef.current;
     const remaining = Math.max(
       0,
       MAX_ATTACHED_IMAGES - attachedImagesRef.current.length - pendingImageCountRef.current,
@@ -808,6 +867,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
             })
         )
       );
+      if (draftKeyRef.current !== destination) { newImages.forEach(revokeImagePreview); return; }
       setAttachedImages((prev) => {
         const accepted = newImages.slice(0, Math.max(0, MAX_ATTACHED_IMAGES - prev.length));
         newImages.slice(accepted.length).forEach(revokeImagePreview);
@@ -819,6 +879,88 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
       pendingImageCountRef.current -= imageFiles.length;
     }
   }, []);
+
+  const attachResponse = useCallback(async (request: Promise<Response>, destination: string | undefined) => {
+    const response = await request;
+    const result = await response.json() as ComposerAttachments & { error?: string };
+    if (!response.ok) throw new Error(result.error ?? `HTTP ${response.status}`);
+    if (draftKeyRef.current !== destination) return;
+    if (result.images.length + attachedImagesRef.current.length + pendingImageCountRef.current > MAX_ATTACHED_IMAGES) throw new Error(t("chat.tooManyImages"));
+    const images = draftImagesToAttachedImages(result.images);
+    const next = dedupeReferences([...referencesRef.current, ...result.references.map(reference => ({ ...reference, path: getRelativeFilePath(reference.path, cwd ?? undefined) }))]);
+    referencesRef.current = next; setReferences(next);
+    if (images.length) {
+      const all = [...attachedImagesRef.current, ...images];
+      attachedImagesRef.current = all; setAttachedImages(all);
+    }
+    requestAnimationFrame(() => textareaRef.current?.focus());
+  }, [cwd, t]);
+
+  const attachPaths = useCallback(async (paths: string[]) => {
+    const destination = draftKeyRef.current;
+    attachmentJobsRef.current++; setAttachmentJobs(attachmentJobsRef.current); setAttachmentError("");
+    try {
+      await attachResponse(fetch("/api/attachments", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ paths }), signal: AbortSignal.timeout(60_000) }), destination);
+    } finally { attachmentJobsRef.current--; setAttachmentJobs(attachmentJobsRef.current); }
+  }, [attachResponse]);
+
+  const processAttachmentFiles = useCallback(async (files: File[]) => {
+    if (!files.length) return;
+    const destination = draftKeyRef.current;
+    attachmentJobsRef.current++; setAttachmentJobs(attachmentJobsRef.current); setAttachmentError("");
+    try {
+      const otherFiles = files.filter(file => !file.type.startsWith("image/"));
+      if (files.reduce((sum, file) => sum + file.size, 0) > 50 * 1024 * 1024) throw new Error(t("chat.attachmentsTooLarge"));
+      const images = files.filter(file => file.type.startsWith("image/"));
+      if (images.some(file => file.size > MAX_ATTACHED_IMAGE_BYTES)) throw new Error(t("chat.imageTooLarge"));
+      if (images.length + attachedImagesRef.current.length + pendingImageCountRef.current > MAX_ATTACHED_IMAGES) throw new Error(t("chat.tooManyImages"));
+      await processImageFiles(files);
+      if (otherFiles.length) {
+        const body = new FormData(); otherFiles.forEach(file => body.append("files", file));
+        await attachResponse(fetch("/api/attachments", { method: "POST", body, signal: AbortSignal.timeout(60_000) }), destination);
+      }
+    } catch (cause) { if (draftKeyRef.current === destination) setAttachmentError(cause instanceof Error ? cause.message : String(cause)); }
+    finally { attachmentJobsRef.current--; setAttachmentJobs(attachmentJobsRef.current); }
+  }, [attachResponse, processImageFiles, t]);
+
+  const pasteDesktopFiles = useCallback(async () => {
+    if (!("__TAURI_INTERNALS__" in window)) return false;
+    const destination = draftKeyRef.current;
+    attachmentJobsRef.current++; setAttachmentJobs(attachmentJobsRef.current);
+    try {
+      let paths: string[];
+      try { paths = await invoke<string[]>("desktop_clipboard_files"); }
+      catch { return false; } // Older desktop shells retain normal browser file paste.
+      if (!paths.length) return false;
+      if (draftKeyRef.current !== destination) return true;
+      try { await attachPaths(paths); }
+      catch (cause) { if (draftKeyRef.current === destination) setAttachmentError(cause instanceof Error ? cause.message : String(cause)); }
+      return true;
+    } finally { attachmentJobsRef.current--; setAttachmentJobs(attachmentJobsRef.current); }
+  }, [attachPaths]);
+
+  const openAttachmentPicker = useCallback(async () => {
+    if (!("__TAURI_INTERNALS__" in window)) {
+      fileInputRef.current?.click();
+      return;
+    }
+    const destination = draftKeyRef.current;
+    try {
+      setAttachmentError("");
+      const paths = await invoke<string[]>("desktop_select_attachments", { cwd: cwd ?? null });
+      if (paths.length && draftKeyRef.current === destination) await attachPaths(paths);
+    } catch (cause) {
+      if (draftKeyRef.current === destination) setAttachmentError(cause instanceof Error ? cause.message : String(cause));
+    }
+  }, [attachPaths, cwd]);
+
+  useEffect(() => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    const paste = (event: Event) => { (event as CustomEvent<{ handled?: Promise<boolean> }>).detail.handled = pasteDesktopFiles(); };
+    textarea.addEventListener("eureka:paste-attachments", paste);
+    return () => textarea.removeEventListener("eureka:paste-attachments", paste);
+  }, [pasteDesktopFiles]);
 
   const removeImage = useCallback((index: number) => {
     setAttachedImages((prev) => {
@@ -839,16 +981,16 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   }, []);
 
   const clearInput = useCallback(() => {
+    const retained = retainedPluginSelection(selectedPluginsRef.current);
     valueRef.current = "";
     setValue("");
     setAtQuery(null);
     setHistoryMenuOpen(false);
-    if (draftKey) clearDraft(draftKey);
-    if (draftKeyRef.current && draftKeyRef.current !== draftKey) clearDraft(draftKeyRef.current);
+    for (const key of new Set([draftKey, draftKeyRef.current])) if (key) setDraft(key, { value: "", images: [], selectedPlugins: retained });
     clearImages();
     referencesRef.current = [];
-    selectedPluginsRef.current = [];
-    setSelectedPlugins([]);
+    selectedPluginsRef.current = retained;
+    setSelectedPlugins(retained);
     setReferences([]);
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
@@ -867,6 +1009,8 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   useEffect(() => {
     const previousDraftKey = draftKeyRef.current;
     if (previousDraftKey === draftKey) return;
+    setAttachmentError("");
+    nativePasteRef.current = null;
 
     if (previousDraftKey) {
       setDraft(previousDraftKey, {
@@ -897,9 +1041,21 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     setSelectedPlugins(draft?.selectedPlugins ?? []);
   }, [draftKey]);
 
+  const resizeFrameRef = useRef<number | null>(null);
+  const scheduleTextareaResize = useCallback(() => {
+    if (resizeFrameRef.current !== null) return;
+    resizeFrameRef.current = requestAnimationFrame(() => {
+      resizeFrameRef.current = null;
+      resizeTextarea();
+    });
+  }, [resizeTextarea]);
   useLayoutEffect(() => {
-    resizeTextarea();
-  }, [resizeTextarea, value]);
+    scheduleTextareaResize();
+    return () => {
+      if (resizeFrameRef.current !== null) cancelAnimationFrame(resizeFrameRef.current);
+      resizeFrameRef.current = null;
+    };
+  }, [fontSize, scheduleTextareaResize, value]);
 
   useLayoutEffect(() => {
     const chip = commandChipRef.current;
@@ -930,7 +1086,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   const handleSend = useCallback(async () => {
     const msg = value.trim();
     if (!msg && !attachedImages.length && !references.length) return;
-    if (isStreaming || inputLocked) return;
+    if (isStreaming || inputLocked || attachmentJobsRef.current) return;
     onAudioUnlock?.();
     if (!attachedImages.length && !references.length && msg.startsWith("/") && onBuiltinCommand) {
       const result = await onBuiltinCommand(msg);
@@ -949,14 +1105,28 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
 
   const commandPaletteOpen = addMenuOpen || (slashMenuOpen && slashQuery !== null);
   useEffect(() => {
-    if (!commandPaletteOpen || !cwd) return;
+    if (!cwd) return;
     const controller = new AbortController();
     fetch(`/api/organization-extensions/composer?cwd=${encodeURIComponent(cwd)}${sessionId ? `&sessionId=${encodeURIComponent(sessionId)}` : ""}`, { signal: controller.signal })
-      .then(async (res) => res.ok ? res.json() : { plugins: [] })
-      .then((data) => setComposerPlugins(data.plugins ?? []))
+      .then(async (res) => res.ok ? res.json() : { plugins: [], ...(res.status === 401 ? { subject: null } : {}) })
+      .then((data) => {
+        if (controller.signal.aborted) return;
+        const plugins: ComposerPlugin[] = data.plugins ?? [];
+        setComposerPlugins(plugins);
+        setComposerPluginsReady(true);
+        if (data.subject === undefined) return;
+        setSelectedPlugins((current) => {
+          const next = current.filter((item) => data.subject !== null && (!item.subject || item.subject === data.subject) && (!data.source || item.source === data.source)).map((item) => {
+            const actual = plugins.find((p) => p.source === item.source && p.capabilityId === item.capabilityId && p.digest === item.digest);
+            return actual ? { ...item, selectionMode: actual.selectionMode, subject: actual.subject } : item;
+          });
+          selectedPluginsRef.current = next;
+          return next;
+        });
+      })
       .catch(() => {});
     return () => controller.abort();
-  }, [commandPaletteOpen, cwd, sessionId]);
+  }, [commandPaletteOpen, cwd, sessionId, draftKey]);
   const pluginCommands: SlashCommandPaletteItem[] = composerPlugins.map((plugin) => ({ source: "plugin", name: plugin.name, description: plugin.description, plugin }));
   const skillCommands = annotateSkillCommandCapabilities(slashCommands ?? [], cwd && skillDormancyState?.cwd === cwd ? skillDormancyState.skills ?? [] : []);
   const allSlashCommands = [...(isStreaming ? [] : BUILTIN_SLASH_COMMANDS), ...skillCommands, ...pluginCommands]
@@ -993,14 +1163,13 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   } = buildSlashCommandLayout(filteredSlashCommands, skillDormancy);
   const { groups: groupedAddMenuCommands } = buildSlashCommandLayout(filteredAddMenuCommands, skillDormancy);
   const addImageMatches = !addMenuQuery.trim() || [
-    t("chat.addImage"),
-    t("chat.addImageDescription"),
+    t("chat.addFiles"),
+    t("chat.chooseAttachments"),
   ].join(" ").toLowerCase().includes(addMenuQuery.trim().toLowerCase());
   const planModeSearchText = `${t("plan.mode")} ${t("plan.enableDescription")} plan planning`;
   const planModeMatches = Boolean(onPlanModeChange) && !planMode?.planModeActive && (!addMenuQuery.trim() || planModeSearchText.toLowerCase().includes(addMenuQuery.trim().toLowerCase()));
   const stopCompactionMatches = Boolean(isCompacting && onAbortCompaction) && `${t("chat.stopCompaction")} compact`.toLowerCase().includes(addMenuQuery.trim().toLowerCase());
   const addMenuHasResults = addImageMatches || planModeMatches || stopCompactionMatches || filteredAddMenuCommands.length > 0;
-  const commandDescriptionColor = "var(--text-muted)";
   const commandPaletteBackground = isDark ? "var(--bg-panel)" : "#ffffff";
   const commandPaletteRadius = 8;
 
@@ -1013,11 +1182,11 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     }
     return counts;
   }, [references]);
-  const canQueueStreamingMessage = !inputLocked && Boolean(onSteer || onFollowUp)
+  const canQueueStreamingMessage = !inputLocked && !attachmentJobs && Boolean(onSteer || onFollowUp)
     && (hasInputText || attachedImages.length > 0 || references.length > 0);
   // The execution stop action is wider than the normal send action. Reserve
   // enough room in the bottom controls so tool selectors never sit under it.
-  const composerActionReservation = isStreaming && planMode?.phase === "executing" ? 148 : 112;
+  const composerActionReservation = (isStreaming && planMode?.phase === "executing" ? 148 : 112) + (contextControl ? 38 : 0);
   const composerDrawerVisible = Boolean(pendingStreamingSubmission);
   const planModeActive = Boolean(planMode?.planModeActive);
 
@@ -1203,6 +1372,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
         return;
       }
       setSelectedPlugins((current) => { const next = dedupePlugins([...current, command.plugin]); selectedPluginsRef.current = next; return next; });
+      removedPluginSelectionsRef.current.get(draftKeyRef.current ?? "")?.delete(`${command.plugin.source}\0${command.plugin.capabilityId}`);
       setAddMenuOpen(false); setSlashMenuOpen(false); setAddMenuQuery("");
       setValue((text) => text.startsWith("/") && !/\s/.test(text) ? "" : text);
       requestAnimationFrame(() => textareaRef.current?.focus());
@@ -1225,6 +1395,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   }, []);
 
   const sendQueued = useCallback((mode: "steer" | "followup", pending?: { message: string; images: AttachedImage[]; references: ChatDraftReference[]; selectedPlugins?: SelectedPlugin[] }) => {
+    if (attachmentJobsRef.current) return;
     const msg = pending?.message ?? value.trim();
     const images = pending?.images ?? attachedImages;
     const queuedReferences = pending?.references ?? references;
@@ -1246,7 +1417,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   }, [value, attachedImages, references, selectedPlugins, onPromptWithStreamingBehavior, onSteer, onFollowUp, clearInput, onAudioUnlock]);
 
   const stageStreamingSubmission = useCallback(() => {
-    if (inputLocked || (!onSteer && !onFollowUp)) return;
+    if (inputLocked || attachmentJobsRef.current || (!onSteer && !onFollowUp)) return;
     const message = value.trim();
     if (!message && !attachedImages.length && !references.length) return;
 
@@ -1254,14 +1425,15 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     valueRef.current = "";
     attachedImagesRef.current = [];
     referencesRef.current = [];
-    selectedPluginsRef.current = [];
-    setSelectedPlugins([]);
+    const retained = retainedPluginSelection(selectedPlugins);
+    selectedPluginsRef.current = retained;
+    setSelectedPlugins(retained);
     setValue("");
     setAttachedImages(() => []);
     setReferences([]);
     setAtQuery(null);
     setHistoryMenuOpen(false);
-    if (draftKey) clearDraft(draftKey);
+    if (draftKey) setDraft(draftKey, { value: "", images: [], selectedPlugins: retained });
   }, [value, attachedImages, references, selectedPlugins, draftKey, inputLocked, onSteer, onFollowUp]);
 
   const restoreStagedStreamingSubmission = useCallback(() => {
@@ -1468,18 +1640,19 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     [isMobile, isStreaming, onSteer, onFollowUp, onAbort, slashMenuOpen, slashQuery, displayedSlashCommands, slashActiveIndex, applySlashCommand, stageStreamingSubmission, handleSend, getNextSlashIndex, atMenuOpen, atQuery, atMatches, atActiveIndex, applyAtCompletion, historyMenuOpen, inputHistory, historyActiveIndex, applyHistoryInput, value, composerCommand, removeComposerCommand]
   );
 
-  const handleInput = useCallback(() => {
-    resizeTextarea();
-  }, [resizeTextarea]);
-
   const handlePaste = useCallback((e: React.ClipboardEvent) => {
     const items = Array.from(e.clipboardData?.items ?? []);
-    const imageItems = items.filter((item) => item.type.startsWith("image/"));
-    if (!imageItems.length) return;
+    const files = items.filter(item => item.kind === "file").map(item => item.getAsFile()).filter((file): file is File => file !== null);
+    if (!files.length) {
+      if (!e.clipboardData.getData("text/plain") && !nativePasteRef.current) void pasteDesktopFiles();
+      return;
+    }
     e.preventDefault();
-    const files = imageItems.map((item) => item.getAsFile()).filter((f): f is File => f !== null);
-    processImageFiles(files);
-  }, [processImageFiles]);
+    const pending = nativePasteRef.current ?? pasteDesktopFiles();
+    nativePasteRef.current = null;
+    const destination = draftKeyRef.current;
+    void pending.then(handled => { if (!handled && draftKeyRef.current === destination) void processAttachmentFiles(files); });
+  }, [pasteDesktopFiles, processAttachmentFiles]);
 
   useEffect(() => {
     if (slashQuery === null) {
@@ -1511,7 +1684,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     const requestCwd = cwd;
     let cancelled = false;
     setSkillDormancyState({ cwd: requestCwd, values: {} });
-    fetch(`/api/skills?cwd=${encodeURIComponent(requestCwd)}`)
+    fetch(`/api/skills?cwd=${encodeURIComponent(requestCwd)}&metadataOnly=1`)
       .then((res) => {
         if (!res.ok) throw new Error(`skills fetch failed: ${res.status}`);
         return res.json() as Promise<Partial<SkillsResponse>>;
@@ -1588,7 +1761,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   }, [slashMenuOpen, slashQuery]);
 
   // Build model options: prefer modelList (has provider info), fallback to modelNames
-  const modelOptions: ModelOption[] = (() => {
+  const modelOptions: ModelOption[] = React.useMemo(() => {
     if (modelList && modelList.length > 0) {
       return modelList.map((m) => ({ provider: m.provider, modelId: m.id, name: m.name })).sort(compareModelOptions);
     }
@@ -1597,16 +1770,19 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
       modelId,
       name,
     })).sort(compareModelOptions);
-  })();
-  const filteredModelOptions = filterModelOptions(modelOptions, modelFilter);
+  }, [modelList, modelNames, model?.provider]);
+  const filteredModelOptions = React.useMemo(() => filterModelOptions(modelOptions, modelFilter), [modelOptions, modelFilter]);
 
   // Group options by provider, preserving insertion order
-  const modelsByProvider: { provider: string; options: ModelOption[] }[] = [];
-  for (const opt of filteredModelOptions) {
-    const group = modelsByProvider.find((g) => g.provider === opt.provider);
-    if (group) group.options.push(opt);
-    else modelsByProvider.push({ provider: opt.provider, options: [opt] });
-  }
+  const modelsByProvider = React.useMemo(() => {
+    const groups = new Map<string, ModelOption[]>();
+    for (const option of filteredModelOptions) {
+      const group = groups.get(option.provider);
+      if (group) group.push(option);
+      else groups.set(option.provider, [option]);
+    }
+    return [...groups].map(([provider, options]) => ({ provider, options }));
+  }, [filteredModelOptions]);
 
   const effectiveModel = deferredModel ?? model;
   const effectiveThinkingLevel = deferredThinkingLevel ?? thinkingLevel;
@@ -1622,7 +1798,10 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     ? `${compactResult.reason && compactResult.reason !== "manual" ? `${compactResult.reason[0].toUpperCase()}${compactResult.reason.slice(1)} ` : t("chat.compacted")} ${formatTokenCount(compactResult.tokensBefore)} -> ${formatTokenCount(compactResult.estimatedTokensAfter)} tokens (${t("chat.tokensSaved", { saved: formatTokenCount(compactSavedTokens) })})`
     : null;
   const capitalizeDisplayLabel = (label: string) => label ? `${label[0].toUpperCase()}${label.slice(1)}` : label;
-  const thinkingDisplayLabel = capitalizeDisplayLabel((() => {
+  const thinkingLevelLabel = (level: string) => THINKING_LEVELS.includes(level as typeof THINKING_LEVELS[number])
+    ? t(`chat.reasoningLevel.${level}`)
+    : capitalizeDisplayLabel(level);
+  const thinkingDisplayLabel = thinkingLevelLabel((() => {
     const lvl = effectiveThinkingLevel ?? "auto";
     if (lvl === "auto" || !thinkingLevelMap) return lvl;
     return thinkingLevelMap[lvl] ?? lvl;
@@ -1630,13 +1809,6 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   // Close dropdowns on outside click
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (
-        dropdownRef.current && !dropdownRef.current.contains(e.target as Node) &&
-        modelDropdownPanelRef.current && !modelDropdownPanelRef.current.contains(e.target as Node)
-      ) {
-        setModelDropdownOpen(false);
-        setModelFilter("");
-      }
       if (controlsMenuRef.current && !controlsMenuRef.current.contains(e.target as Node)) {
         setControlsMenuOpen(false);
       }
@@ -1679,19 +1851,20 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
       }}
     >
       {/* Hidden file input */}
+      <NotificationNotice message={attachmentError} />
       <input
         ref={fileInputRef}
         type="file"
-        accept="image/*"
         multiple
         style={{ display: "none" }}
         onChange={(e) => {
           const files = Array.from(e.target.files ?? []);
-          processImageFiles(files);
+          void processAttachmentFiles(files);
           e.target.value = "";
         }}
       />
-      <div style={{ maxWidth: 820, margin: "0 auto" }}>
+      <div style={{ maxWidth: "var(--chat-content-width)", margin: "0 auto" }}>
+        {attachmentJobs > 0 && <div role="status" className="px-3 py-1 text-xs text-[var(--text-muted)]">{t("chat.addingAttachments")}</div>}
         <ModelErrorBanner error={modelError} />
         <ModelScopeWarningBanner warnings={modelScopeWarnings} />
         {/* Queued steering / follow-up messages (delivered by pi on upcoming turns) */}
@@ -1789,6 +1962,8 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
           {addMenuOpen && (
             <div
               ref={addMenuRef}
+              data-command-palette="add"
+              className={paletteStyles.palette}
               role="dialog"
               aria-label={t("chat.addCommandMenu")}
               style={{
@@ -1822,32 +1997,30 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                   {!addMenuHasResults && <CommandEmpty>{t("chat.noMatchingCommands")}</CommandEmpty>}
                   {(addImageMatches || planModeMatches || stopCompactionMatches) && (
                     <CommandGroup heading={t("chat.add")}>
-                      {addImageMatches && <CommandItem
-                        value="add-image"
-                        title={`${t("chat.addImage")} · ${t("chat.addImageDescription")}`}
+                      {addImageMatches && <CommandPaletteItem
+                        value="add-files"
                         onSelect={() => {
                           setAddMenuOpen(false);
                           setAddMenuQuery("");
-                          fileInputRef.current?.click();
+                          void openAttachmentPicker();
                         }}
-                        className="cursor-pointer py-1.5 text-[color:var(--text)] data-[selected=true]:bg-[var(--bg-hover)]"
+                        className={`${paletteStyles.row} cursor-pointer`}
                       >
-                        <span className="flex size-5 shrink-0 items-center justify-center text-[color:var(--text-muted)]"><CommandPaletteIcon kind="add" /></span>
-                        <span className="flex min-w-0 items-baseline gap-2">
-                          <span className="shrink-0 text-[13px] font-medium">{t("chat.addImage")}</span>
-                          <span className="truncate text-[11px]" style={{ color: commandDescriptionColor }}>{t("chat.addImageDescription")}</span>
+                        <span className={paletteStyles.icon}><CommandPaletteIcon kind="add" /></span>
+                        <span className={paletteStyles.text}>
+                          <span data-command-label className={paletteStyles.label}>{t("chat.addFiles")}</span>
                         </span>
-                      </CommandItem>}
-                      {planModeMatches && <CommandItem value="plan-mode" title={`${t("plan.mode")} · ${t("plan.enableDescription")}`} onSelect={() => {
+                      </CommandPaletteItem>}
+                      {planModeMatches && <CommandPaletteItem value="plan-mode" tooltip={`${t("plan.mode")} · ${t("plan.enableDescription")}`} onSelect={() => {
                         setAddMenuOpen(false); setAddMenuQuery(""); onPlanModeChange?.(true);
-                      }} className="cursor-pointer py-1.5 text-[color:var(--text)] data-[selected=true]:bg-[var(--bg-hover)]">
-                        <span className="flex size-5 shrink-0 items-center justify-center text-[color:var(--text-muted)]"><CommandPaletteIcon kind="plan" /></span>
-                        <span className="flex min-w-0 items-baseline gap-2"><span className="shrink-0 text-[13px] font-medium">{t("plan.mode")}</span><span className="truncate text-[11px]" style={{ color: commandDescriptionColor }}>{t("plan.enableDescription")}</span></span>
-                      </CommandItem>}
-                      {stopCompactionMatches && <CommandItem value="stop-compaction" onSelect={() => { onAbortCompaction?.(); setAddMenuOpen(false); setAddMenuQuery(""); }} className="cursor-pointer py-1.5 text-red-500 data-[selected=true]:bg-[var(--bg-hover)]">
+                      }} className={`${paletteStyles.row} cursor-pointer`}>
+                        <span className={paletteStyles.icon}><CommandPaletteIcon kind="plan" /></span>
+                        <span className={paletteStyles.text}><span data-command-label className={paletteStyles.label}>{t("plan.mode")}</span><span data-command-description className={paletteStyles.description}>{t("plan.enableDescription")}</span></span>
+                      </CommandPaletteItem>}
+                      {stopCompactionMatches && <CommandPaletteItem value="stop-compaction" onSelect={() => { onAbortCompaction?.(); setAddMenuOpen(false); setAddMenuQuery(""); }} data-destructive className={`${paletteStyles.row} cursor-pointer text-red-500`}>
                         <span className="flex size-5 shrink-0 items-center justify-center"><svg width="14" height="14" viewBox="0 0 10 10" aria-hidden="true"><rect x="2" y="2" width="6" height="6" rx="1" fill="currentColor" /></svg></span>
-                        <span className="text-[13px] font-medium">{t("chat.stopCompaction")}</span>
-                      </CommandItem>}
+                        <span className="text-[13px] font-normal">{t("chat.stopCompaction")}</span>
+                      </CommandPaletteItem>}
                     </CommandGroup>
                   )}
                   {slashCommandsLoading && (
@@ -1860,19 +2033,19 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                         const description = getSlashDescription(command, t);
                         const label = command.source === "plugin" ? command.name : composerCommandLabel(command.name);
                         return (
-                          <CommandItem
+                          <CommandPaletteItem
                             key={`${command.source}:${command.name}`}
                             value={`${command.source}:${command.name}`}
-                            title={description ? `${label} · ${description}` : label}
+                            tooltip={description ? `${label} · ${description}` : label}
                             onSelect={() => applySlashCommand(command)}
-                            className="cursor-pointer py-1.5 text-[color:var(--text)] data-[selected=true]:bg-[var(--bg-hover)]"
+                            className={`${paletteStyles.row} cursor-pointer`}
                           >
-                            <span className="flex size-5 shrink-0 items-center justify-center text-[color:var(--text-muted)]"><SlashCommandPaletteIcon command={command} source={group.source} /></span>
-                            <span className="flex min-w-0 flex-1 items-baseline gap-2">
-                              <span className="shrink-0 text-[13px] font-medium">{label}{dormant ? <span className="ml-1 text-[10px] font-normal text-[color:var(--text-dim)]">{t("chat.dormant")}</span> : null}</span>
-                              {description && <span className="truncate text-[11px]" style={{ color: commandDescriptionColor }}>{description}</span>}
+                            <span className={paletteStyles.icon}><SlashCommandPaletteIcon command={command} source={group.source} /></span>
+                            <span className={paletteStyles.text}>
+                              <span data-command-label className={paletteStyles.label}>{label}{dormant ? <span className="ml-1 text-[10px] font-normal text-[color:var(--text-dim)]">{t("chat.dormant")}</span> : null}</span>
+                              {description && <span data-command-description className={paletteStyles.description}>{description}</span>}
                             </span>
-                          </CommandItem>
+                          </CommandPaletteItem>
                         );
                       })}
                     </CommandGroup>
@@ -1971,6 +2144,8 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
           {slashMenuOpen && slashQuery !== null && !addMenuOpen && (
             <div
               ref={slashMenuRef}
+              data-command-palette="slash"
+              className={paletteStyles.palette}
               style={{
                 position: "absolute",
                 left: 0,
@@ -1999,22 +2174,22 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                         const description = getSlashDescription(command, t);
                         const label = command.source === "plugin" ? command.name : composerCommandLabel(command.name);
                         return (
-                          <CommandItem
+                          <CommandPaletteItem
                             key={`${command.source}:${command.name}`}
                             data-slash-index={index}
                             value={`${command.source}:${command.name}`}
-                            title={description ? `${label} · ${description}` : label}
+                            tooltip={description ? `${label} · ${description}` : label}
                             onSelect={() => applySlashCommand(command)}
                             onMouseEnter={() => setSlashActiveIndex(index)}
-                            className="cursor-pointer py-1.5 text-[color:var(--text)] data-[selected=true]:bg-[var(--bg-hover)]"
+                            className={`${paletteStyles.row} cursor-pointer`}
                             style={{ background: active ? "var(--bg-hover)" : undefined }}
                           >
-                            <span className="flex size-5 shrink-0 items-center justify-center text-[color:var(--text-muted)]"><SlashCommandPaletteIcon command={command} source={group.source} /></span>
-                            <span className="flex min-w-0 flex-1 items-baseline gap-2">
-                              <span className="shrink-0 text-[13px] font-medium">{label}{dormant ? <span className="ml-1 text-[10px] font-normal text-[color:var(--text-dim)]">{t("chat.dormant")}</span> : null}</span>
-                              {description && <span className="truncate text-[11px]" style={{ color: commandDescriptionColor }}>{description}</span>}
+                            <span className={paletteStyles.icon}><SlashCommandPaletteIcon command={command} source={group.source} /></span>
+                            <span className={paletteStyles.text}>
+                              <span data-command-label className={paletteStyles.label}>{label}{dormant ? <span className="ml-1 text-[10px] font-normal text-[color:var(--text-dim)]">{t("chat.dormant")}</span> : null}</span>
+                              {description && <span data-command-description className={paletteStyles.description}>{description}</span>}
                             </span>
-                          </CommandItem>
+                          </CommandPaletteItem>
                         );
                       })}
                     </CommandGroup>
@@ -2124,7 +2299,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                   <button type="button" onClick={restoreStagedStreamingSubmission} style={{ flexShrink: 0, padding: "5px 8px", border: "1px solid var(--border)", borderRadius: 7, background: "transparent", color: "var(--text-muted)", cursor: "pointer", fontSize: 12 }}>
                     {t("chat.moveToInput")}
                   </button>
-                  {(onFollowUp || !isStreaming) && <button type="button" disabled={inputLocked} onClick={() => confirmStagedStreamingSubmission("followup")} style={{ flexShrink: 0, padding: "5px 9px", border: "1px solid var(--border)", borderRadius: 7, background: "var(--bg-hover)", color: "var(--text)", cursor: "pointer", fontSize: 12, fontWeight: 550 }}>
+                  {(onFollowUp || !isStreaming) && <button type="button" disabled={inputLocked} onClick={() => confirmStagedStreamingSubmission("followup")} style={{ flexShrink: 0, padding: "5px 9px", border: "1px solid var(--border)", borderRadius: 7, background: "var(--bg-hover)", color: "var(--text)", cursor: "pointer", fontSize: 12, fontWeight: 500 }}>
                     {t("chat.queueSend")}
                   </button>}
                   {(onSteer || !isStreaming) && <button type="button" disabled={inputLocked} onClick={() => confirmStagedStreamingSubmission("steer")} style={{ flexShrink: 0, padding: "5px 9px", border: "1px solid transparent", borderRadius: 7, background: isDark ? "#ffffff" : "#080707", color: isDark ? "#080707" : "#fff", cursor: "pointer", fontSize: 12, fontWeight: 600 }}>
@@ -2184,7 +2359,21 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
               ))}
             </div>
           )}
-          {selectedPlugins.length > 0 && <div className="composer-plugin-tags">{selectedPlugins.map((plugin) => <span key={`${plugin.source}:${plugin.capabilityId}`} className="plugin-tag"><OrganizationCapabilityIcon capability={plugin} size={16} />{plugin.name}<button type="button" aria-label={`移除 ${plugin.name}`} onClick={() => setSelectedPlugins((items) => { const next = items.filter((p) => p.source !== plugin.source || p.capabilityId !== plugin.capabilityId); selectedPluginsRef.current = next; return next; })}>×</button></span>)}</div>}
+          {selectedPlugins.length > 0 && <div className="composer-plugin-tags">{selectedPlugins.map((plugin) => {
+            const actual = composerPlugins.find((item) => item.source === plugin.source && item.capabilityId === plugin.capabilityId);
+            const unavailable = composerPluginsReady && (!actual || actual.digest !== plugin.digest || !["installed", "loaded"].includes(actual.state));
+            return <span key={`${plugin.source}:${plugin.capabilityId}`} className="plugin-tag" title={unavailable ? "插件状态已变化，请检查安装、重新选择并重载会话" : plugin.selectionMode === "persistent" ? "持续使用此插件，点击 × 移除" : undefined}>
+              <OrganizationCapabilityIcon capability={plugin} size={16} />{plugin.name}{unavailable && <span> · 待检查</span>}
+              <button type="button" aria-label={`移除 ${plugin.name}`} onClick={() => {
+                const next = selectedPluginsRef.current.filter((p) => p.source !== plugin.source || p.capabilityId !== plugin.capabilityId);
+                const key = draftKeyRef.current ?? "";
+                const removed = removedPluginSelectionsRef.current.get(key) ?? new Set<string>();
+                removed.add(`${plugin.source}\0${plugin.capabilityId}`); removedPluginSelectionsRef.current.set(key, removed);
+                selectedPluginsRef.current = next; setSelectedPlugins(next);
+                if (key) setDraft(key, { value: valueRef.current, images: attachedImagesRef.current.map(imageToDraftImage), references: referencesRef.current, selectedPlugins: next });
+              }}>×</button>
+            </span>;
+          })}</div>}
           {references.length > 0 && (
             <div aria-label={t("chat.referencedFiles")} style={{ display: "flex", flexWrap: "wrap", gap: 6, width: "100%" }}>
               {references.map((reference) => {
@@ -2211,9 +2400,9 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
           <div style={{ width: "100%", minWidth: 0, paddingBottom: 42 }}>
           <div className="composer-command-editor" style={{ position: "relative", minWidth: 0 }}>
           {composerCommand && activeComposerCommand ? <div style={{ position: "absolute", inset: 0, overflow: "hidden", pointerEvents: "none" }}>
-          <span ref={commandChipRef} className="composer-command-chip" title={composerCommand.label} style={{ display: "inline-flex", alignItems: "center", gap: 6, position: "absolute", top: 0, left: 0, zIndex: 1, pointerEvents: "auto", maxWidth: "calc(100% - 48px)", height: 26, boxSizing: "border-box", padding: "2px 6px 2px 8px", border: "1px solid color-mix(in srgb, var(--accent) 22%, transparent)", borderRadius: 7, background: "color-mix(in srgb, var(--accent) 7%, var(--bg-panel))", color: "var(--accent)", fontSize: 13, lineHeight: "20px" }}>
+          <span ref={commandChipRef} className="composer-command-chip" title={composerCommand.label} style={{ display: "inline-flex", alignItems: "center", gap: 6, position: "absolute", top: 0, left: 0, zIndex: 1, pointerEvents: "auto", maxWidth: "calc(100% - 48px)", height: "max(26px, var(--message-line-height))", boxSizing: "border-box", padding: "2px 6px 2px 8px", border: "1px solid color-mix(in srgb, var(--accent) 22%, transparent)", borderRadius: 7, background: "color-mix(in srgb, var(--accent) 7%, var(--bg-panel))", color: "var(--accent)", fontSize: "var(--message-font-size)", lineHeight: "20px" }}>
             <SlashCommandPaletteIcon command={activeComposerCommand} source={activeComposerCommand.source === "prompt" ? "builtin" : activeComposerCommand.source} />
-            <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: 550 }}>{composerCommand.label}</span>
+            <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: 500 }}>{composerCommand.label}</span>
             <button type="button" disabled={inputLocked} onClick={removeComposerCommand} aria-label={t("chat.removeCommand", { name: composerCommand.label })} style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0, width: 20, height: 20, border: 0, borderRadius: 4, background: "transparent", color: "inherit", cursor: inputLocked ? "default" : "pointer" }}>×</button>
           </span></div> : null}
           <textarea
@@ -2221,15 +2410,11 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
             value={composerText}
             disabled={inputLocked}
             onChange={(e) => {
-              const target = e.currentTarget;
               const nextValue = composerPrefix + e.target.value;
               valueRef.current = nextValue;
               setValue(nextValue);
               setHistoryMenuOpen(false);
               updateAtQuery(nextValue, e.target.selectionStart + composerPrefix.length);
-              // React may commit the controlled value after this handler, so
-              // schedule one final measurement against the rendered textarea.
-              requestAnimationFrame(() => resizeTextarea(target));
             }}
             onSelect={(e) => {
               const el = e.currentTarget;
@@ -2245,11 +2430,17 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
               const el = e.currentTarget;
               updateAtQuery(composerPrefix + el.value, el.selectionStart + composerPrefix.length);
             }}
-            onInput={handleInput}
             onScroll={(event) => {
               if (commandChipRef.current) commandChipRef.current.style.transform = `translateY(${-event.currentTarget.scrollTop}px)`;
             }}
             onPaste={handlePaste}
+            data-composer-attachments
+            onKeyDownCapture={event => {
+              if ((event.ctrlKey || event.metaKey) && !event.altKey && event.key.toLowerCase() === "v") {
+                nativePasteRef.current = pasteDesktopFiles();
+              }
+            }}
+            onKeyUpCapture={event => { if (event.key.toLowerCase() === "v") nativePasteRef.current = null; }}
             placeholder={
               inputLocked ? t("plan.answerRequired")
                 : hasComposerCommand ? ""
@@ -2271,9 +2462,10 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
               opacity: inputLocked ? 0.55 : 1,
               // Geometry must update immediately when the inline chip changes.
               transitionProperty: "color, opacity",
-              fontSize: 15,
-              lineHeight: hasComposerCommand ? "26px" : 1.6,
-              fontFamily: "inherit",
+              fontSize: "var(--message-font-size)",
+              lineHeight: hasComposerCommand ? "max(26px, var(--message-line-height))" : "var(--message-line-height)",
+              fontFamily: "var(--font-ui)",
+              fontWeight: 400,
               minHeight: isMobile ? 52 : 56,
               maxHeight: 200,
               overflowY: "hidden",
@@ -2291,8 +2483,10 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
           </div>
           </div>
 
+          <div data-composer-actions style={{ position: "absolute", zIndex: 3, right: 24, bottom: 10, display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+          {contextControl}
           {isStreaming && canQueueStreamingMessage && planMode?.phase !== "executing" ? (
-            <div style={{ position: "absolute", zIndex: 3, right: 24, bottom: 10, display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", flexShrink: 0 }}>
               <Tooltip>
               <TooltipTrigger render={<button
                   onClick={stageStreamingSubmission}
@@ -2305,7 +2499,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                     borderRadius: 16,
                     color: isDark ? "#080707" : "#fff",
                     cursor: "pointer",
-                    fontSize: 14, fontWeight: 550, letterSpacing: "-0.01em",
+                    fontSize: 13, fontWeight: 500, letterSpacing: "-0.01em",
                     boxShadow: "0 4px 12px rgba(0,0,0,0.25)",
                     transition: "background var(--transition-ui), box-shadow var(--transition-ui)",
                   }}
@@ -2326,15 +2520,13 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
               onClick={planMode?.phase === "executing" && onCancelPlan ? () => setStopPlanConfirmOpen(true) : onAbort}
                   aria-label={planMode?.phase === "executing" ? t("plan.stop") : t("chat.stopAgent")}
               style={{
-                position: "absolute", right: 24, bottom: 10,
-                zIndex: 3,
                 pointerEvents: "auto",
                 display: "flex", alignItems: "center", gap: 6,
                 padding: "7px 14px", height: 32,
                 background: isDark ? "#ffffff" : "#080707",
                 border: "none", borderRadius: 16,
                 color: isDark ? "#080707" : "#fff",
-                cursor: "pointer", fontSize: 14, fontWeight: 550,
+                cursor: "pointer", fontSize: 13, fontWeight: 500,
                 letterSpacing: "-0.01em", boxShadow: "0 4px 12px rgba(0,0,0,0.25)",
               }}
             >
@@ -2347,12 +2539,8 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
             <button
               type="button"
               onClick={handleSend}
-              disabled={inputLocked || (!value.trim() && !attachedImages.length && !references.length)}
+              disabled={inputLocked || attachmentJobs > 0 || (!value.trim() && !attachedImages.length && !references.length)}
               style={{
-                position: "absolute",
-                zIndex: 3,
-                right: 24,
-                bottom: 10,
                 pointerEvents: "auto",
                 flexShrink: 0,
                 display: "flex", alignItems: "center", gap: 6,
@@ -2362,8 +2550,8 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                 borderRadius: 16,
                 color: (value.trim() || attachedImages.length || references.length) ? (isDark ? "#080707" : "#fff") : "var(--text-dim)",
                 cursor: (value.trim() || attachedImages.length || references.length) ? "pointer" : "not-allowed",
-                fontSize: 14,
-                fontWeight: 550,
+                fontSize: 13,
+                fontWeight: 500,
                 letterSpacing: "-0.01em",
                 boxShadow: (value.trim() || attachedImages.length || references.length) ? "0 4px 12px rgba(0,0,0,0.25)" : "none",
                 transition: "background var(--transition-ui), box-shadow var(--transition-ui)",
@@ -2376,6 +2564,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
               {t("chat.send")}
             </button>
           )}
+          </div>
           </div>
           <AlertDialog open={stopPlanConfirmOpen} onOpenChange={setStopPlanConfirmOpen}>
             <AlertDialogContent>
@@ -2459,123 +2648,60 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
               </Tooltip>
 
             </div>
-            {/* Model selector — visible always, disabled while the session or switch is busy */}
+            {/* Model selector: searchable provider groups. */}
             {(modelOptions.length > 0 || currentName || modelError) && onModelChange && (
-                <div ref={dropdownRef} style={{ position: "relative", flex: "0 0 auto", minWidth: 0 }}>
-                  <Tooltip>
-                  <TooltipTrigger render={<button
-                    onClick={(e) => {
-                      const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-                      setModelDropdownRect({ top: rect.top, left: rect.left, width: rect.width });
-                      setModelDropdownOpen((open) => {
-                        if (open) setModelFilter("");
-                        return !open;
-                      });
-                    }}
+              <Popover.Root open={modelDropdownOpen} onOpenChange={(open) => {
+                setModelDropdownOpen(open);
+                if (!open) setModelFilter("");
+                else setThinkingDropdownOpen(false);
+              }}>
+                <Tooltip>
+                  <Popover.Trigger render={<TooltipTrigger render={<button
+                    type="button"
                     disabled={modelSwitching}
                     aria-busy={modelSwitching || undefined}
-                    style={{
-                      display: "flex", alignItems: "center", gap: 6,
-                      padding: "8px 4px 8px 12px",
-                      height: 32,
-                      maxWidth: 220,
-                      overflow: "hidden",
-                      background: modelDropdownOpen ? "var(--bg-hover)" : "none",
-                      border: "none",
-                      borderRadius: 9,
-                      color: "var(--text-muted)",
-                      cursor: modelSwitching ? "not-allowed" : "pointer",
-                      fontSize: 12,
-                      opacity: modelSwitching ? 0.5 : 1,
-                      transition: "background 0.12s, color 0.12s",
-                    }}
-                    onMouseEnter={(e) => {
-                      if (modelSwitching) return;
-                      e.currentTarget.style.background = "var(--bg-hover)";
-                      e.currentTarget.style.color = "var(--text)";
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.background = modelDropdownOpen ? "var(--bg-hover)" : "none";
-                      e.currentTarget.style.color = "var(--text-muted)";
+                    aria-label={currentName ? `Change model: ${currentName}` : "Change model"}
+                    className={`${selectorStyles.trigger} ${selectorStyles.modelTrigger}`}
+                    onKeyDown={(event) => {
+                      if (event.key === "ArrowDown") {
+                        event.preventDefault();
+                        setModelDropdownOpen(true);
+                      }
                     }}
                   >
-                    {modelSwitching ? (
-                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" style={{ animation: "spin 0.8s linear infinite", flexShrink: 0 }} aria-hidden="true">
-                        <path d="M21 12a9 9 0 1 1-2.64-6.36" />
-                      </svg>
-                    ) : (
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                        <rect x="4" y="4" width="16" height="16" rx="2" />
-                        <rect x="9" y="9" width="6" height="6" />
-                        <path d="M9 1v3M15 1v3M9 20v3M15 20v3M20 9h3M20 14h3M1 9h3M1 14h3" />
-                      </svg>
-                    )}
-                    <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>
-                      {currentName ?? (modelOptions.length > 0 ? "Select model" : "No models")}
-                    </span>
-                  </button>} />
+                    {modelSwitching && <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" style={{ animation: "spin 0.8s linear infinite", flexShrink: 0 }} aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.64-6.36" /></svg>}
+                    <span className={selectorStyles.name}>{currentName ?? (modelOptions.length > 0 ? "Select model" : "No models")}</span>
+                    <ChevronDownIcon size={13} aria-hidden="true" />
+                  </button>} />} />
                   <TooltipContent>{modelSwitching ? "Switching model" : modelOptions.length > 0 ? "Change model" : "No available models"}</TooltipContent>
-                  </Tooltip>
-                  {modelDropdownOpen && modelDropdownRect && (() => {
-                    const viewportHeight = window.visualViewport?.height ?? window.innerHeight;
-                    const bottom = viewportHeight - modelDropdownRect.top + 6;
-                    const menuHeight = Math.max(160, Math.min(360, modelDropdownRect.top - 8, viewportHeight - 16));
-                    // On mobile, pin to a small left margin and cap width to the
-                    // viewport so long model names never push the panel off-screen.
-                    const panelPos: React.CSSProperties = isMobile
-                      ? { left: 8, right: 8, maxWidth: "calc(100vw - 16px)" }
-                      : { left: modelDropdownRect.left, width: 260 };
-                    return (
-                      <div ref={modelDropdownPanelRef} style={{
-                      position: "fixed",
-                      bottom,
-                      ...panelPos,
-                      zIndex: 500,
-                      height: menuHeight,
-                      overflow: "hidden",
-                      }}>
-                      <Command shouldFilter={false} style={{
-                        height: "100%",
-                        background: "var(--bg-panel)",
-                        color: "var(--text)",
-                        border: "1px solid var(--border)",
-                        borderRadius: "var(--radius-card)",
-                        boxShadow: "var(--shadow-soft)",
-                      }}>
+                </Tooltip>
+                <Popover.Portal>
+                  <Popover.Positioner side="top" align="start" sideOffset={6} collisionPadding={8} style={{ zIndex: 1200 }}>
+                    <Popover.Popup className={selectorStyles.modelPopup} aria-label={t("chat.filterModels")}>
+                      <Command shouldFilter={false} className="rounded-none bg-transparent text-[var(--text)]" style={{ flex: 1, minHeight: 0 }}>
                         <CommandInput
-                            value={modelFilter}
-                            onValueChange={setModelFilter}
-                            onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
-                              if (e.key === "Escape") {
-                                setModelFilter("");
-                                setModelDropdownOpen(false);
-                              }
-                            }}
-                            placeholder={t("chat.filterModels")}
-                            aria-label={t("chat.filterModels")}
-                            autoFocus
-                            autoComplete="off"
-                            spellCheck={false}
-                            style={{
-                              minWidth: isMobile ? 0 : 220,
-                              fontSize: 12,
-                              fontFamily: "var(--font-mono)",
-                              color: "var(--text)",
-                            }}
+                          value={modelFilter}
+                          onValueChange={setModelFilter}
+                          placeholder={t("chat.filterModels")}
+                          aria-label={t("chat.filterModels")}
+                          autoComplete="off"
+                          spellCheck={false}
+                          style={{ fontSize: 12, color: "var(--text)" }}
                         />
-                      <CommandList style={{ flex: 1, minHeight: 0, maxHeight: "none" }}>
-                        {modelsByProvider.length === 0 ? (
-                          <CommandEmpty style={{ display: "block", color: "var(--text-muted)", fontSize: 12, whiteSpace: "nowrap" }}>
-                            {modelFilter.trim() ? t("chat.noMatchingModels") : "No available models"}
-                          </CommandEmpty>
-                        ) : modelsByProvider.map((group) => (
-                          <CommandGroup key={group.provider} heading={modelsByProvider.length > 1 ? group.provider.toUpperCase() : undefined}>
-                            {group.options.map((opt) => {
-                              const isActive = opt.modelId === effectiveModel?.modelId && opt.provider === effectiveModel?.provider;
-                              return (
-                                <CommandItem
-                                  key={`${opt.provider}:${opt.modelId}`}
+                        <CommandList style={{ flex: 1, minHeight: 0, maxHeight: "none" }}>
+                          {modelsByProvider.length === 0 ? (
+                            <CommandEmpty style={{ display: "block", color: "var(--text-muted)", fontSize: 12 }}>
+                              {modelFilter.trim() ? t("chat.noMatchingModels") : "No available models"}
+                            </CommandEmpty>
+                          ) : modelsByProvider.map((group) => (
+                            <CommandGroup key={group.provider} heading={group.provider} className={selectorStyles.modelGroup}>
+                              {group.options.map((opt) => {
+                                const isActive = opt.modelId === effectiveModel?.modelId && opt.provider === effectiveModel?.provider;
+                                return <Tooltip key={`${opt.provider}:${opt.modelId}`}>
+                                <TooltipTrigger render={<CommandItem
                                   value={`${opt.name} ${opt.modelId} ${opt.provider}`}
+                                  data-current={isActive}
+                                  className={selectorStyles.modelItem}
                                   onSelect={() => {
                                     setModelDropdownOpen(false);
                                     setModelFilter("");
@@ -2584,32 +2710,20 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                                       else onModelChange(opt.provider, opt.modelId);
                                     }
                                   }}
-                                  style={{
-                                    minHeight: 32,
-                                    padding: "6px 24px 6px 8px",
-                                    background: isActive ? "var(--bg-selected)" : "transparent",
-                                    color: isActive ? "var(--text)" : "var(--text-muted)",
-                                    cursor: "pointer", fontSize: 12,
-                                    fontWeight: isActive ? 600 : 400,
-                                  }}
-                                  onMouseEnter={(event) => { if (!isActive) event.currentTarget.style.background = "var(--bg-hover)"; }}
-                                  onMouseLeave={(event) => { if (!isActive) event.currentTarget.style.background = "transparent"; }}
                                 >
-                                  {isActive
-                                    ? <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><polyline points="1.5 5 4 7.5 8.5 2.5" /></svg>
-                                    : <span style={{ width: 10, flexShrink: 0 }} />}
-                                  <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{opt.name}</span>
-                                </CommandItem>
-                              );
-                            })}
-                          </CommandGroup>
-                        ))}
-                      </CommandList>
+                                  <span className={selectorStyles.name}>{opt.name}</span>
+                                </CommandItem>} />
+                                <TooltipContent side="right" className="break-words">{opt.name}</TooltipContent>
+                                </Tooltip>;
+                              })}
+                            </CommandGroup>
+                          ))}
+                        </CommandList>
                       </Command>
-                    </div>
-                    );
-                  })()}
-                </div>
+                    </Popover.Popup>
+                  </Popover.Positioner>
+                </Popover.Portal>
+              </Popover.Root>
             )}
           </div>
 
@@ -2676,111 +2790,59 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
             {onThinkingLevelChange && (
               <DropdownMenu open={thinkingDropdownOpen} onOpenChange={setThinkingDropdownOpen}>
                 <Tooltip>
-                <DropdownMenuTrigger
-                  render={
-                <TooltipTrigger render={<button
-                  type="button"
-                  disabled={false}
-                   aria-label={t("chat.changeReasoningLabel")}
-                  style={{
-                    display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
-                    padding: isMobile ? "0 6px" : "8px 12px 8px 2px",
-                    width: isMobile ? "auto" : undefined,
-                    height: 32,
-                    background: thinkingDropdownOpen ? "var(--bg-hover)" : "none",
-                    border: "none",
-                    borderRadius: 9,
-                    color: "var(--text-muted)",
-                    cursor: "pointer",
-                    fontSize: 12,
-                    opacity: 1,
-                    transition: "background 0.12s, color 0.12s",
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.background = "var(--bg-hover)";
-                    e.currentTarget.style.color = "var(--text)";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = thinkingDropdownOpen ? "var(--bg-hover)" : "none";
-                    e.currentTarget.style.color = "var(--text-muted)";
-                  }}
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                    <path d="m 17.2986 11.6413 c -0.6036 4.7 -4.5831 5.4245 -8.7144 4.7904" />
-                    <path d="m 3.6667 20.3333 S 5.416 4.972 20.3333 3.6667 c -0.7467 1.3013 -0.764 3.4733 -1.2613 5.652 -0.6987 2.6813 -3.1133 3.0147 -6.072 3.0147" />
-                  </svg>
-                  <span style={{ whiteSpace: "nowrap" }}>{thinkingDisplayLabel}</span>
-                </button>} />
-                  }
-                />
-                <TooltipContent>{t("chat.changeReasoning", { level: thinkingDisplayLabel })}</TooltipContent>
+                  <DropdownMenuTrigger render={<TooltipTrigger render={<button
+                    type="button"
+                    aria-label={t("chat.changeReasoningLabel")}
+                    className={selectorStyles.trigger}
+                  >
+                    <span className={selectorStyles.effortLabel}>{t("chat.reasoningEffort")}</span>
+                    <span>{thinkingDisplayLabel}</span>
+                    <ChevronDownIcon size={13} aria-hidden="true" />
+                  </button>} />} />
+                  <TooltipContent>{t("chat.changeReasoning", { level: thinkingDisplayLabel })}</TooltipContent>
                 </Tooltip>
                 <DropdownMenuContent
                   align={isMobile ? "start" : "end"}
                   side="top"
                   sideOffset={6}
-                  style={{
-                    minWidth: 180,
-                    padding: 4,
-                    background: "var(--bg-panel)",
-                    color: "var(--text)",
-                    border: "1px solid var(--border)",
-                    borderRadius: "var(--radius-card)",
-                    boxShadow: "var(--shadow-soft)",
-                  }}
+                  className={selectorStyles.reasoningPopup}
                 >
-                  <DropdownMenuGroup>
-                    <DropdownMenuLabel style={{ color: "var(--text-dim)", fontSize: 13 }}>
-                      {t("chat.changeReasoningLabel")}
-                    </DropdownMenuLabel>
-                    {THINKING_LEVELS.filter((lvl) => {
-                      if (!availableThinkingLevels) return true;
-                      if (lvl === "auto") return true;
-                      return availableThinkingLevels.includes(lvl);
-                    }).map((lvl) => {
-                      const isActive = (effectiveThinkingLevel ?? "auto") === lvl;
-                       const desc = t(THINKING_LEVEL_DESC_KEYS[lvl]);
-                      const mappedVal = (lvl !== "auto" && thinkingLevelMap) ? thinkingLevelMap[lvl] : undefined;
-                      const displayLabel = capitalizeDisplayLabel((mappedVal != null && mappedVal !== lvl) ? mappedVal : lvl);
-                      const showOriginal = mappedVal != null && mappedVal !== lvl;
-                      return (
-                        <DropdownMenuCheckboxItem
-                          key={lvl}
-                          checked={isActive}
-                          onCheckedChange={(checked) => {
-                            if (checked && !isActive) {
-                              if (isStreaming) setDeferredThinkingLevel(lvl);
-                              else onThinkingLevelChange(lvl);
-                            }
-                            setThinkingDropdownOpen(false);
-                          }}
-                          style={{
-                            gap: 8,
-                            alignItems: "flex-start",
-                            minHeight: 42,
-                            padding: "6px 28px 6px 8px",
-                            background: "transparent",
-                            color: "var(--text)",
-                            cursor: "pointer", fontSize: 13,
-                            fontWeight: isActive ? 600 : 400,
-                          }}
-                          onMouseEnter={(event) => { event.currentTarget.style.background = "var(--bg-hover)"; }}
-                          onMouseLeave={(event) => { event.currentTarget.style.background = "transparent"; }}
-                        >
-                          <span style={{ display: "flex", minWidth: 0, flex: 1, flexDirection: "column", alignItems: "flex-start", gap: 2 }}>
-                            <span style={{ color: "var(--text)", lineHeight: 1.2 }}>
+                  <DropdownMenuRadioGroup
+                    value={effectiveThinkingLevel ?? "auto"}
+                    onValueChange={(value: typeof THINKING_LEVELS[number]) => {
+                      if (value !== (effectiveThinkingLevel ?? "auto")) {
+                        if (isStreaming) setDeferredThinkingLevel(value);
+                        else onThinkingLevelChange(value);
+                      }
+                      setThinkingDropdownOpen(false);
+                    }}
+                  >
+                    <DropdownMenuGroup>
+                      <DropdownMenuLabel style={{ padding: "6px 8px", color: "var(--text-muted)", fontSize: 12, fontWeight: 400 }}>
+                        {t("chat.reasoningEffort")}
+                      </DropdownMenuLabel>
+                      {THINKING_LEVELS.filter((lvl) => !availableThinkingLevels || lvl === "auto" || availableThinkingLevels.includes(lvl)).map((lvl) => {
+                        const mappedVal = (lvl !== "auto" && thinkingLevelMap) ? thinkingLevelMap[lvl] : undefined;
+                        const displayLabel = thinkingLevelLabel((mappedVal != null && mappedVal !== lvl) ? mappedVal : lvl);
+                        const showOriginal = mappedVal != null && mappedVal !== lvl;
+                        return (
+                          <Tooltip key={lvl}>
+                          <TooltipTrigger render={<DropdownMenuRadioItem value={lvl} closeOnClick label={displayLabel} className={selectorStyles.reasoningItem}>
+                            <span className={selectorStyles.level}>
                               {displayLabel}
-                              {showOriginal && <span style={{ fontSize: 10, color: "var(--text-dim)", fontFamily: "var(--font-mono)", marginLeft: 5 }}>({lvl})</span>}
+                              {showOriginal && <span className={selectorStyles.originalLevel}>({thinkingLevelLabel(lvl)})</span>}
                             </span>
-                            <span style={{ color: commandDescriptionColor, fontSize: 11, fontWeight: 400, lineHeight: 1.2, whiteSpace: "normal" }}>{desc}</span>
-                          </span>
-                        </DropdownMenuCheckboxItem>
-                      );
-                    })}
-                  </DropdownMenuGroup>
+                          </DropdownMenuRadioItem>} />
+                          <TooltipContent side="right">{t(THINKING_LEVEL_DESC_KEYS[lvl])}</TooltipContent>
+                          </Tooltip>
+                        );
+                      })}
+                    </DropdownMenuGroup>
+                  </DropdownMenuRadioGroup>
                 </DropdownMenuContent>
               </DropdownMenu>
             )}
+
             {(planMode?.planModeActive || planMode?.phase === "executing") && (
               <>
               <span aria-hidden="true" style={{ width: 1, height: 16, margin: "0 4px", background: "var(--border)", flexShrink: 0 }} />
@@ -2813,50 +2875,6 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                 <TooltipContent>{planMode?.phase === "executing" ? t("plan.mode") : t("plan.cancelMode")}</TooltipContent>
               </Tooltip>
               </>
-            )}
-            {false && onSoundToggle !== undefined && (
-              <button
-                onClick={onSoundToggle}
-                 title={soundEnabled ? t("chat.disableSound") : t("chat.enableSound")}
-                 aria-label={soundEnabled ? t("chat.disableSound") : t("chat.enableSound")}
-                style={{
-                  display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
-                  width: isMobile ? 32 : 32,
-                  height: 32,
-                  padding: 0,
-                  background: "none",
-                  border: "none",
-                  borderRadius: 9,
-                  color: soundEnabled ? "var(--text-muted)" : "var(--text-dim)",
-                  cursor: "pointer",
-                  opacity: soundEnabled ? 1 : 0.55,
-                  transition: "background 0.12s, color 0.12s, opacity 0.12s",
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = "var(--bg-hover)";
-                  e.currentTarget.style.color = "var(--text)";
-                  e.currentTarget.style.opacity = "1";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = "none";
-                  e.currentTarget.style.color = soundEnabled ? "var(--text-muted)" : "var(--text-dim)";
-                  e.currentTarget.style.opacity = soundEnabled ? "1" : "0.55";
-                }}
-              >
-                {soundEnabled ? (
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                    <path d="M10.268 21a2 2 0 0 0 3.464 0" />
-                    <path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326" />
-                  </svg>
-                ) : (
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                    <path d="M10.268 21a2 2 0 0 0 3.464 0" />
-                    <path d="M17 17H4a1 1 0 0 1-.74-1.673C4.59 13.956 6 12.499 6 8a6 6 0 0 1 .258-1.742" />
-                    <path d="m2 2 20 20" />
-                    <path d="M8.668 3.01A6 6 0 0 1 18 8c0 2.687.77 4.653 1.707 6.05" />
-                  </svg>
-                )}
-              </button>
             )}
             {isMobile && controlsMenuOpen && (
               <button
@@ -2904,4 +2922,4 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
       </div>
     </div>
   );
-});
+}));

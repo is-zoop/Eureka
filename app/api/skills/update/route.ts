@@ -4,6 +4,8 @@ import type { SkillInstallScope } from "@/lib/api-types";
 import { buildSkillUpdateArgs } from "@/lib/skill-updates";
 import { loadSkillsWithInstallInfo } from "@/lib/skills-service";
 import { getAllowedFileRoots, isExistingFilePathAllowed } from "@/lib/file-access";
+import { getAgentDir } from "@earendil-works/pi-coding-agent";
+import { getProjectTrustStatus } from "@/lib/project-trust";
 
 export const dynamic = "force-dynamic";
 
@@ -27,7 +29,11 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Access denied" }, { status: 403 });
     }
 
-    const { skills } = await loadSkillsWithInstallInfo(cwd);
+    if (scope === "project" && !getProjectTrustStatus(cwd, getAgentDir()).trusted) {
+      return NextResponse.json({ error: "Project resources must be trusted before installing project skills" }, { status: 403 });
+    }
+    const inventory = await loadSkillsWithInstallInfo(cwd);
+    const skills = inventory.installedSkills ?? inventory.skills;
     const skill = skills.find(
       (item) => item.install?.package === pkg && item.install.scope === scope,
     );
@@ -45,7 +51,7 @@ export async function POST(req: Request) {
     });
 
     const refreshed = await loadSkillsWithInstallInfo(cwd);
-    const updatedSkill = refreshed.skills.find(
+    const updatedSkill = (refreshed.installedSkills ?? refreshed.skills).find(
       (item) => item.install?.package === pkg && item.install.scope === scope,
     );
     return NextResponse.json({

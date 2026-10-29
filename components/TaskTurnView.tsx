@@ -7,6 +7,8 @@ import type { TaskPhase, TaskTurnStatus, TaskTurnView as TaskTurnData } from "@/
 import { ProcessBlockView } from "./MessageView";
 import { AgentActivityIndicator } from "./AgentActivity";
 import type { AgentPhase } from "@/hooks/useAgentSession";
+import { Collapse } from "./Collapse";
+import { TaskProcessList } from "./TaskProcessList";
 
 export function phaseExpanded(status: TaskTurnStatus, choice?: { status: TaskTurnStatus; expanded: boolean }): boolean {
   return choice?.status === status ? choice.expanded : status !== "completed";
@@ -21,7 +23,7 @@ function PhaseArrow({ expanded }: { expanded: boolean }) {
   </span></span>;
 }
 
-export function TaskTurnView({ turn, toolResults, runningToolIds, agentPhase, cwd, onOpenFile, sessionId, modelNames, phaseRef, renderExtras }: {
+export function TaskTurnView({ turn, toolResults, runningToolIds, agentPhase, cwd, onOpenFile, sessionId, modelNames, phaseRef, renderExtras, turnId, continuation = false, archived = false }: {
   turn: TaskTurnData;
   toolResults: Map<string, ToolResultMessage>;
   runningToolIds?: ReadonlySet<string>;
@@ -32,6 +34,9 @@ export function TaskTurnView({ turn, toolResults, runningToolIds, agentPhase, cw
   modelNames?: Record<string, string>;
   phaseRef?: (phase: TaskPhase) => Ref<HTMLDivElement> | undefined;
   renderExtras?: (phase: TaskPhase) => ReactNode;
+  turnId?: string;
+  continuation?: boolean;
+  archived?: boolean;
 }) {
   const { t } = useI18n();
   const [outerChoice, setOuterChoice] = useState<{ status: TaskTurnStatus; expanded: boolean }>();
@@ -43,14 +48,16 @@ export function TaskTurnView({ turn, toolResults, runningToolIds, agentPhase, cw
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [statusSignature]);
   useEffect(() => { setOuterChoice(undefined); }, [turn.status]);
-  const completed = turn.status === "completed";
-  const outerExpanded = !completed || phaseExpanded(turn.status, outerChoice);
+  const completed = turn.status === "completed" || (continuation && turn.status === "incomplete");
+  const foldable = completed || archived;
+  const outerStatus = foldable ? "completed" : turn.status;
+  const outerExpanded = !foldable || phaseExpanded(outerStatus, outerChoice);
   const toolCallCount = turn.phases.reduce((count, phase) => count + phase.toolCallCount, 0);
   const common = { toolResults, runningToolIds, cwd, onOpenFile, sessionId, modelNames };
 
-  return <div className="task-turn-view" data-status={turn.status}>
-    {completed && turn.phases.length > 0 && <button type="button" className="task-phase-toggle" aria-expanded={outerExpanded}
-      onClick={() => setOuterChoice({ status: turn.status, expanded: !outerExpanded })}>
+  return <div className="task-turn-view" data-status={turn.status} data-turn-id={turnId}>
+    {foldable && turn.phases.length > 0 && <button type="button" className="task-phase-toggle" aria-expanded={outerExpanded}
+      onClick={() => setOuterChoice({ status: outerStatus, expanded: !outerExpanded })}>
       <PhaseArrow expanded={outerExpanded} />
       <span className="task-phase-heading">
         <span>{t("chat.processDetails")}</span>
@@ -59,7 +66,7 @@ export function TaskTurnView({ turn, toolResults, runningToolIds, agentPhase, cw
       </span>
     </button>}
     {!completed && turn.status !== "running" && <p className="task-turn-status" role={turn.status === "failed" ? "alert" : "status"}>{t("taskPhase." + turn.status)}</p>}
-    {outerExpanded && turn.phases.map((phase, phaseIndex) => {
+    <Collapse open={outerExpanded}>{() => turn.phases.map((phase, phaseIndex) => {
       const expanded = phaseExpanded(phase.status, choices[phase.id]);
       const running = phase.status === "running";
       const waiting = running && phaseIndex === turn.phases.length - 1 && agentPhase?.kind === "waiting_model";
@@ -77,11 +84,13 @@ export function TaskTurnView({ turn, toolResults, runningToolIds, agentPhase, cw
             {phase.thinkingCount > 0 && <span className="task-phase-count">· {t("taskPhase.thinkingCount", { count: phase.thinkingCount })}</span>}
           </span>
         </button>
-        {expanded && <div className="task-phase-body">
-          {phase.items.map((ref) => <ProcessBlockView key={(ref.source.entryId ?? ref.source.messageIndex) + ":" + ref.blockIndex} reference={ref} {...common} />)}
+        <Collapse open={expanded}>{() => <div className="task-phase-body">
+          {phase.items.length > 0 && <TaskProcessList running={running}>
+            {phase.items.map((ref) => <ProcessBlockView key={(ref.source.entryId ?? ref.source.messageIndex) + ":" + ref.blockIndex} reference={ref} {...common} />)}
+          </TaskProcessList>}
           {renderExtras?.(phase)}
-        </div>}
+        </div>}</Collapse>
       </div>;
-    })}
+    })}</Collapse>
   </div>;
 }

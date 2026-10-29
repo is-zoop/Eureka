@@ -1,0 +1,922 @@
+⨯ node:console
+Module build failed: UnhandledSchemeError: Reading from "node:console" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs.
+Import trace for requested module:
+node:console
+./node_modules/undici/lib/mock/pending-interceptors-formatter.js
+./node_modules/undici/lib/mock/mock-agent.js
+./node_modules/undici/index.js
+./lib/http-dispatcher.ts
+[browser] node:console
+Module build failed: UnhandledSchemeError: Reading from "node:console" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:crypto
+Module build failed: UnhandledSchemeError: Reading from "node:crypto" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:diagnostics_channel
+Module build failed: UnhandledSchemeError: Reading from "node:diagnostics_channel" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:dns
+Module build failed: UnhandledSchemeError: Reading from "node:dns" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:fs/promises
+Module build failed: UnhandledSchemeError: Reading from "node:fs/promises" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:http
+Module build failed: UnhandledSchemeError: Reading from "node:http" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:http2
+Module build failed: UnhandledSchemeError: Reading from "node:http2" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:net
+Module build failed: UnhandledSchemeError: Reading from "node:net" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:path
+Module build failed: UnhandledSchemeError: Reading from "node:path" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:perf_hooks
+Module build failed: UnhandledSchemeError: Reading from "node:perf_hooks" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:querystring
+Module build failed: UnhandledSchemeError: Reading from "node:querystring" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:sqlite
+Module build failed: UnhandledSchemeError: Reading from "node:sqlite" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:stream
+Module build failed: UnhandledSchemeError: Reading from "node:stream" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:timers
+Module build failed: UnhandledSchemeError: Reading from "node:timers" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:tls
+Module build failed: UnhandledSchemeError: Reading from "node:tls" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:url
+Module build failed: UnhandledSchemeError: Reading from "node:url" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:util/types
+Module build failed: UnhandledSchemeError: Reading from "node:util/types" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:worker_threads
+Module build failed: UnhandledSchemeError: Reading from "node:worker_threads" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:zlib
+Module build failed: UnhandledSchemeError: Reading from "node:zlib" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:console
+Module build failed: UnhandledSchemeError: Reading from "node:console" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:crypto
+Module build failed: UnhandledSchemeError: Reading from "node:crypto" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:diagnostics_channel
+Module build failed: UnhandledSchemeError: Reading from "node:diagnostics_channel" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:dns
+Module build failed: UnhandledSchemeError: Reading from "node:dns" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:fs/promises
+Module build failed: UnhandledSchemeError: Reading from "node:fs/promises" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:http
+Module build failed: UnhandledSchemeError: Reading from "node:http" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:http2
+Module build failed: UnhandledSchemeError: Reading from "node:http2" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:net
+Module build failed: UnhandledSchemeError: Reading from "node:net" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:path
+Module build failed: UnhandledSchemeError: Reading from "node:path" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:perf_hooks
+Module build failed: UnhandledSchemeError: Reading from "node:perf_hooks" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:querystring
+Module build failed: UnhandledSchemeError: Reading from "node:querystring" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:sqlite
+Module build failed: UnhandledSchemeError: Reading from "node:sqlite" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:stream
+Module build failed: UnhandledSchemeError: Reading from "node:stream" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:timers
+Module build failed: UnhandledSchemeError: Reading from "node:timers" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:tls
+Module build failed: UnhandledSchemeError: Reading from "node:tls" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:url
+Module build failed: UnhandledSchemeError: Reading from "node:url" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:util/types
+Module build failed: UnhandledSchemeError: Reading from "node:util/types" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:worker_threads
+Module build failed: UnhandledSchemeError: Reading from "node:worker_threads" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:zlib
+Module build failed: UnhandledSchemeError: Reading from "node:zlib" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:console
+Module build failed: UnhandledSchemeError: Reading from "node:console" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:crypto
+Module build failed: UnhandledSchemeError: Reading from "node:crypto" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:diagnostics_channel
+Module build failed: UnhandledSchemeError: Reading from "node:diagnostics_channel" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:dns
+Module build failed: UnhandledSchemeError: Reading from "node:dns" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:fs/promises
+Module build failed: UnhandledSchemeError: Reading from "node:fs/promises" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:http
+Module build failed: UnhandledSchemeError: Reading from "node:http" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:http2
+Module build failed: UnhandledSchemeError: Reading from "node:http2" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:net
+Module build failed: UnhandledSchemeError: Reading from "node:net" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:path
+Module build failed: UnhandledSchemeError: Reading from "node:path" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:perf_hooks
+Module build failed: UnhandledSchemeError: Reading from "node:perf_hooks" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:querystring
+Module build failed: UnhandledSchemeError: Reading from "node:querystring" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:sqlite
+Module build failed: UnhandledSchemeError: Reading from "node:sqlite" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:stream
+Module build failed: UnhandledSchemeError: Reading from "node:stream" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:timers
+Module build failed: UnhandledSchemeError: Reading from "node:timers" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:tls
+Module build failed: UnhandledSchemeError: Reading from "node:tls" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:url
+Module build failed: UnhandledSchemeError: Reading from "node:url" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:util/types
+Module build failed: UnhandledSchemeError: Reading from "node:util/types" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:worker_threads
+Module build failed: UnhandledSchemeError: Reading from "node:worker_threads" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:zlib
+Module build failed: UnhandledSchemeError: Reading from "node:zlib" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:console
+Module build failed: UnhandledSchemeError: Reading from "node:console" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:crypto
+Module build failed: UnhandledSchemeError: Reading from "node:crypto" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:diagnostics_channel
+Module build failed: UnhandledSchemeError: Reading from "node:diagnostics_channel" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:dns
+Module build failed: UnhandledSchemeError: Reading from "node:dns" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:fs/promises
+Module build failed: UnhandledSchemeError: Reading from "node:fs/promises" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:http
+Module build failed: UnhandledSchemeError: Reading from "node:http" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:http2
+Module build failed: UnhandledSchemeError: Reading from "node:http2" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:net
+Module build failed: UnhandledSchemeError: Reading from "node:net" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:path
+Module build failed: UnhandledSchemeError: Reading from "node:path" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:perf_hooks
+Module build failed: UnhandledSchemeError: Reading from "node:perf_hooks" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:querystring
+Module build failed: UnhandledSchemeError: Reading from "node:querystring" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:sqlite
+Module build failed: UnhandledSchemeError: Reading from "node:sqlite" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:stream
+Module build failed: UnhandledSchemeError: Reading from "node:stream" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:timers
+Module build failed: UnhandledSchemeError: Reading from "node:timers" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:tls
+Module build failed: UnhandledSchemeError: Reading from "node:tls" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:url
+Module build failed: UnhandledSchemeError: Reading from "node:url" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:util/types
+Module build failed: UnhandledSchemeError: Reading from "node:util/types" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:worker_threads
+Module build failed: UnhandledSchemeError: Reading from "node:worker_threads" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:zlib
+Module build failed: UnhandledSchemeError: Reading from "node:zlib" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:console
+Module build failed: UnhandledSchemeError: Reading from "node:console" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:crypto
+Module build failed: UnhandledSchemeError: Reading from "node:crypto" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:diagnostics_channel
+Module build failed: UnhandledSchemeError: Reading from "node:diagnostics_channel" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:dns
+Module build failed: UnhandledSchemeError: Reading from "node:dns" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:fs/promises
+Module build failed: UnhandledSchemeError: Reading from "node:fs/promises" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:http
+Module build failed: UnhandledSchemeError: Reading from "node:http" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:http2
+Module build failed: UnhandledSchemeError: Reading from "node:http2" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:net
+Module build failed: UnhandledSchemeError: Reading from "node:net" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:path
+Module build failed: UnhandledSchemeError: Reading from "node:path" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:perf_hooks
+Module build failed: UnhandledSchemeError: Reading from "node:perf_hooks" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:querystring
+Module build failed: UnhandledSchemeError: Reading from "node:querystring" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:sqlite
+Module build failed: UnhandledSchemeError: Reading from "node:sqlite" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:stream
+Module build failed: UnhandledSchemeError: Reading from "node:stream" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:timers
+Module build failed: UnhandledSchemeError: Reading from "node:timers" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:tls
+Module build failed: UnhandledSchemeError: Reading from "node:tls" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:url
+Module build failed: UnhandledSchemeError: Reading from "node:url" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:util/types
+Module build failed: UnhandledSchemeError: Reading from "node:util/types" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:worker_threads
+Module build failed: UnhandledSchemeError: Reading from "node:worker_threads" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:zlib
+Module build failed: UnhandledSchemeError: Reading from "node:zlib" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:console
+Module build failed: UnhandledSchemeError: Reading from "node:console" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:crypto
+Module build failed: UnhandledSchemeError: Reading from "node:crypto" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:diagnostics_channel
+Module build failed: UnhandledSchemeError: Reading from "node:diagnostics_channel" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:dns
+Module build failed: UnhandledSchemeError: Reading from "node:dns" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:fs/promises
+Module build failed: UnhandledSchemeError: Reading from "node:fs/promises" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:http
+Module build failed: UnhandledSchemeError: Reading from "node:http" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:http2
+Module build failed: UnhandledSchemeError: Reading from "node:http2" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:net
+Module build failed: UnhandledSchemeError: Reading from "node:net" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:path
+Module build failed: UnhandledSchemeError: Reading from "node:path" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:perf_hooks
+Module build failed: UnhandledSchemeError: Reading from "node:perf_hooks" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:querystring
+Module build failed: UnhandledSchemeError: Reading from "node:querystring" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:sqlite
+Module build failed: UnhandledSchemeError: Reading from "node:sqlite" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:stream
+Module build failed: UnhandledSchemeError: Reading from "node:stream" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:timers
+Module build failed: UnhandledSchemeError: Reading from "node:timers" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:tls
+Module build failed: UnhandledSchemeError: Reading from "node:tls" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:url
+Module build failed: UnhandledSchemeError: Reading from "node:url" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:util/types
+Module build failed: UnhandledSchemeError: Reading from "node:util/types" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:worker_threads
+Module build failed: UnhandledSchemeError: Reading from "node:worker_threads" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] node:zlib
+Module build failed: UnhandledSchemeError: Reading from "node:zlib" is not handled by plugins (Unhandled scheme).
+Webpack supports "data:" and "file:" URIs by default.
+You may need an additional plugin to handle "node:" URIs. 
+    at handleErrors (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://E:/Eureka/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)

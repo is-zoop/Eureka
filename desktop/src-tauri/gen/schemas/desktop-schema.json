@@ -177,6 +177,42 @@
       "description": "Permission identifier",
       "oneOf": [
         {
+          "description": "Allows the composer to read copied file paths when the user pastes.",
+          "type": "string",
+          "const": "allow-desktop-clipboard-files",
+          "markdownDescription": "Allows the composer to read copied file paths when the user pastes."
+        },
+        {
+          "description": "Allows the content view to synchronize menus and recent tray sessions, change view scale/fullscreen, and quit the app.",
+          "type": "string",
+          "const": "allow-desktop-menu-content",
+          "markdownDescription": "Allows the content view to synchronize menus and recent tray sessions, change view scale/fullscreen, and quit the app."
+        },
+        {
+          "description": "Allows the local titlebar to open app menus and dispatch predefined keyboard actions.",
+          "type": "string",
+          "const": "allow-desktop-menu-titlebar",
+          "markdownDescription": "Allows the local titlebar to open app menus and dispatch predefined keyboard actions."
+        },
+        {
+          "description": "Allows the composer to open the system picker at the current project directory.",
+          "type": "string",
+          "const": "allow-desktop-select-attachments",
+          "markdownDescription": "Allows the composer to open the system picker at the current project directory."
+        },
+        {
+          "description": "Allows the project selector to open the system folder picker at the current directory.",
+          "type": "string",
+          "const": "allow-desktop-select-directory",
+          "markdownDescription": "Allows the project selector to open the system folder picker at the current directory."
+        },
+        {
+          "description": "Allows only the packaged tray popup to read its menu and perform predefined tray actions.",
+          "type": "string",
+          "const": "allow-desktop-tray-popup",
+          "markdownDescription": "Allows only the packaged tray popup to read its menu and perform predefined tray actions."
+        },
+        {
           "description": "Allows the isolated local titlebar to control its own desktop window.",
           "type": "string",
           "const": "allow-desktop-window-action",
@@ -187,6 +223,12 @@
           "type": "string",
           "const": "allow-open-external-url",
           "markdownDescription": "Allows Eureka's local WebView to request opening an HTTP or HTTPS link in the system browser."
+        },
+        {
+          "description": "Allows the Eureka content view to synchronize titlebar navigation availability.",
+          "type": "string",
+          "const": "allow-set-desktop-navigation-state",
+          "markdownDescription": "Allows the Eureka content view to synchronize titlebar navigation availability."
         },
         {
           "description": "Allows the Eureka frontend to synchronize the persistent desktop titlebar theme.",

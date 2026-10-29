@@ -1,20 +1,26 @@
 "use client";
 
+import styles from "./Sidebar.module.css";
+
 import { NotificationNotice } from "@/components/Notifications";
+import { invoke } from "@tauri-apps/api/core";
 
 
-import { useEffect, useLayoutEffect, useState, useCallback, useMemo, useRef, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useState, useCallback, useMemo, useRef, useId, type CSSProperties, type ReactNode } from "react";
 import type { SessionInfo } from "@/lib/types";
-import { loadExplorerOpen, saveExplorerOpen } from "@/lib/file-explorer-state";
+import { loadSidebarPanel, saveSidebarPanel, type SidebarPanel } from "@/lib/sidebar-panel-preference";
 import { dispatchSessionRowContextMenu } from "@/lib/session-row-context-menu";
-import { splitPluginSelection } from "@/lib/plugin-selection";
-import { skillExpansionToCommand } from "@/lib/slash-display";
+import { getSessionDisplayTitle } from "@/lib/session-display-title";
+import { getRecentTraySessions } from "@/lib/desktop-tray";
 import { clearLastSelectedProject, getLastSelectedProject, setLastSelectedProject } from "@/lib/workspace-memory";
+import { DESKTOP_MENU_COMMAND_EVENT, type DesktopMenuRequest } from "@/lib/desktop-menu";
 import { useI18n } from "@/hooks/useI18n";
 import { DirectoryPicker } from "./DirectoryPicker";
 import { ProjectLabel } from "./ProjectLabel";
 import { LabelTooltip } from "./LabelTooltip";
 import { FileExplorer, type FileExplorerHandle } from "./FileExplorer";
+import { GitPanel } from "./GitPanel";
+import type { GitDiffMode } from "@/lib/git-types";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -30,6 +36,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/t
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Skeleton } from "./ui/skeleton";
+import { Tabs, TabsList, TabsTrigger } from "./ui/tabs";
 import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogTitle } from "./ui/alert-dialog";
 import { CheckIcon, ChevronDownIcon, FolderGit2Icon, FolderIcon, FolderPlusIcon, GitBranchIcon, PlusIcon, Trash2Icon } from "lucide-react";
 
@@ -47,6 +54,7 @@ function ToolbarIconButton({
   disabled,
   skipHover,
   color,
+  hoverColor = "var(--text-muted)",
   background = "none",
   marginRight,
   ariaPressed,
@@ -57,6 +65,7 @@ function ToolbarIconButton({
   disabled?: boolean;
   skipHover?: boolean;
   color: string;
+  hoverColor?: string;
   background?: string;
   marginRight?: number;
   ariaPressed?: boolean;
@@ -64,7 +73,7 @@ function ToolbarIconButton({
 }) {
   const enter = (e: React.MouseEvent<HTMLButtonElement>) => {
     if (disabled || skipHover) return;
-    e.currentTarget.style.color = "var(--text-muted)";
+    e.currentTarget.style.color = hoverColor;
     e.currentTarget.style.background = "var(--bg-hover)";
   };
   const leave = (e: React.MouseEvent<HTMLButtonElement>) => {
@@ -123,7 +132,9 @@ interface Props {
   onSessionDeleted?: (sessionId: string) => void;
   selectedCwd?: string | null;
   onCwdChange?: (cwd: string | null, projectRoot?: string | null) => void;
-  onOpenFile?: (filePath: string, fileName: string, options?: { sourceSessionId?: string | null; modeHint?: "diff" }) => void;
+  onRecentProjectsChange?: (projects: string[]) => void;
+  onRecentSessionsChange?: (sessions: SessionInfo[]) => void;
+  onOpenFile?: (filePath: string, fileName: string, options?: { sourceSessionId?: string | null; modeHint?: "diff"; gitDiffMode?: GitDiffMode }) => void;
   explorerRefreshKey?: number;
   onExplorerRefresh?: () => void;
   onAtMention?: (relativePath: string, isDir: boolean) => void;
@@ -135,6 +146,7 @@ interface Props {
   onRunningSessionIdsChange?: (ids: Set<string>) => void;
   onRequestHide?: () => void;
   onOpenExtensionsCenter?: () => void;
+  showExtensionsEntry?: boolean;
 }
 
 interface WorktreeEntry {
@@ -148,6 +160,7 @@ interface WorktreeState {
   forCwd: string;
   projectRoot: string;
   isGit: boolean;
+  branch: string | null;
   /** False when forCwd is a repo subdirectory — the switcher is hidden there
    *  because subdir sessions keep their own project identity */
   isTopLevel: boolean;
@@ -377,7 +390,7 @@ function EurekaTitle() {
       onClick={handleClick}
       style={{
         background: "none", border: "none", padding: 0, cursor: "default",
-        fontWeight: 800, fontSize: 18, letterSpacing: "-0.02em",
+        fontWeight: 600, fontSize: 17, letterSpacing: "-0.02em",
         color: showVersion ? "var(--accent)" : "var(--text)",
         fontFamily: "var(--font-ui)",
         minWidth: "6ch",
@@ -388,7 +401,7 @@ function EurekaTitle() {
   );
 }
 
-export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSession, initialSessionId, skipInitialProjectSelection, refreshKey, onSessionDeleted, selectedCwd: selectedCwdProp, onCwdChange, onOpenFile, explorerRefreshKey, onExplorerRefresh, onAtMention, onAtMentions, revealDirectoryPath, onBackgroundTaskDone, onRunningSessionIdsChange, onRequestHide, onOpenExtensionsCenter }: Props) {
+export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSession, initialSessionId, skipInitialProjectSelection, refreshKey, onSessionDeleted, selectedCwd: selectedCwdProp, onCwdChange, onRecentProjectsChange, onRecentSessionsChange, onOpenFile, explorerRefreshKey, onExplorerRefresh, onAtMention, onAtMentions, revealDirectoryPath, onBackgroundTaskDone, onRunningSessionIdsChange, onRequestHide, onOpenExtensionsCenter, showExtensionsEntry = true }: Props) {
   const { t } = useI18n();
   const [allSessions, setAllSessions] = useState<SessionInfo[]>([]);
   const [loading, setLoading] = useState(true);
@@ -415,7 +428,9 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
   const [wtConfirmRemove, setWtConfirmRemove] = useState<string | null>(null);
   const [worktreeLoadingCwd, setWorktreeLoadingCwd] = useState<string | null>(null);
   const wtNewInputRef = useRef<HTMLInputElement>(null);
-  const [explorerOpen, setExplorerOpen] = useState(true);
+  const [sidebarPanel, setSidebarPanel] = useState<SidebarPanel>("tasks");
+  const sidebarId = useId();
+  const [explorerMode, setExplorerMode] = useState<"files" | "git">("files");
   const [explorerKey, setExplorerKey] = useState(0);
   const [explorerUploadBusy, setExplorerUploadBusy] = useState(false);
   const [changesCount, setChangesCount] = useState(0);
@@ -464,7 +479,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
 
   useEffect(() => {
     if (sessionSearchOpen) sessionSearchRef.current?.focus();
-  }, [sessionSearchOpen]);
+  }, [sessionSearchOpen, sidebarPanel]);
 
   const initialLoadDone = useRef(false);
   useEffect(() => {
@@ -473,11 +488,23 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
     loadSessions(isFirst, !isFirst);
   }, [loadSessions, refreshKey]);
 
-  // Browser storage is unavailable during server rendering. Restore the panel
-  // preference after hydration so a collapsed explorer stays collapsed on reload.
+  // Restore after hydration to keep the server and initial client markup aligned.
   useEffect(() => {
-    setExplorerOpen(loadExplorerOpen());
+    setSidebarPanel(loadSidebarPanel());
   }, []);
+
+  const selectSidebarPanel = useCallback((panel: SidebarPanel) => {
+    setSidebarPanel(panel);
+    saveSidebarPanel(panel);
+  }, []);
+
+  // "Reveal in explorer" should also make the destination visible.
+  useEffect(() => {
+    if (revealDirectoryPath) {
+      selectSidebarPanel("files");
+      setExplorerMode("files");
+    }
+  }, [revealDirectoryPath, selectSidebarPanel]);
 
   // Persist unread markers so they survive a browser refresh before the user
   // has actually opened the completed session.
@@ -640,7 +667,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
     setWorktreeLoadingCwd(selectedCwd);
     fetch(`/api/worktrees?cwd=${encodeURIComponent(selectedCwd)}`)
       .then((r) => r.json())
-      .then((d: { projectRoot?: string; isGit?: boolean; isTopLevel?: boolean; currentWorktreePath?: string | null; worktrees?: WorktreeEntry[]; error?: string }) => {
+      .then((d: { projectRoot?: string; isGit?: boolean; branch?: string | null; isTopLevel?: boolean; currentWorktreePath?: string | null; worktrees?: WorktreeEntry[]; error?: string }) => {
         if (cancelled) return;
         setWorktreeLoadingCwd(null);
         if (d.error || !d.projectRoot) {
@@ -651,6 +678,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
           forCwd: selectedCwd,
           projectRoot: d.projectRoot,
           isGit: d.isGit ?? false,
+          branch: d.branch ?? null,
           isTopLevel: d.isTopLevel ?? false,
           currentWorktreePath: d.currentWorktreePath ?? null,
           worktrees: d.worktrees ?? [],
@@ -663,7 +691,16 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
         }
       });
     return () => { cancelled = true; };
-  }, [selectedCwd, wtRefreshKey, refreshKey]);
+  }, [selectedCwd, wtRefreshKey, refreshKey, explorerKey]);
+
+  const hasGitBranch = Boolean(worktreeState?.isGit && worktreeState.branch
+    && worktreeState.forCwd === (selectedCwd ?? selectedCwdProp));
+  const gitViewActive = explorerMode === "git" && hasGitBranch;
+  const changesViewActive = !gitViewActive && !changesCollapsed && changesCount > 0;
+
+  useEffect(() => {
+    if (worktreeState?.forCwd === selectedCwd && !hasGitBranch) setExplorerMode("files");
+  }, [worktreeState, selectedCwd, hasGitBranch]);
 
   // Auto-select cwd and restore session from URL on first load
   useEffect(() => {
@@ -743,11 +780,20 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
     }
   }, [customPathValue, customPathValidating]);
 
-  const handleCustomPathClick = useCallback(() => {
-    setCustomPathOpen(true);
+  const handleCustomPathClick = useCallback(async () => {
     setCustomPathError(null);
     setDropdownOpen(false);
-  }, []);
+    if (!("__TAURI_INTERNALS__" in window)) {
+      setCustomPathOpen(true);
+      return;
+    }
+    try {
+      const path = await invoke<string | null>("desktop_select_directory", { cwd: selectedCwd ?? selectedCwdProp ?? null });
+      if (path) await commitCustomPath(path);
+    } catch (cause) {
+      setCustomPathError(cause instanceof Error ? cause.message : String(cause));
+    }
+  }, [commitCustomPath, selectedCwd, selectedCwdProp]);
   const handleDefaultCwd = useCallback(async () => {
     try {
       const res = await fetch("/api/default-cwd", { method: "POST" });
@@ -790,6 +836,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
         ...prev,
         forCwd: data.path!,
         currentWorktreePath: data.path!,
+        branch,
         worktrees: [...prev.worktrees, { path: data.path!, branch, isMain: false }],
       } : prev);
       setSelectedCwd(data.path);
@@ -869,7 +916,18 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
     onNewSession?.(tempId, selectedCwd);
   }, [selectedCwd, onNewSession]);
 
-  const recentProjects = getRecentProjects(allSessions);
+  const recentProjects = useMemo(() => getRecentProjects(allSessions), [allSessions]);
+  const recentSessions = useMemo(() => getRecentTraySessions(allSessions), [allSessions]);
+  useEffect(() => { onRecentSessionsChange?.(recentSessions); }, [onRecentSessionsChange, recentSessions]);
+  useEffect(() => { onRecentProjectsChange?.(recentProjects); }, [onRecentProjectsChange, recentProjects]);
+  useEffect(() => {
+    const onCommand = (event: Event) => {
+      const request = (event as CustomEvent<DesktopMenuRequest>).detail;
+      if (request?.command === "select-project" && request.path && recentProjects.includes(request.path)) setSelectedCwd(request.path);
+    };
+    window.addEventListener(DESKTOP_MENU_COMMAND_EVENT, onCommand);
+    return () => window.removeEventListener(DESKTOP_MENU_COMMAND_EVENT, onCommand);
+  }, [recentProjects]);
   const showProjectFilter = recentProjects.length > 6;
   const visibleProjects = projectFilter.trim()
     ? recentProjects.filter((p) => p.toLowerCase().includes(projectFilter.trim().toLowerCase()))
@@ -957,8 +1015,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
   const normalizedSessionSearch = sessionSearchQuery.trim().toLocaleLowerCase();
   const filteredSessions = normalizedSessionSearch
     ? projectSessions.filter((session) => {
-        const firstMessage = skillExpansionToCommand(session.firstMessage) ?? splitPluginSelection(session.firstMessage).text;
-        const title = session.name || firstMessage || session.id;
+        const title = getSessionDisplayTitle(session, session.id);
         return title.toLocaleLowerCase().includes(normalizedSessionSearch);
       })
     : projectSessions;
@@ -1091,9 +1148,11 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
   );
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden", background: "var(--sidebar-bg)" }}>
+    <div className={styles.root} style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden", background: "var(--sidebar-bg)" }}>
+      {!customPathOpen && <NotificationNotice message={customPathError} type="error" />}
       {customPathOpen && (
         <DirectoryPicker
+          initialDirectory={selectedCwd ?? selectedCwdProp ?? undefined}
           busy={customPathValidating}
           error={customPathError}
           onCancel={() => {
@@ -1136,8 +1195,8 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
       {/* Header */}
       <div
         style={{
-          padding: "12px 10px 0",
-          borderBottom: "1px solid var(--border)",
+          padding: "14px 12px 8px",
+          borderBottom: "1px solid color-mix(in srgb, var(--border) 65%, transparent)",
           flexShrink: 0,
         }}
       >
@@ -1163,14 +1222,15 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
           <DropdownMenuTrigger
             render={
           <button
+            className={styles.projectTrigger}
             type="button"
             aria-label={selectedProject ?? selectedCwd ?? t("sidebar.selectProject")}
             style={{
-              width: "calc(100% - 8px)",
-              margin: "0 4px",
+              width: "100%",
+              minHeight: 36,
               display: "flex",
               alignItems: "center",
-              padding: "8px 10px",
+              padding: "6px 10px",
               background: "var(--bg-panel)",
               border: "1px solid var(--border)",
               borderRadius: 8,
@@ -1762,12 +1822,12 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
               disabled={!selectedCwd}
               aria-label={t("sidebar.new")}
               style={{
-                width: "100%", height: 32, marginTop: 8, marginBottom: 0,
+                width: "100%", height: 34, marginTop: 8, marginBottom: 2,
                 display: "flex", alignItems: "center", justifyContent: "flex-start", gap: 8, padding: "0 10px",
                 background: "transparent", border: "none",
                 color: "var(--text)",
                 cursor: selectedCwd ? "pointer" : "not-allowed", borderRadius: "var(--radius-control)", textAlign: "left",
-                fontSize: 13, fontWeight: 500, letterSpacing: "-0.01em",
+                fontSize: 13, fontWeight: 400, letterSpacing: 0,
                 transition: "background var(--transition-ui), color var(--transition-ui)",
               }}
               onMouseEnter={(e) => {
@@ -1784,18 +1844,18 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
               {t("sidebar.new")}
             </button>
           </SidebarActionTooltip>
-          <SidebarActionTooltip content={t("sidebar.extensionsCenter")}>
+          {showExtensionsEntry && <SidebarActionTooltip content={t("sidebar.extensionsCenter")}>
             <button
               type="button"
               onClick={onOpenExtensionsCenter}
               disabled={!selectedCwd}
               aria-label={t("sidebar.extensionsCenter")}
               style={{
-                width: "100%", height: 32, marginBottom: 2,
+                width: "100%", height: 34, marginBottom: 0,
                 display: "flex", alignItems: "center", justifyContent: "flex-start", gap: 8, padding: "0 10px",
                 background: "transparent", border: "none",
                 color: "var(--text)", cursor: selectedCwd ? "pointer" : "not-allowed", borderRadius: "var(--radius-control)", textAlign: "left",
-                fontSize: 13, fontWeight: 500, letterSpacing: "-0.01em",
+                fontSize: 13, fontWeight: 400, letterSpacing: 0,
                 transition: "background var(--transition-ui), color var(--transition-ui)", opacity: selectedCwd ? 1 : 0.45,
               }}
               onMouseEnter={(e) => {
@@ -1811,14 +1871,38 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
               </svg>
               {t("sidebar.extensionsCenter")}
             </button>
-          </SidebarActionTooltip>
+          </SidebarActionTooltip>}
         </TooltipProvider>
       </div>
 
-      {/* Session list */}
-      <div style={{ flex: explorerOpen && (selectedCwdProp || selectedCwd) ? "1 1 0" : "1 1 auto", overflowY: "auto", padding: "0", minHeight: 80 }}>
-        {sessionSearchOpen ? <div style={{ position: "sticky", top: 0, zIndex: 1, height: 32, display: "flex", alignItems: "center", overflow: "hidden", background: "var(--bg-panel)", padding: "0 10px" }}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" style={{ marginLeft: 2, flexShrink: 0, color: "var(--text-muted)" }}><circle cx="11" cy="11" r="6" /><path d="m20 20-4-4" /></svg>
+      <Tabs value={sidebarPanel} onValueChange={(value) => selectSidebarPanel(value as SidebarPanel)} className={styles.panelTabs}>
+        <TabsList
+          className={styles.panelTabList}
+          aria-label={t("sidebar.content")}
+          onKeyDown={(event) => {
+            if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+            event.preventDefault();
+            const panel = event.key === "Home" ? "tasks" : event.key === "End" ? "files" : sidebarPanel === "tasks" ? "files" : "tasks";
+            selectSidebarPanel(panel);
+            document.getElementById(`${sidebarId}-${panel}-tab`)?.focus();
+          }}
+        >
+          <TabsTrigger value="tasks" id={`${sidebarId}-tasks-tab`} aria-controls={`${sidebarId}-tasks-panel`} tabIndex={sidebarPanel === "tasks" ? 0 : -1} className={styles.panelTab}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M2.992 16.342a2 2 0 0 1 .094 1.167l-1.065 3.29a1 1 0 0 0 1.236 1.168l3.413-.998a2 2 0 0 1 1.099.092 10 10 0 1 0-4.777-4.719" /><path d="M8 12h.01" /><path d="M12 12h.01" /><path d="M16 12h.01" /></svg>
+            {t("sidebar.tasks")}
+          </TabsTrigger>
+          <TabsTrigger value="files" id={`${sidebarId}-files-tab`} aria-controls={`${sidebarId}-files-panel`} tabIndex={sidebarPanel === "files" ? 0 : -1} className={styles.panelTab}>
+            <FolderIcon size={14} aria-hidden="true" />
+            {t("sidebar.files")}
+          </TabsTrigger>
+        </TabsList>
+      </Tabs>
+
+      {/* Keep both panels mounted so browsing state survives tab switches. */}
+      <div id={`${sidebarId}-tasks-panel`} role="tabpanel" aria-labelledby={`${sidebarId}-tasks-tab`} hidden={sidebarPanel !== "tasks"} className={styles.contentPanel}>
+      <div className={`sidebar-task-list ${styles.taskList}`}>
+        {sessionSearchOpen ? <div style={{ position: "sticky", top: 0, zIndex: 1, height: 36, display: "flex", alignItems: "center", overflow: "hidden", background: "var(--sidebar-bg)", padding: "0 12px" }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" style={{ marginLeft: 2, flexShrink: 0, color: "var(--text)" }}><circle cx="11" cy="11" r="6" /><path d="m20 20-4-4" /></svg>
             <input
               ref={sessionSearchRef}
               value={sessionSearchQuery}
@@ -1826,14 +1910,14 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
               onKeyDown={(e) => { if (e.key === "Escape") { setSessionSearchOpen(false); setSessionSearchQuery(""); } }}
               placeholder={t("sidebar.searchTasks")}
               aria-label={t("sidebar.searchTasks")}
-              style={{ flex: 1, minWidth: 0, padding: "0 6px", border: "none", outline: "none", background: "transparent", color: "var(--text)", font: "500 12px var(--font-ui)" }}
+              style={{ flex: 1, minWidth: 0, padding: "0 6px", border: "none", outline: "none", background: "transparent", color: "var(--text)", font: "400 13px/20px var(--font-ui)" }}
             />
-            <ToolbarIconButton onClick={() => { setSessionSearchOpen(false); setSessionSearchQuery(""); }} title={t("chat.close")} color="var(--text-muted)">
+            <ToolbarIconButton onClick={() => { setSessionSearchOpen(false); setSessionSearchQuery(""); }} title={t("chat.close")} color="var(--text)" hoverColor="var(--text)">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="m6 6 12 12M18 6 6 18" /></svg>
             </ToolbarIconButton>
-        </div> : <div style={{ position: "sticky", top: 0, zIndex: 1, boxSizing: "border-box", height: 32, padding: "0 10px", display: "flex", alignItems: "center", justifyContent: "space-between", background: "var(--sidebar-bg)" }}>
-          <span style={{ fontSize: 12, fontWeight: 600, letterSpacing: "0.02em", color: "var(--text-muted)" }}>{t("sidebar.tasks")}</span>
-          <ToolbarIconButton onClick={() => setSessionSearchOpen(true)} title={t("sidebar.searchTasks")} color="var(--text-muted)" ariaPressed={false}>
+        </div> : <div style={{ position: "sticky", top: 0, zIndex: 1, boxSizing: "border-box", height: 36, padding: "0 12px", display: "flex", alignItems: "center", justifyContent: "space-between", background: "var(--sidebar-bg)" }}>
+          <span className={styles.sectionLabel}>{t("sidebar.recentTasks")}</span>
+          <ToolbarIconButton onClick={() => setSessionSearchOpen(true)} title={t("sidebar.searchTasks")} color="var(--text)" hoverColor="var(--text)" ariaPressed={false}>
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="6" /><path d="m20 20-4-4" /></svg>
           </ToolbarIconButton>
         </div>}
@@ -1878,59 +1962,62 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
           />
         ))}
       </div>
+      </div>
 
       {/* File Explorer section */}
+      <div id={`${sidebarId}-files-panel`} role="tabpanel" aria-labelledby={`${sidebarId}-files-tab`} hidden={sidebarPanel !== "files"} className={styles.contentPanel}>
       {(selectedCwdProp || selectedCwd) && (
         <div
           style={{
-            borderTop: "1px solid var(--border)",
             display: "flex",
             flexDirection: "column",
-            flex: explorerOpen ? "1 1 0" : "0 0 auto",
+            flex: "1 1 0",
             minHeight: 0,
             overflow: "hidden",
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", flexShrink: 0 }}>
-            <button
-              onClick={() => setExplorerOpen((open) => {
-                const next = !open;
-                saveExplorerOpen(next);
-                return next;
-              })}
+          <div style={{ display: "flex", alignItems: "center", flexShrink: 0, minHeight: 36, borderBottom: "1px solid var(--border)" }}>
+            <span
               style={{
                 display: "flex",
                 alignItems: "center",
                 gap: 6,
                 flex: 1,
-                padding: "6px 10px",
+                minWidth: 0,
+                padding: "8px 12px",
                 background: "none",
                 border: "none",
-                color: "var(--text-muted)",
-                cursor: "pointer",
+                color: "var(--text)",
                 fontSize: 12,
-                fontWeight: 600,
-                letterSpacing: "0.05em",
-                textTransform: "uppercase",
+                fontWeight: 500,
+                lineHeight: "20px",
+                letterSpacing: 0,
                 textAlign: "left",
               }}
             >
-              <svg
-                width="9" height="9" viewBox="0 0 10 10" fill="none"
-                stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"
-                style={{ transform: explorerOpen ? "rotate(90deg)" : "none", transition: "transform 0.15s", flexShrink: 0 }}
-              >
-                <polyline points="3 2 7 5 3 8" />
-              </svg>
               {t("files.explorer")}
-            </button>
-            {explorerOpen && changesCount > 0 && (
+            </span>
+            {hasGitBranch && <ToolbarIconButton title="Git" ariaPressed={gitViewActive}
+              onClick={() => {
+                setExplorerMode((mode) => mode === "git" ? "files" : "git");
+                setChangesCollapsed(true);
+              }}
+              color={gitViewActive ? "var(--accent)" : "var(--text)"}
+              hoverColor={gitViewActive ? "var(--accent)" : "var(--text)"}
+              background={gitViewActive ? "var(--bg-selected)" : "none"}>
+              <GitBranchIcon size={13} aria-hidden="true" />
+            </ToolbarIconButton>}
+            {changesCount > 0 && (
               <ToolbarIconButton
-                onClick={() => setChangesCollapsed((v) => !v)}
+                onClick={() => {
+                  setExplorerMode("files");
+                  setChangesCollapsed((collapsed) => gitViewActive ? false : !collapsed);
+                }}
                 title={t("sidebar.changedFiles", { count: changesCount })}
-                ariaPressed={!changesCollapsed}
-                color={changesCollapsed ? "var(--text-dim)" : "var(--accent)"}
-                background={changesCollapsed ? "none" : "var(--bg-selected)"}
+                ariaPressed={changesViewActive}
+                color={changesViewActive ? "var(--accent)" : "var(--text)"}
+                hoverColor={changesViewActive ? "var(--accent)" : "var(--text)"}
+                background={changesViewActive ? "var(--bg-selected)" : "none"}
               >
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                   <path d="m16 3 4 4-4 4" />
@@ -1940,20 +2027,22 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
                 </svg>
               </ToolbarIconButton>
             )}
-            {explorerOpen && (
-              <ToolbarIconButton
-                onClick={() => fileExplorerRef.current?.openUploadPicker()}
-                disabled={explorerUploadBusy}
-                title={t("sidebar.uploadFilesTitle")}
-                color="var(--text-dim)"
-              >
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                  <path d="m17 8-5-5-5 5" />
-                  <path d="M12 3v12" />
-                </svg>
-              </ToolbarIconButton>
-            )}
+            <ToolbarIconButton
+              onClick={() => {
+                setExplorerMode("files");
+                fileExplorerRef.current?.openUploadPicker();
+              }}
+              disabled={explorerUploadBusy}
+              title={t("sidebar.uploadFilesTitle")}
+              color="var(--text)"
+              hoverColor="var(--text)"
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <path d="m17 8-5-5-5 5" />
+                <path d="M12 3v12" />
+              </svg>
+            </ToolbarIconButton>
             <ToolbarIconButton
               onClick={() => {
                 if (onExplorerRefresh) onExplorerRefresh();
@@ -1964,7 +2053,8 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
               }}
               title={t("sidebar.refreshExplorer")}
               skipHover={explorerRefreshDone}
-              color="var(--text-dim)"
+              color="var(--text)"
+              hoverColor="var(--text)"
               marginRight={6}
             >
               {explorerRefreshDone ? (
@@ -1981,8 +2071,15 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
               )}
             </ToolbarIconButton>
           </div>
-          {explorerOpen && (
-            <div style={{ flex: 1, overflowY: "auto", overflowX: "hidden" }}>
+          {gitViewActive && (
+            <GitPanel key={selectedCwd ?? selectedCwdProp!} cwd={selectedCwd ?? selectedCwdProp!}
+              refreshKey={explorerKey} onOpenFile={onOpenFile}
+              onChanged={() => {
+                if (onExplorerRefresh) onExplorerRefresh();
+                else setExplorerKey((key) => key + 1);
+              }} />
+          )}
+            <div hidden={gitViewActive} className={styles.fileList}>
               <FileExplorer
                 ref={fileExplorerRef}
                 cwd={selectedCwd ?? selectedCwdProp!}
@@ -1996,9 +2093,10 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
                 onChangesCountChange={setChangesCount}
               />
             </div>
-          )}
         </div>
       )}
+      {!(selectedCwdProp || selectedCwd) && <div className={styles.emptyPanel}>{t("sidebar.selectProject")}</div>}
+      </div>
     </div>
   );
 }
@@ -2032,7 +2130,7 @@ function SessionTreeItem({
         {depth > 0 && (
           <div style={{
             position: "absolute",
-            left: depth * 12 + 6,
+            left: depth * 12 + 12,
             top: 0, bottom: 0,
             width: 1,
             background: "var(--border)",
@@ -2207,7 +2305,6 @@ function SessionItem({
   onToggleCollapse?: () => void;
 }) {
   const { t } = useI18n();
-  const [hovered, setHovered] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -2215,7 +2312,6 @@ function SessionItem({
   const [actionMenuOpen, setActionMenuOpen] = useState(false);
   const [metaHovered, setMetaHovered] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
-  const sessionRowRef = useRef<HTMLDivElement>(null);
 
   // Select the whole name once the rename input is mounted (startRename's
   // immediate setTimeout can fire before the input exists).
@@ -2226,35 +2322,22 @@ function SessionItem({
     }
   }, [renaming]);
 
-  useEffect(() => {
-    if (!actionMenuOpen) return;
-    const closeOnOutsidePointer = (event: PointerEvent) => {
-      if (!sessionRowRef.current?.contains(event.target as Node)) setActionMenuOpen(false);
-    };
-    document.addEventListener("pointerdown", closeOnOutsidePointer);
-    return () => document.removeEventListener("pointerdown", closeOnOutsidePointer);
-  }, [actionMenuOpen]);
-
-  // A stored first message may be an SDK-expanded <skill> block; collapse it
-  // back to the compact /skill:name args command the user typed before using
-  // it as the auto-name fallback, mirroring MessageView's rendering.
-  const displayFirstMessage = skillExpansionToCommand(session.firstMessage) ?? splitPluginSelection(session.firstMessage).text;
-  const title = session.name || displayFirstMessage.slice(0, 50) || session.id.slice(0, 12);
+  const title = getSessionDisplayTitle(session, session.id.slice(0, 12), 50);
 
   const startRename = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     if (session.transient) return;
-    setRenameValue(session.name || displayFirstMessage.slice(0, 50) || session.id.slice(0, 12));
+    setRenameValue(title);
     setRenaming(true);
-  }, [session.name, session.transient, displayFirstMessage, session.id]);
+  }, [session.transient, title]);
 
   const commitRename = useCallback(async () => {
     const name = renameValue.trim();
     setRenaming(false);
     // No-op when unchanged: the fallback title (first message / id) isn't a
     // real stored name, so don't persist it as one. (The rename input seeds
-    // from the same collapsed displayFirstMessage, so an untouched rename of
-    // a skill-invoked session stays a no-op instead of persisting raw XML.)
+    // from the same display title, so an untouched rename stays a no-op
+    // instead of persisting protocol metadata.)
     if (renameValue === title || name === (session.name ?? "")) return;
     try {
       await fetch(`/api/sessions/${encodeURIComponent(session.id)}`, {
@@ -2343,24 +2426,22 @@ function SessionItem({
       </AlertDialog>
     <LabelTooltip content={title} disabled={renaming || confirmDelete || actionMenuOpen} side="right">
     <div
-      ref={sessionRowRef}
+      className={styles.sessionRow}
+      data-selected={isSelected}
+      aria-current={isSelected ? "page" : undefined}
       onClick={confirmDelete || renaming ? undefined : (event) => {
         // Let Base UI receive the trigger click; prevent only the task-row selection.
         if ((event.target as HTMLElement).closest("[data-session-menu-trigger]")) return;
         onClick();
       }}
       onContextMenu={confirmDelete || renaming ? undefined : handleContextMenu}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => { setHovered(false); }}
       style={{
         height: ITEM_HEIGHT,
         display: "flex",
         alignItems: "center",
-        paddingLeft: depth > 0 ? depth * 12 + 14 : 14,
-        paddingRight: 8,
+        paddingLeft: depth * 12 + 10,
+        paddingRight: 10,
         cursor: confirmDelete || renaming ? "default" : "pointer",
-        background: isSelected || hovered ? "color-mix(in srgb, var(--text) 4%, var(--sidebar-bg))" : "transparent",
-        borderLeft: isSelected ? "2px solid var(--accent)" : "2px solid transparent",
         transition: "background 0.1s",
         opacity: deleting ? 0.5 : 1,
         gap: 6,
@@ -2383,14 +2464,14 @@ function SessionItem({
           autoFocus
           style={{
             flex: 1,
-            fontSize: 12,
+            fontSize: 13,
             padding: "5px 8px",
             border: "1px solid var(--border)",
             borderRadius: 5,
             outline: "none",
             background: "var(--bg)",
             color: "var(--text)",
-            height: 24,
+            height: 26,
           }}
         />
       ) : (
@@ -2407,6 +2488,7 @@ function SessionItem({
           )}
           <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 8 }}>
               <div
+                className={styles.sessionTitle}
                 style={{
                   display: "flex",
                   alignItems: "center",
@@ -2414,9 +2496,7 @@ function SessionItem({
                   minWidth: 0,
                   flex: 1,
                   fontSize: 13,
-                  fontWeight: 400,
-                  lineHeight: "16px",
-                  color: "var(--text)",
+                  lineHeight: "20px",
                 }}
 
               >
@@ -2425,7 +2505,7 @@ function SessionItem({
                 </span>
               </div>
             {(isRunning || isUnread) && <span aria-label={isRunning ? t("sidebar.agentRunning") : t("sidebar.newSessionActivity")} style={{ width: 6, height: 6, flexShrink: 0, borderRadius: "50%", background: isRunning ? "var(--accent)" : "#f59e0b" }} />}
-            <span onMouseEnter={() => setMetaHovered(true)} onMouseLeave={() => setMetaHovered(false)} style={{ flexShrink: 0, color: "var(--text-muted)", fontSize: 10, whiteSpace: "nowrap", visibility: metaHovered || actionMenuOpen ? "hidden" : "visible" }}>{relativeTime}</span>
+            <span className={styles.sessionTime} onMouseEnter={() => setMetaHovered(true)} onMouseLeave={() => setMetaHovered(false)} style={{ visibility: metaHovered || actionMenuOpen ? "hidden" : "visible" }}>{relativeTime}</span>
           </div>
 
           {/* Collapse toggle — always visible when has children */}
@@ -2453,183 +2533,43 @@ function SessionItem({
 
           {/* More actions — shown on hover */}
           {!session.transient && (
-            <div onMouseEnter={() => setMetaHovered(true)} onMouseLeave={() => setMetaHovered(false)} style={{ display: "flex", gap: 4, position: "absolute", right: 8, top: 4, opacity: metaHovered || actionMenuOpen ? 1 : 0, pointerEvents: metaHovered || actionMenuOpen ? "auto" : "none", transition: "opacity 120ms ease" }}>
-              {/* The Portal implementation is disabled here because it does not position
-                  reliably in this sidebar. Keep it nearby while migrating the menu UI. */}
-              {/*
+            <div onMouseEnter={() => setMetaHovered(true)} onMouseLeave={() => setMetaHovered(false)} style={{ display: "flex", gap: 4, position: "absolute", right: 8, top: 2, opacity: metaHovered || actionMenuOpen ? 1 : 0, pointerEvents: metaHovered || actionMenuOpen ? "auto" : "none", transition: "opacity 120ms ease" }}>
               <DropdownMenu open={actionMenuOpen} onOpenChange={setActionMenuOpen}>
                 <DropdownMenuTrigger
                   render={
                     <button
                       data-session-menu-trigger
+                      type="button"
                       title={t("sidebar.moreActions")}
                       aria-label={t("sidebar.moreActions")}
-                      onMouseDown={(event) => {
-                        // The task row is also clickable. Control this menu explicitly so
-                        // Base UI's internal mousedown handler cannot race that row handler.
-                        (event as React.MouseEvent & { preventBaseUIHandler?: () => void }).preventBaseUIHandler?.();
-                        event.stopPropagation();
-                        setActionMenuOpen(true);
-                      }}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        setActionMenuOpen(true);
-                      }}
-                      style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 24, height: 24, padding: 0, background: "transparent", border: "none", borderRadius: 5, color: "var(--text-muted)", cursor: "pointer" }}
-                      onMouseEnter={(event) => { event.currentTarget.style.background = "var(--bg-selected)"; event.currentTarget.style.color = "var(--text)"; }}
-                      onMouseLeave={(event) => { event.currentTarget.style.background = "transparent"; event.currentTarget.style.color = "var(--text-muted)"; }}
+                      onClick={(event) => event.stopPropagation()}
+                      className="flex size-6 cursor-pointer items-center justify-center rounded-[5px] border-0 bg-transparent p-0 text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text)] data-popup-open:bg-[var(--bg-hover)] data-popup-open:text-[var(--text)]"
                     >
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.6" /><circle cx="12" cy="12" r="1.6" /><circle cx="19" cy="12" r="1.6" /></svg>
                     </button>
                   }
                 />
                 <DropdownMenuContent
-                  // Base UI's bottom-side positioner is unreliable inside this sidebar.
-                  // Keep the proven right-side anchor, then place the popup below the trigger.
-                  side="right"
-                  align="start"
-                  sideOffset={0}
-                  className="w-40"
-                  style={{
-                    display: "block",
-                    minWidth: 136,
-                    padding: 4,
-                    background: "var(--bg-panel)",
-                    color: "var(--text)",
-                    border: "1px solid var(--border)",
-                    borderRadius: "var(--radius-card)",
-                    boxShadow: "var(--shadow-soft)",
-                    zIndex: 2147483647,
-                    transform: "translate(-150px, 28px)",
-                  }}
+                  align="end"
+                  side="bottom"
+                  className="w-max"
+                  onClick={(event: React.MouseEvent<HTMLElement>) => event.stopPropagation()}
                 >
                   <DropdownMenuGroup>
                     <DropdownMenuItem onClick={(event: React.MouseEvent<HTMLElement>) => { startRename(event); setActionMenuOpen(false); }}>
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" /></svg>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" aria-hidden="true"><path d="M12 20h9M3 20h1.675c.489 0 .733 0 .964-.055q.308-.075.578-.24c.201-.123.374-.296.72-.642L19.5 6.5a2.121 2.121 0 0 0-3-3L3.937 16.063c-.346.346-.519.519-.642.72a2 2 0 0 0-.24.578c-.055.23-.055.475-.055.965z" /></svg>
                       {t("sidebar.rename")}
                     </DropdownMenuItem>
                   </DropdownMenuGroup>
                   <DropdownMenuSeparator />
                   <DropdownMenuGroup>
                     <DropdownMenuItem variant="destructive" title={t("sidebar.deleteWithShiftClick")} onClick={(event: React.MouseEvent<HTMLElement>) => { handleDeleteClick(event); setActionMenuOpen(false); }}>
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2 2L5 6" /><path d="M10 11v6M14 11v6" /><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" /></svg>
+                      <Trash2Icon aria-hidden="true" />
                       {t("sidebar.delete")}
                     </DropdownMenuItem>
                   </DropdownMenuGroup>
                 </DropdownMenuContent>
               </DropdownMenu>
-              <div style={{ display: "none" }}>
-                <button
-                  onClick={(e) => { e.stopPropagation(); setActionMenuOpen((open) => !open); }}
-                  title={t("sidebar.moreActions")}
-                  aria-label={t("sidebar.moreActions")}
-                  aria-expanded={actionMenuOpen}
-                  style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 24, height: 24, padding: 0, background: "transparent", border: "none", borderRadius: 5, color: "var(--text-muted)", cursor: "pointer" }}
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.6" /><circle cx="12" cy="12" r="1.6" /><circle cx="19" cy="12" r="1.6" /></svg>
-                </button>
-                {actionMenuOpen && (
-                  <div role="menu" style={{ position: "absolute", top: "calc(100% + 4px)", right: 0, zIndex: 10, width: 136, padding: 4, border: "1px solid var(--border)", borderRadius: "var(--radius-card)", background: "var(--bg-panel)", boxShadow: "var(--shadow-soft)" }}>
-                    <button role="menuitem" onClick={(e) => { startRename(e); setActionMenuOpen(false); }} style={{ display: "block", width: "100%", height: 30, padding: "0 7px", background: "transparent", border: "none", borderRadius: 5, color: "var(--text)", cursor: "pointer", textAlign: "left", fontSize: 12 }}>{t("sidebar.rename")}</button>
-                    <button role="menuitem" onClick={(e) => { handleDeleteClick(e); setActionMenuOpen(false); }} title={t("sidebar.deleteWithShiftClick")} style={{ display: "block", width: "100%", height: 30, padding: "0 7px", background: "transparent", border: "none", borderRadius: 5, color: "#ef4444", cursor: "pointer", textAlign: "left", fontSize: 12 }}>{t("sidebar.delete")}</button>
-                  </div>
-                )}
-              </div>
-              */}
-              <SidebarActionTooltip content={t("sidebar.moreActions")}>
-                <button
-                  data-session-menu-trigger
-                  type="button"
-                  aria-label={t("sidebar.moreActions")}
-                  aria-expanded={actionMenuOpen}
-                  onMouseDown={(event) => event.stopPropagation()}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    setActionMenuOpen((open) => !open);
-                  }}
-                  style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 24, height: 24, padding: 0, background: "transparent", border: "none", borderRadius: 5, color: "var(--text-muted)", cursor: "pointer" }}
-                  onMouseEnter={(event) => { event.currentTarget.style.background = "var(--bg-hover)"; event.currentTarget.style.color = "var(--text)"; }}
-                  onMouseLeave={(event) => { event.currentTarget.style.background = "transparent"; event.currentTarget.style.color = "var(--text-muted)"; }}
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.6" /><circle cx="12" cy="12" r="1.6" /><circle cx="19" cy="12" r="1.6" /></svg>
-                </button>
-              </SidebarActionTooltip>
-              {actionMenuOpen && (
-                <div
-                  role="menu"
-                  onClick={(event) => event.stopPropagation()}
-                  style={{ position: "absolute", top: "calc(100% + 4px)", right: 0, zIndex: 20, width: 120, padding: 3, border: "1px solid var(--border)", borderRadius: 8, background: "var(--bg-panel)", boxShadow: "var(--shadow-soft)" }}
-                >
-                  <button role="menuitem" onClick={(event) => { startRename(event); setActionMenuOpen(false); }} style={{ display: "flex", alignItems: "center", gap: 7, width: "100%", height: 24, padding: "0 8px", background: "transparent", border: "none", borderRadius: 5, color: "var(--text)", cursor: "pointer", textAlign: "left", fontSize: 11, fontWeight: 600 }} onMouseEnter={(event) => { event.currentTarget.style.background = "var(--bg-hover)"; }} onMouseLeave={(event) => { event.currentTarget.style.background = "transparent"; }}>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path stroke="var(--text)" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" d="M12 20h9M3 20h1.675c.489 0 .733 0 .964-.055q.308-.075.578-.24c.201-.123.374-.296.72-.642L19.5 6.5a2.121 2.121 0 0 0-3-3L3.937 16.063c-.346.346-.519.519-.642.72a2 2 0 0 0-.24.578c-.055.23-.055.475-.055.965z" /></svg>
-                    {t("sidebar.rename")}
-                  </button>
-                  <div style={{ height: 1, margin: "2px 0", background: "var(--border)" }} />
-                  <SidebarActionTooltip content={t("sidebar.deleteWithShiftClick")}>
-                  <button role="menuitem" onClick={(event) => { handleDeleteClick(event); setActionMenuOpen(false); }} style={{ display: "flex", alignItems: "center", gap: 7, width: "100%", height: 24, padding: "0 8px", background: "transparent", border: "none", borderRadius: 5, color: "var(--danger)", cursor: "pointer", textAlign: "left", fontSize: 11, fontWeight: 600 }} onMouseEnter={(event) => { event.currentTarget.style.background = "var(--danger-hover)"; }} onMouseLeave={(event) => { event.currentTarget.style.background = "transparent"; }}>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path fill="none" stroke="var(--danger)" strokeMiterlimit="10" strokeWidth="1.8" d="M16.88 22.5H7.12a1.9 1.9 0 0 1-1.9-1.8L4.36 5.32h15.28l-.86 15.38a1.9 1.9 0 0 1-1.9 1.8ZM2.45 5.32h19.1M10.09 1.5h3.82a1.91 1.91 0 0 1 1.91 1.91v1.91H8.18V3.41a1.91 1.91 0 0 1 1.91-1.91ZM12 8.18v11.46m3.82-11.46v11.46M8.18 8.18v11.46" /></svg>
-                    {t("sidebar.delete")}
-                  </button>
-                  </SidebarActionTooltip>
-                </div>
-              )}
-              <div style={{ display: "none" }}>
-              <button
-                onClick={startRename}
-                title={t("sidebar.rename")}
-                style={{
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  width: 32, height: 32, padding: 0,
-                  background: "var(--bg-hover)",
-                  borderRadius: 7, color: "var(--text-muted)",
-                  cursor: "pointer", flexShrink: 0,
-                  transition: "background 0.12s, color 0.12s, border-color 0.12s",
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = "var(--bg-selected)";
-                  e.currentTarget.style.color = "var(--accent)";
-                  e.currentTarget.style.borderColor = "rgba(37,99,235,0.35)";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = "var(--bg-hover)";
-                  e.currentTarget.style.color = "var(--text-muted)";
-                  e.currentTarget.style.borderColor = "var(--border)";
-                }}
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
-                </svg>
-              </button>
-              <button
-                onClick={handleDeleteClick}
-                title={t("sidebar.deleteWithShiftClick")}
-                style={{
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  width: 32, height: 32, padding: 0,
-                  background: "var(--bg-hover)",
-                  borderRadius: 7, color: "var(--text-muted)",
-                  cursor: "pointer", flexShrink: 0,
-                  transition: "background 0.12s, color 0.12s, border-color 0.12s",
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = "rgba(239,68,68,0.08)";
-                  e.currentTarget.style.color = "#ef4444";
-                  e.currentTarget.style.borderColor = "rgba(239,68,68,0.35)";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = "var(--bg-hover)";
-                  e.currentTarget.style.color = "var(--text-muted)";
-                  e.currentTarget.style.borderColor = "var(--border)";
-                }}
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="3 6 5 6 21 6" />
-                  <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-                  <path d="M10 11v6M14 11v6" />
-                  <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
-                </svg>
-              </button>
-              </div>
             </div>
           )}
         </>

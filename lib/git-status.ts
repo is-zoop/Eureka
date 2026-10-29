@@ -1,4 +1,4 @@
-import type { GitFileStatus } from "./git-types";
+import type { GitFileStatus, GitLineStats } from "./git-types";
 
 export interface GitPorcelainEntry {
   path: string;
@@ -32,6 +32,32 @@ export function parseGitPorcelainV1(output: string): GitPorcelainEntry[] {
   }
 
   return entries;
+}
+
+/** Parse -z output so tabs, newlines and rename paths stay literal. */
+export function parseGitNumstat(output: string): Map<string, GitLineStats> {
+  const records = output.split("\0");
+  const result = new Map<string, GitLineStats>();
+  for (let i = 0; i < records.length; i++) {
+    const record = records[i];
+    const firstTab = record.indexOf("\t");
+    const secondTab = record.indexOf("\t", firstTab + 1);
+    if (firstTab < 0 || secondTab < 0) continue;
+    let filePath = record.slice(secondTab + 1);
+    if (!filePath) {
+      // Renames contain an empty path followed by separate old/new records.
+      filePath = records[i + 2];
+      i += 2;
+    }
+    if (!filePath) continue;
+    const added = record.slice(0, firstTab);
+    const deleted = record.slice(firstTab + 1, secondTab);
+    result.set(filePath, {
+      additions: /^\d+$/.test(added) ? Number(added) : null,
+      deletions: /^\d+$/.test(deleted) ? Number(deleted) : null,
+    });
+  }
+  return result;
 }
 
 const CONFLICT_STATUSES = new Set(["DD", "AU", "UD", "UA", "DU", "AA", "UU"]);

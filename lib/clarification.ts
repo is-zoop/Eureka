@@ -1,6 +1,6 @@
 import type { SessionEntry } from "./types";
 import type { SelectedPlugin } from "./plugin-selection";
-import { validateUserInputResponse, type UserInputQuestion, type UserInputResponse } from "./user-input";
+import { userInputSummary, validateUserInputResponse, type UserInputQuestion, type UserInputResponse } from "./user-input";
 
 export const CLARIFICATION_ENTRY = "eureka_clarification";
 export interface ClarificationTask {
@@ -22,6 +22,10 @@ export interface ClarificationQueuedInput {
 }
 export interface ClarificationState { version: 1; revision: number; groups: ClarificationGroup[]; queue: ClarificationQueuedInput[] }
 export const EMPTY_CLARIFICATION: ClarificationState = { version: 1, revision: 0, groups: [], queue: [] };
+
+export function clarificationContinuationText(group: ClarificationGroup): string {
+  return `已回答问题澄清：\n${userInputSummary(group.questions)}\n继续原任务，复用已有业务会话和选数范围。已跳过的问题不代表同意任何选项。`;
+}
 
 export function readClarificationState(entries: SessionEntry[]): ClarificationState {
   for (let i = entries.length - 1; i >= 0; i--) {

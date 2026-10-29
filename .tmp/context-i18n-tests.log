@@ -1,0 +1,12 @@
+✔ uses the first supported browser language and falls back to English (1.2251ms)
+✔ returns only registered locales (1.1991ms)
+✔ context inspector has matching localized labels and parameters (0.9941ms)
+✔ allows a new locale plugin and rejects duplicate ids (15.3198ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 219.6322

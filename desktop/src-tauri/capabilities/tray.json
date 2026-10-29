@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "eureka-tray-popup",
+  "description": "Local-only controls for the Eureka tray popup.",
+  "webviews": ["eureka-tray-popup"],
+  "permissions": ["allow-desktop-tray-popup", "core:event:allow-listen", "core:event:allow-unlisten"]
+}

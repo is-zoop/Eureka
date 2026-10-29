@@ -1,0 +1,45 @@
+✔ keeps unfinished phases expanded when a settled turn has no final answer (1.0369ms)
+✔ keeps every persisted plan viewable after plan mode ends (0.1736ms)
+✔ does not render a plan card inside a split final response's process details (0.2045ms)
+✔ only offers submission for a reviewable assistant plan, not clarification prose (0.1695ms)
+✔ closed heavy details remain lazy and are excluded from focus and accessibility (11.8195ms)
+✔ initially open details retain their content and are accessible (1.5036ms)
+✔ lightweight task descriptions can stay mounted while remaining inert (0.768ms)
+✔ clarification answers appear in the tool row and answered groups render no separate card (27.3241ms)
+✔ reopened thinking uses original entry completion without a navigation tree timestamp (5.8222ms)
+✔ thinking records display completed wording and the measured original block duration (1.7524ms)
+✔ historical thinking duration is approximate and missing timing is explicit (4.1926ms)
+✔ remounted deferred thinking retains its summary and completed duration without loading full content (5.3272ms)
+✔ reopening a stage restores streamed summaries when history has no preview or contains an empty preview (5.9713ms)
+✔ completed file tools render a compact summary with basename chips and library tooltip triggers (5.0766ms)
+✔ terminal and MCP summaries preserve their command or tool identity (3.3858ms)
+✔ running, failed, and missing-result calls have distinct accessible statuses (6.9385ms)
+✔ execution events keep committed tool calls running after model streaming ends (6.2551ms)
+✔ user-run terminal commands use the same compact rows and statuses (3.8279ms)
+✔ renders a provider error when the assistant message has no content (1.4984ms)
+✔ renders partial assistant content before the provider error (15.3063ms)
+✔ renders plan completion markers as checked numbered tasks without altering stored protocol text (7.6328ms)
+✔ renders a complete SDK skill expansion as a compact command (2.0871ms)
+✔ does not collapse incomplete skill-looking user text (4.3876ms)
+✔ keeps attached images when restoring a compact command for editing (0.6553ms)
+✔ renders user-message images as buttons that open a larger preview (6190.4072ms)
+✔ renders custom-message images as buttons that open a larger preview (1.6782ms)
+✔ current stages show commentary, counts, compact thinking and tool rows (94.4726ms)
+✔ long process lists retain every record inside a bounded scroll region (143.3832ms)
+✔ unfinished history is scrollable without being treated as a live list (18.9875ms)
+✔ success folds all commentary and steps beneath processing details (2.794ms)
+✔ unfinished runs keep their last stage available (16.7862ms)
+✔ manual overrides apply within a state and reset on stage completion (0.1928ms)
+✔ initial and between-tool model waits keep the original pixel animation visible (22.215ms)
+✔ live thinking uses its spiral only in the thinking row while the heading stays generic (13.4134ms)
+✔ parallel tools animate their individual rows with generic status and separate counts in the heading (30.7794ms)
+✔ a streaming reply completes and collapses the previous process stage without settling the logical run (5.4438ms)
+✔ settled history does not replay model or tool activity (1.5709ms)
+ℹ tests 37
+ℹ suites 0
+ℹ pass 37
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 81470.1493

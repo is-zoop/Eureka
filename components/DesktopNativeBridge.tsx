@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useTheme } from "@/hooks/useTheme";
+import { NAVIGATION_STATE_EVENT, type NavigationAvailability } from "@/lib/navigation-history";
 
 function isTauriDesktop(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -14,6 +15,18 @@ function isTauriDesktop(): boolean {
  */
 export function DesktopNativeBridge() {
   const { preference } = useTheme();
+
+  useEffect(() => {
+    if (!isTauriDesktop()) return;
+    const syncNavigation = (event: Event) => {
+      const state = (event as CustomEvent<NavigationAvailability>).detail;
+      void invoke("set_desktop_navigation_state", state).catch((error) => {
+        console.error("Failed to synchronize desktop navigation:", error);
+      });
+    };
+    window.addEventListener(NAVIGATION_STATE_EVENT, syncNavigation);
+    return () => window.removeEventListener(NAVIGATION_STATE_EVENT, syncNavigation);
+  }, []);
 
   useEffect(() => {
     if (!isTauriDesktop()) return;

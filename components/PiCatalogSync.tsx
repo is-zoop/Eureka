@@ -1,7 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { InfoIcon, RefreshCwIcon } from "lucide-react";
 import { useI18n } from "@/hooks/useI18n";
+import { LabelTooltip } from "./LabelTooltip";
+import styles from "./ModelsSettings.module.css";
+import { SettingsCard } from "./SettingsLayout";
 
 interface CatalogStatus {
   enabled: boolean;
@@ -10,7 +14,7 @@ interface CatalogStatus {
   offline: boolean;
 }
 
-export function PiCatalogSync() {
+export function PiCatalogSync({ settings = false }: { settings?: boolean }) {
   const { t } = useI18n();
   const [status, setStatus] = useState<CatalogStatus | null>(null);
   const [busy, setBusy] = useState(false);
@@ -35,6 +39,32 @@ export function PiCatalogSync() {
     } catch { setFailed(true); }
     finally { setBusy(false); }
   };
+
+  if (settings) return (
+    <SettingsCard aria-busy={busy || !status && !failed}>
+      <div className={styles.catalogRow}>
+        <div>
+          <div className={styles.catalogTitle}>{t("models.catalogAutoUpdate")}
+            <LabelTooltip content={t("models.piCatalogDescription")} contentClassName="w-[420px] max-w-[calc(100vw-32px)] break-normal leading-5"><button type="button" className={styles.catalogInfo} aria-label={t("models.catalogInfo")}>
+              <InfoIcon size={14} strokeWidth={1.6} aria-hidden="true" />
+            </button></LabelTooltip>
+          </div>
+          <p>{t(status?.offline ? "models.piCatalogOffline" : "models.catalogDescription")}</p>
+        </div>
+        <button type="button" className={styles.catalogSwitch} role="switch" aria-checked={status?.enabled ?? false}
+          aria-label={t("models.catalogAutoUpdate")} disabled={busy || !status || status.offline}
+          onClick={() => { void update({ enabled: !status?.enabled }); }}><span /></button>
+      </div>
+      <div className={styles.catalogFooter}>
+        <span>{status?.lastSuccessAt ? t("models.piCatalogLast", { time: new Date(status.lastSuccessAt).toLocaleString() }) : t(!status && !failed ? "common.loading" : "models.catalogNotUpdated")}</span>
+        <button type="button" disabled={busy || !status?.enabled || status.offline} onClick={() => { void update({ refresh: true }); }}>
+          <RefreshCwIcon size={14} strokeWidth={1.6} aria-hidden="true" />
+          {t(busy ? "models.piCatalogBusy" : "models.catalogUpdateNow")}
+        </button>
+      </div>
+      {(failed || status?.error) && <div className={styles.catalogError} role="alert">{t("models.piCatalogError")}</div>}
+    </SettingsCard>
+  );
 
   return (
     <section style={{ padding: "12px 18px", borderBottom: "1px solid var(--border)", display: "flex", flexDirection: "column", gap: 7, fontSize: 12, color: "var(--text-muted)", flexShrink: 0 }}>

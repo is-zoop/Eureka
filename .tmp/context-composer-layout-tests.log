@@ -1,0 +1,17 @@
+✔ uses a compact mobile toolbar with a floating six-action layer (1.4524ms)
+✔ keeps covered file controls out of interaction and focus (0.3947ms)
+✔ closes the mobile action layer on outside click, Escape, and session changes (0.2431ms)
+✔ keeps the mobile action layer open after using an expanded action (0.6556ms)
+✔ context inspection belongs to the composer rather than a second top-bar panel (11.8653ms)
+✔ keeps trust warnings in the global notification layer and the file toggle in toolbar flow (0.4672ms)
+✔ unknown capacity preserves current tokens and explicitly explains the unavailable limit (42.3805ms)
+✔ known capacity retains its percentage, window and approximate marker (9.5289ms)
+✔ composer context trigger stays compact and is disabled before a session exists (4.0488ms)
+ℹ tests 9
+ℹ suites 0
+ℹ pass 9
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 636.6242

@@ -1,6 +1,11 @@
 /** Display identity of a capability installed from the enterprise catalog. */
 export interface OrganizationCapabilityRef { capabilityId: string; source?: string }
 
+/** UI labels are localized separately from the protocol's capability type values. */
+export function capabilityTypeLabelKey(type: "Skill" | "MCP" | "Plugin") {
+  return { Skill: "extensions.skills", MCP: "extensions.mcp", Plugin: "extensions.plugins" }[type];
+}
+
 export function organizationCapabilityIconUrl(capability: OrganizationCapabilityRef): string | null {
   if (!/^\d+$/.test(capability.capabilityId)) return null;
   const path = `/api/organization-extensions/${encodeURIComponent(capability.capabilityId)}/icon`;

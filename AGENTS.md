@@ -80,6 +80,7 @@ lib/
   session-reader.ts   SessionManager wrappers + path cache + buildSessionContext adapter
   tool-presets.ts     PRESET_NONE/READ_ONLY/DEFAULT/FULL + getPresetFromTools()
   tool-preset-preference.ts  browser-persisted default for fresh sessions
+  command-catalog.ts   skills/prompt metadata without starting agents or importing extensions
   types.ts            shared TypeScript types
   normalize.ts        normalizeToolCalls() — field name mismatch between file format and our types
   worktree.ts         project/worktree resolution and git worktree operations
@@ -94,6 +95,7 @@ components/
   ChatMinimap.tsx     scroll minimap alongside the message list
   MarkdownBody.tsx    markdown renderer
   ModelsConfig.tsx    modal for editing models.json (opened from sidebar bottom)
+  SettingsLayout.tsx  required page/section/card/row template for all settings pages
   PluginsConfig.tsx   modal for installed package plugins
   SkillsConfig.tsx    modal for loaded/search/installable skills
   FileExplorer.tsx    file tree inside sidebar
@@ -136,7 +138,7 @@ Pi stores toolCall blocks as `{type:"toolCall", id, name, arguments}` but `ToolC
 ### New session tool preset
 Tool names are passed at session creation (`POST /api/agent/new` → `toolNames[]`). For existing sessions, the active preset is inferred on mount via `get_tools` → `getPresetFromTools()`. When tools are fully disabled (`toolNames = []`), `rpc-manager.ts` passes an empty tool allow-list and forces `agent.state.systemPrompt = ""` after startup/reload/resource discovery.
 
-The last preset explicitly selected by the user is stored in browser `localStorage` and initializes fresh-session composers only. Existing sessions never trust that preference; they use their live `get_tools` state or pi's default when no wrapper exists.
+The new-session default is stored in browser `localStorage` and initializes fresh-session composers only. Existing sessions never trust that preference; they use live `get_tools` state, or their `eureka_tool_permissions` custom entry when no wrapper exists (falling back to pi's default). Idle `get_tools` / `set_tools` commands read or append that metadata without constructing an AgentSession; startup restores the saved tool names. Permission-menu reads are cached after success and never block an explicit choice.
 
 ### Model defaults for new sessions
 `GET /api/models` returns `defaultModel` read from `~/.pi/agent/settings.json`. `ChatWindow` pre-selects this on mount for new sessions. Explicit browser model/thinking selections are applied atomically during AgentSession construction, then `lib/startup-preferences.ts` persists their effective values without replaying `set_model`/`set_thinking_level`; implicit `enabledModels` fallbacks and thinking pins are not persisted.
@@ -146,6 +148,9 @@ The `enabledModels` setting uses pi's `--models` syntax: minimatch globs against
 
 ### SSE reconnect on page refresh mid-stream
 On `ChatWindow` mount, `GET /api/agent/[id]` is called. If `state.isStreaming === true`, SSE is reconnected automatically. `thinkingLevel` and `isCompacting` are also synced from this response.
+
+### Command palette loading
+`GET /api/commands?cwd=&sessionId=` reads an existing runtime's command snapshot without waiting for extension binding, or uses a metadata-only `DefaultResourceLoader` (`noExtensions`, `noThemes`, `noContextFiles`) when the session is dormant. It never starts an AgentSession. The palette's `/api/skills?metadataOnly=1` request shares the same short-lived resource cache. Each composer warms and caches command lists, deduplicates requests, and invalidates after runtime transitions, configuration changes, and explicit `/reload`. Dynamically registered extension commands come from live runtimes; dormant discovery reads skills and prompt templates only.
 
 ### Compaction SSE events
 Newer pi emits `compaction_start` / `compaction_end`; older versions emitted `auto_compaction_start` / `auto_compaction_end`. `handleAgentEvent` accepts both sets to keep `isCompacting` in sync. Manual compact is a blocking POST — the button stays disabled until the response returns.
@@ -209,6 +214,14 @@ Location: `~/.pi/agent/sessions/<encoded-cwd>/<timestamp>_<uuid>.jsonl`
 ---
 
 ## CSS Variables (`app/globals.css`)
+
+### Settings page layout
+
+All settings pages must use `components/SettingsLayout.tsx` (`SettingsLayout`,
+`SettingsSection`, `SettingsCard`, `SettingsRow`). Keep page width, header placement,
+heading styles, spacing and radii in that template; do not create page-specific
+copies. See `docs/settings-layout.md`. Settings content has one scroll container,
+owned by `SettingsLayout`; preserve this in the desktop overlay as well.
 
 ```
 --bg --bg-panel --bg-hover --bg-selected --border

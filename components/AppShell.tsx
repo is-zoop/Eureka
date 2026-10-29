@@ -8,6 +8,7 @@ import { useState, useCallback, useRef, useEffect, useLayoutEffect } from "react
 import { useRouter, useSearchParams } from "next/navigation";
 import { useGlobalKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { SessionSidebar } from "./SessionSidebar";
+import { AppNavigation } from "./AppNavigation";
 import { LabelTooltip } from "./LabelTooltip";
 import { BrowserPanel } from "./BrowserPanel";
 import type { BrowserEvent } from "@/lib/browser-types";
@@ -25,7 +26,7 @@ import type { EurekaPlanState } from "@/lib/plan-mode";
 import { SettingsPage, type SettingsSection } from "./SettingsPage";
 import { SessionToolPermissionsMenu, SessionToolPermissionsButton } from "./ToolPermissions";
 import type { SessionToolPermissions } from "@/lib/tool-permissions";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "./ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger } from "./ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 import { Skeleton } from "./ui/skeleton";
 import { SidebarUserMenu, type SidebarUser } from "./SidebarUserMenu";
@@ -37,6 +38,7 @@ import { useIsMobile } from "@/hooks/useIsMobile";
 import { useViewportHeight } from "@/hooks/useViewportHeight";
 import { useResizablePanel } from "@/hooks/useResizablePanel";
 import { useAudio } from "@/hooks/useAudio";
+import { useDesktopTray } from "@/hooks/useDesktopTray";
 import { copyText } from "@/lib/clipboard";
 import { getFileName } from "@/lib/file-paths";
 import type { ChatDraftReference } from "@/lib/draft-store";
@@ -47,6 +49,9 @@ import {
   showBrowserNotification,
 } from "@/lib/browser-notifications";
 import { getInitialNavigation } from "@/lib/initial-navigation";
+import { NAVIGATE_HISTORY_EVENT, NAVIGATION_STATE_EVENT, NavigationHistory } from "@/lib/navigation-history";
+import { DESKTOP_MENU_COMMAND_EVENT, EMPTY_DESKTOP_MENU_CONTEXT, publishDesktopMenuContext, type DesktopMenuRequest } from "@/lib/desktop-menu";
+import { getSessionDisplayTitle } from "@/lib/session-display-title";
 import { clearLastOpen, getLastOpenSession, setLastOpenSession } from "@/lib/workspace-memory";
 import {
   getDefaultRightPanelWidth,
@@ -64,8 +69,8 @@ import type { ProjectTrustStatus } from "@/lib/api-types";
 import type { ChatInputHandle } from "./ChatInput";
 import type { SessionStatsInfo } from "@/lib/pi-types";
 import type { FileViewerState } from "@/lib/file-viewer-state";
+import type { GitDiffMode } from "@/lib/git-types";
 
-type SessionCopyField = "file" | "id";
 type AutoNameStatus =
   | { kind: "idle" }
   | { kind: "naming" }
@@ -74,6 +79,19 @@ type AutoNameStatus =
 
 const TOP_BAR_ICON_BUTTON_SIZE = 36;
 const LANGUAGE_MENU_WIDTH = 176;
+const NAVIGATION_WIDTH = 52;
+
+type AppHistoryLocation = {
+  session: SessionInfo | null;
+  cwd: string | null;
+  draftId: string;
+  view: "chat" | "extensions";
+  settings: SettingsSection | null;
+};
+
+function appHistoryKey(location: AppHistoryLocation) {
+  return JSON.stringify([location.session?.id ?? [location.cwd, location.draftId], location.view, location.settings]);
+}
 
 export function AppShell({ initialGuest = false }: { initialGuest?: boolean }) {
   const router = useRouter();
@@ -88,11 +106,11 @@ export function AppShell({ initialGuest = false }: { initialGuest?: boolean }) {
   // Audio ownership lives here (not in ChatWindow) so the completion tone can
   // also fire for tasks finishing in a non-active workspace whose ChatWindow
   // is not mounted. ChatWindow receives the audio callbacks as props.
-  const { soundEnabled, onSoundToggle, playDoneSound, unlockAudio, soundEnabledRef } = useAudio();
+  const { playDoneSound, unlockAudio } = useAudio();
   const notifiedAttentionRequestIdsRef = useRef(new Set<string>());
   const handleBackgroundTaskDone = useCallback(() => {
-    if (soundEnabledRef.current) playDoneSound();
-  }, [playDoneSound, soundEnabledRef]);
+    playDoneSound();
+  }, [playDoneSound]);
   const [selectedSession, setSelectedSession] = useState<SessionInfo | null>(null);
   const [runningSessionIds, setRunningSessionIds] = useState<Set<string>>(() => new Set());
   const handleRunningSessionIdsChange = useCallback((ids: Set<string>) => {
@@ -114,8 +132,16 @@ export function AppShell({ initialGuest = false }: { initialGuest?: boolean }) {
   const [explorerRefreshKey, setExplorerRefreshKey] = useState(0);
   const [modelsRefreshKey, setModelsRefreshKey] = useState(0);
   const [mainView, setMainView] = useState<"chat" | "extensions">("chat");
+  const [extensionsVisited, setExtensionsVisited] = useState(false);
+  const [extensionPanelOpen, setExtensionPanelOpen] = useState(false);
+  const [installedCapabilitiesRevision, setInstalledCapabilitiesRevision] = useState(0);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsSection, setSettingsSection] = useState<SettingsSection>("system");
+  const [desktopRecentProjects, setDesktopRecentProjects] = useState<string[]>([]);
+  const [desktopRecentSessions, setDesktopRecentSessions] = useState<SessionInfo[]>([]);
+  const navigationHistoryRef = useRef(new NavigationHistory<AppHistoryLocation>(appHistoryKey));
+  const restoringHistoryKeyRef = useRef<string | null>(null);
+  const replaceHistoryEntryRef = useRef(false);
   const [projectTrust, setProjectTrust] = useState<ProjectTrustStatus | null>(null);
   const [projectTrustDialogOpen, setProjectTrustDialogOpen] = useState(false);
   const [projectTrustBusy, setProjectTrustBusy] = useState(false);
@@ -169,8 +195,9 @@ export function AppShell({ initialGuest = false }: { initialGuest?: boolean }) {
         viewportWidth: window.innerWidth,
         rightPanelOpen,
         rightPanelWidth: rightPanelWidthRef.current,
+        navigationWidth: isMobile ? 0 : NAVIGATION_WIDTH,
       }),
-    [rightPanelOpen],
+    [isMobile, rightPanelOpen],
   );
   const getResponsiveRightPanelMaxWidth = useCallback(
     () => typeof window === "undefined"
@@ -179,8 +206,9 @@ export function AppShell({ initialGuest = false }: { initialGuest?: boolean }) {
         viewportWidth: window.innerWidth,
         sidebarOpen,
         sidebarWidth: sidebarWidthRef.current,
+        navigationWidth: isMobile ? 0 : NAVIGATION_WIDTH,
       }),
-    [sidebarOpen],
+    [isMobile, sidebarOpen],
   );
   const sidebarResizer = useResizablePanel({
     ariaLabel: translate("layout.resizeSidebar"),
@@ -209,7 +237,7 @@ export function AppShell({ initialGuest = false }: { initialGuest?: boolean }) {
     ariaLabel: "调整详情侧边栏宽度",
     cssVariable: "--right-panel-width",
     defaultWidth: 360,
-    getMaxWidth: () => typeof window === "undefined" ? 720 : Math.max(300, Math.min(720, window.innerWidth - 32)),
+    getMaxWidth: () => typeof window === "undefined" ? 720 : Math.max(300, Math.min(720, window.innerWidth - (isMobile ? 0 : NAVIGATION_WIDTH) - 32)),
     growthDirection: "left",
     maxWidth: 720,
     minWidth: 300,
@@ -283,35 +311,24 @@ export function AppShell({ initialGuest = false }: { initialGuest?: boolean }) {
   const handleSessionStatsChange = useCallback((stats: SessionStatsInfo | null) => {
     setSessionStats(stats);
   }, []);
-  const [copiedSessionField, setCopiedSessionField] = useState<SessionCopyField | null>(null);
-  const sessionCopyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const handleCopySessionField = useCallback((field: SessionCopyField, value: string) => {
+  const handleCopySessionField = useCallback((value: string) => {
     void copyText(value).then(() => {
-      if (sessionCopyTimerRef.current) clearTimeout(sessionCopyTimerRef.current);
-      setCopiedSessionField(field);
-      sessionCopyTimerRef.current = setTimeout(() => setCopiedSessionField(null), 1400);
-    });
-  }, []);
+      notify({ type: "success", message: translate("session.copied") });
+    }).catch(() => notify({ type: "error", message: translate("session.copyFailed") }));
+  }, [translate]);
 
   useEffect(() => {
     return () => {
-      if (sessionCopyTimerRef.current) clearTimeout(sessionCopyTimerRef.current);
       if (autoNameTimerRef.current) clearTimeout(autoNameTimerRef.current);
     };
   }, []);
 
-  // Context usage — populated by ChatWindow, displayed in top bar
-  const [contextUsage, setContextUsage] = useState<{ percent: number | null; contextWindow: number; tokens: number | null } | null>(null);
-  const handleContextUsageChange = useCallback((usage: { percent: number | null; contextWindow: number; tokens: number | null } | null) => {
-    setContextUsage(usage);
-  }, []);
-
   // Single active panel — only one dropdown open at a time
-  const [activeTopPanel, setActiveTopPanel] = useState<"branches" | "system" | "session" | "language" | null>(null);
+  const [activeTopPanel, setActiveTopPanel] = useState<"branches" | "system" | "language" | null>(null);
   const [topPanelPos, setTopPanelPos] = useState<{ top: number; left: number; width: number } | null>(null);
 
   const toggleTopPanel = useCallback((
-    panel: "branches" | "system" | "session" | "language",
+    panel: "branches" | "system" | "language",
     keepMobileToolbarOpen = false,
   ) => {
     if (isMobile) setSidebarOpen(false);
@@ -337,12 +354,6 @@ export function AppShell({ initialGuest = false }: { initialGuest?: boolean }) {
     });
   }, [activeTopPanel, systemPromptLoading, toggleTopPanel]);
 
-  const openSessionStatsPanel = useCallback(() => {
-    if (isMobile) setSidebarOpen(false);
-    setMobileToolbarMoreOpen(false);
-    setActiveTopPanel("session");
-  }, [isMobile]);
-
   const handleSidebarToggle = useCallback(() => {
     if (isMobile) {
       setActiveTopPanel(null);
@@ -357,11 +368,11 @@ export function AppShell({ initialGuest = false }: { initialGuest?: boolean }) {
     setMobileToolbarMoreOpen((open) => !open);
   }, []);
 
-  const [rightPanelMode, setRightPanelMode] = useState<"files" | "extension" | "plan" | "changes" | "browser">("files");
+  const [rightPanelMode, setRightPanelMode] = useState<"files" | "plan" | "changes" | "browser">("files");
 
 
   const [turnChanges, setTurnChanges] = useState<(TurnChangesRequest & { revision: number }) | null>(null);
-  const [extensionDetails, setExtensionDetails] = useState<{ item: OrganizationExtensionDetailItem; onFavoriteChange: (id: string, isFavorite: boolean) => void } | null>(null);
+  const [extensionDetails, setExtensionDetails] = useState<{ cwd: string; item: OrganizationExtensionDetailItem; onFavoriteChange: (id: string, isFavorite: boolean) => void } | null>(null);
   const [planReview, setPlanReview] = useState<{ plan: EurekaPlanState; controls: PlanReviewControls; readOnly: boolean } | null>(null);
 
   const handleRightPanelToggle = useCallback(() => {
@@ -369,12 +380,6 @@ export function AppShell({ initialGuest = false }: { initialGuest?: boolean }) {
       setSidebarOpen(false);
       setActiveTopPanel(null);
       setMobileToolbarMoreOpen(false);
-    }
-    if (rightPanelMode === "extension") {
-      setExtensionDetails(null);
-      setRightPanelMode("files");
-      if (!rightPanelOpen) setRightPanelOpen(true);
-      return;
     }
     if (rightPanelMode === "plan" || rightPanelMode === "changes") {
       setRightPanelMode("files");
@@ -701,7 +706,8 @@ export function AppShell({ initialGuest = false }: { initialGuest?: boolean }) {
 
   // Global keyboard shortcuts (handles Esc, Ctrl+Alt+N etc.)
   useGlobalKeyboardShortcuts({
-    onNewSession: (cwd: string) => handleNewSession(`kb-${Date.now()}`, cwd),
+    abortEnabled: mainView === "chat",
+    onNewSession: (cwd: string) => { setSettingsOpen(false); handleNewSession(`kb-${Date.now()}`, cwd); },
     activeCwd,
   });
 
@@ -734,6 +740,7 @@ export function AppShell({ initialGuest = false }: { initialGuest?: boolean }) {
     setSessionContentLoading(false);
     setSelectedSession(session);
     hydrateSelectedSession(session.id);
+    replaceHistoryEntryRef.current = true;
     router.replace(`?session=${encodeURIComponent(session.id)}`, { scroll: false });
   }, [invalidateWorkspaceRestore, router, hydrateSelectedSession]);
 
@@ -858,6 +865,7 @@ export function AppShell({ initialGuest = false }: { initialGuest?: boolean }) {
   }, [invalidateWorkspaceRestore, router, hydrateSelectedSession]);
 
   const handleSessionDeleted = useCallback((sessionId: string) => {
+    navigationHistoryRef.current.remove((location) => location.session?.id === sessionId);
     invalidateWorkspaceRestore();
     setMainView("chat");
     setRefreshKey((k) => k + 1);
@@ -884,7 +892,7 @@ export function AppShell({ initialGuest = false }: { initialGuest?: boolean }) {
   const handleOpenFile = useCallback((
     filePath: string,
     fileName: string,
-    options?: { sourceSessionId?: string | null; modeHint?: "diff" },
+    options?: { sourceSessionId?: string | null; modeHint?: "diff"; gitDiffMode?: GitDiffMode },
   ) => {
     const sourceSessionId = options?.sourceSessionId;
     const modeHint = options?.modeHint;
@@ -893,35 +901,35 @@ export function AppShell({ initialGuest = false }: { initialGuest?: boolean }) {
       fileName,
       filePath,
       modeHint,
+      gitDiffMode: options?.gitDiffMode,
       sourceSessionId,
       tabId,
     }));
     setActiveFileTabId(tabId);
     setRightPanelMode("files");
-    setExtensionDetails(null);
     setRightPanelOpen(true);
     // On mobile the file panel is full-screen; close the drawer so it shows.
     if (isMobile) setSidebarOpen(false);
   }, [isMobile]);
 
   useEffect(() => {
-    if (!rightPanelOpen || rightPanelMode !== "extension") return;
+    if (!extensionPanelOpen || mainView !== "extensions") return;
     const closeOutside = (event: PointerEvent) => {
       const target = event.target;
-      if (!(target instanceof Element) || document.getElementById("file-panel")?.contains(target) || target.closest('[data-resize-handle="extension-panel"]')) return;
-      setExtensionDetails(null);
-      setRightPanelOpen(false);
+      if (!(target instanceof Element) || document.getElementById("extension-panel")?.contains(target) || target.closest('[data-resize-handle="extension-panel"], [data-app-navigation], #session-sidebar, [data-extension-details-portal], [role="dialog"], [role="alertdialog"]')) return;
+      setExtensionPanelOpen(false);
     };
     document.addEventListener("pointerdown", closeOutside, true);
     return () => document.removeEventListener("pointerdown", closeOutside, true);
-  }, [rightPanelOpen, rightPanelMode]);
+  }, [extensionPanelOpen, mainView]);
 
   const handleOpenExtensionDetails = useCallback((item: OrganizationExtensionDetailItem, onFavoriteChange: (id: string, isFavorite: boolean) => void) => {
-    setExtensionDetails({ item, onFavoriteChange });
-    setRightPanelMode("extension");
-    setRightPanelOpen(true);
+    const cwd = selectedSession?.cwd ?? newSessionCwd ?? activeCwd;
+    if (!cwd) return;
+    setExtensionDetails({ cwd, item, onFavoriteChange });
+    setExtensionPanelOpen(true);
     if (isMobile) setSidebarOpen(false);
-  }, [isMobile]);
+  }, [activeCwd, isMobile, newSessionCwd, selectedSession?.cwd]);
 
   const handlePlanStateChange = useCallback((plan: EurekaPlanState, controls: PlanReviewControls) => {
     // Keep a manually opened historical plan visible while the latest plan
@@ -966,7 +974,6 @@ export function AppShell({ initialGuest = false }: { initialGuest?: boolean }) {
     }));
     setRightPanelMode("changes");
     setRightPanelOpen(true);
-    setExtensionDetails(null);
     if (isMobile) {
       setSidebarOpen(false);
       setActiveTopPanel(null);
@@ -982,7 +989,8 @@ export function AppShell({ initialGuest = false }: { initialGuest?: boolean }) {
     }
     const cwd = selectedSession?.cwd ?? newSessionCwd;
     if (!cwd) return;
-    handleOpenLinkedFile(`${cwd.replace(/[\\/]$/, "")}/${reference.path}`);
+    const absolute = /^(?:[a-zA-Z]:[\\/]|\/|\\\\)/.test(reference.path);
+    handleOpenLinkedFile(absolute ? reference.path : `${cwd.replace(/[\\/]$/, "")}/${reference.path}`);
   }, [handleOpenLinkedFile, isMobile, newSessionCwd, selectedSession?.cwd]);
 
   const handleCloseFileTab = useCallback((tabId: string) => {
@@ -1034,6 +1042,135 @@ export function AppShell({ initialGuest = false }: { initialGuest?: boolean }) {
   const showChat = selectedSession !== null || effectiveNewSessionCwd !== null;
   const projectTrustCwd = selectedSession?.cwd ?? effectiveNewSessionCwd;
 
+  // Navigation only changes visibility. In particular, keep ChatWindow's key,
+  // draft owner and SSE subscription unchanged while browsing extensions.
+  const handleNavigate = useCallback((view: "chat" | "extensions") => {
+    if (view === "extensions" && !projectTrustCwd) return;
+    if (view === "extensions") setExtensionsVisited(true);
+    setActiveTopPanel(null);
+    setMobileToolbarMoreOpen(false);
+    setMainView(view);
+    if (isMobile) setSidebarOpen(false);
+  }, [isMobile, projectTrustCwd]);
+
+  useEffect(() => {
+    setExtensionDetails(null);
+    setExtensionPanelOpen(false);
+    if (!projectTrustCwd) setMainView("chat");
+  }, [projectTrustCwd]);
+
+  const visibleExtensionDetails = extensionDetails?.cwd === projectTrustCwd ? extensionDetails : null;
+  const homeRightPanelVisible = mainView === "chat" && rightPanelOpen;
+  const extensionPanelVisible = mainView === "extensions" && extensionPanelOpen && visibleExtensionDetails !== null;
+
+  useEffect(() => {
+    publishDesktopMenuContext({ ready: true, cwd: projectTrustCwd ?? activeCwd, authenticated: !guest && !authenticatedUserLoading && authenticatedUser !== null, projects: desktopRecentProjects });
+  }, [projectTrustCwd, activeCwd, guest, authenticatedUserLoading, authenticatedUser, desktopRecentProjects]);
+
+  useEffect(() => () => publishDesktopMenuContext(EMPTY_DESKTOP_MENU_CONTEXT), []);
+
+  useDesktopTray({
+    sessions: desktopRecentSessions,
+    canCreate: Boolean(projectTrustCwd ?? activeCwd),
+    onSelectSession: (session) => {
+      setSettingsOpen(false);
+      handleSelectSession(session);
+    },
+  });
+
+  useEffect(() => {
+    const onCommand = (event: Event) => {
+      const request = (event as CustomEvent<DesktopMenuRequest>).detail;
+      switch (request?.command) {
+        case "new-task": {
+          const cwd = projectTrustCwd ?? activeCwd;
+          if (!cwd) return;
+          setSettingsOpen(false);
+          handleNewSession(crypto.randomUUID(), cwd);
+          break;
+        }
+        case "settings": setSettingsSection("system"); setSettingsOpen(true); break;
+        case "toggle-sidebar": setSettingsOpen(false); setSidebarOpen((open) => !open); break;
+        case "toggle-files":
+          setSettingsOpen(false);
+          setMainView("chat");
+          setRightPanelMode("files");
+          setRightPanelOpen((open) => rightPanelMode !== "files" || !open);
+          break;
+        case "select-project":
+          if (request.path && desktopRecentProjects.includes(request.path)) {
+            setSettingsOpen(false);
+            setMainView("chat");
+          }
+          break;
+      }
+    };
+    window.addEventListener(DESKTOP_MENU_COMMAND_EVENT, onCommand);
+    return () => window.removeEventListener(DESKTOP_MENU_COMMAND_EVENT, onCommand);
+  }, [activeCwd, desktopRecentProjects, handleNewSession, projectTrustCwd, rightPanelMode]);
+
+  useEffect(() => {
+    // Wait for the sidebar's initial URL restore instead of recording a loading page.
+    if (!showChat && !settingsOpen) return;
+    if (initialSessionId && !selectedSession && newSessionDraftId === "initial") return;
+    const location: AppHistoryLocation = {
+      session: selectedSession,
+      cwd: effectiveNewSessionCwd,
+      draftId: newSessionDraftId,
+      view: mainView,
+      settings: settingsOpen ? settingsSection : null,
+    };
+    if (restoringHistoryKeyRef.current && restoringHistoryKeyRef.current !== appHistoryKey(location)) return;
+    const history = navigationHistoryRef.current;
+    if (restoringHistoryKeyRef.current || replaceHistoryEntryRef.current) history.replace(location);
+    else history.record(location);
+    restoringHistoryKeyRef.current = null;
+    replaceHistoryEntryRef.current = false;
+    window.dispatchEvent(new CustomEvent(NAVIGATION_STATE_EVENT, { detail: history.availability }));
+  }, [selectedSession, effectiveNewSessionCwd, newSessionDraftId, mainView, settingsOpen, settingsSection, showChat, initialSessionId]);
+
+  useEffect(() => {
+    const navigate = (direction: -1 | 1) => {
+      const history = navigationHistoryRef.current;
+      const location = history.move(direction);
+      if (!location) return false;
+      restoringHistoryKeyRef.current = appHistoryKey(location);
+      if (location.session && location.session.id !== selectedSession?.id) {
+        handleSelectSession(location.session, true);
+        router.replace(`?session=${encodeURIComponent(location.session.id)}`, { scroll: false });
+      } else if (!location.session && (selectedSession || location.draftId !== newSessionDraftId || location.cwd !== effectiveNewSessionCwd)) {
+        handleNewSession(location.draftId, location.cwd ?? "");
+      }
+      setMainView(location.view);
+      if (location.view === "extensions") setExtensionsVisited(true);
+      setSettingsOpen(location.settings !== null);
+      if (location.settings) setSettingsSection(location.settings);
+      setActiveTopPanel(null);
+      setMobileToolbarMoreOpen(false);
+      window.dispatchEvent(new CustomEvent(NAVIGATION_STATE_EVENT, { detail: history.availability }));
+      return true;
+    };
+    const onNavigate = (event: Event) => {
+      const direction = (event as CustomEvent).detail;
+      if (direction === -1 || direction === 1) navigate(direction);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+      if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+      if (navigate(event.key === "ArrowLeft" ? -1 : 1)) event.preventDefault();
+    };
+    window.addEventListener(NAVIGATE_HISTORY_EVENT, onNavigate);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener(NAVIGATE_HISTORY_EVENT, onNavigate);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [effectiveNewSessionCwd, handleNewSession, handleSelectSession, newSessionDraftId, router, selectedSession]);
+
+  useEffect(() => () => {
+    window.dispatchEvent(new CustomEvent(NAVIGATION_STATE_EVENT, { detail: { canGoBack: false, canGoForward: false } }));
+  }, []);
+
   useEffect(() => {
     setProjectTrust(null);
     setProjectTrustDialogOpen(false);
@@ -1070,6 +1207,7 @@ export function AppShell({ initialGuest = false }: { initialGuest?: boolean }) {
       if (!response.ok || data.error) throw new Error(data.error ?? `HTTP ${response.status}`);
       setProjectTrust(data);
       setProjectTrustDialogOpen(false);
+      setInstalledCapabilitiesRevision((revision) => revision + 1);
       setModelsRefreshKey((key) => key + 1);
       setSessionKey((key) => key + 1);
     } catch (error) {
@@ -1097,8 +1235,20 @@ export function AppShell({ initialGuest = false }: { initialGuest?: boolean }) {
     return () => observer.disconnect();
   }, [windowTitle]);
 
+  const accountMenu = (
+      <SidebarUserMenu
+        user={authenticatedUser}
+        guest={guest}
+        loading={authenticatedUserLoading}
+        avatarOnly
+        onOpenSettings={() => { setSettingsSection("system"); setSettingsOpen(true); }}
+        onOpenModels={() => { setSettingsSection("models"); setSettingsOpen(true); }}
+      />
+  );
+
   const sidebarContent = (
     <>
+      {isMobile && <AppNavigation view={mainView} onNavigate={handleNavigate} extensionsEnabled={Boolean(projectTrustCwd)} mobile />}
       <SessionSidebar
         selectedSessionId={selectedSession?.id ?? null}
         onSelectSession={handleSelectSession}
@@ -1109,6 +1259,8 @@ export function AppShell({ initialGuest = false }: { initialGuest?: boolean }) {
         onSessionDeleted={handleSessionDeleted}
         selectedCwd={selectedSession?.cwd ?? newSessionCwd ?? null}
         onCwdChange={handleCwdChange}
+        onRecentProjectsChange={setDesktopRecentProjects}
+        onRecentSessionsChange={setDesktopRecentSessions}
         onOpenFile={handleOpenFile}
         explorerRefreshKey={explorerRefreshKey}
         onExplorerRefresh={handleExplorerRefresh}
@@ -1118,18 +1270,9 @@ export function AppShell({ initialGuest = false }: { initialGuest?: boolean }) {
         onBackgroundTaskDone={handleBackgroundTaskDone}
         onRunningSessionIdsChange={handleRunningSessionIdsChange}
         onRequestHide={() => setSidebarOpen(false)}
-        onOpenExtensionsCenter={() => {
-          setActiveTopPanel(null);
-          setMainView("extensions");
-        }}
+        showExtensionsEntry={false}
       />
-      <SidebarUserMenu
-        user={authenticatedUser}
-        guest={guest}
-        loading={authenticatedUserLoading}
-        onOpenSettings={() => { setSettingsSection("system"); setSettingsOpen(true); }}
-        onOpenModels={() => { setSettingsSection("models"); setSettingsOpen(true); }}
-      />
+      {isMobile && accountMenu}
     </>
   );
 
@@ -1238,8 +1381,11 @@ export function AppShell({ initialGuest = false }: { initialGuest?: boolean }) {
         && ((sessionStats?.userMessages ?? 0) > 0 || selectedSession.messageCount > 0),
       );
       const canAutoName = Boolean(selectedSession && !selectedSession.transient && hasMessages && autoNameStatus.kind !== "naming");
-      const sessionTitle = selectedSession?.name || selectedSession?.firstMessage || translate("sidebar.new");
+      const sessionTitle = getSessionDisplayTitle(selectedSession, translate("sidebar.new"));
       const titleLoading = Boolean(sessionContentLoading && selectedSession);
+      const sessionCopyPath = selectedSession && !selectedSession.transient
+        ? (sessionStats?.sessionId === selectedSession.id ? sessionStats.sessionFile : undefined) || selectedSession.path || null
+        : null;
 
       return (
         <div style={{ display: "flex", alignItems: "center", minWidth: 0, height: "100%" }}>
@@ -1268,6 +1414,21 @@ export function AppShell({ initialGuest = false }: { initialGuest?: boolean }) {
               <DropdownMenuGroup>
                 <DropdownMenuItem onClick={() => toggleTopPanel("branches")}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="6" y1="3" x2="6" y2="15" /><circle cx="18" cy="6" r="3" /><circle cx="6" cy="18" r="3" /><path d="M18 9a9 9 0 0 1-9 9" /></svg>{translate("i18n.branches")}</DropdownMenuItem>
                 <DropdownMenuItem onClick={() => handleSystemPromptToggle()}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="8" y1="13" x2="16" y2="13" /><line x1="8" y1="17" x2="13" y2="17" /></svg>{translate("system.label")}</DropdownMenuItem>
+                <DropdownMenuSub>
+                  <DropdownMenuSubTrigger disabled={!selectedSession}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>{translate("i18n.copy")}
+                  </DropdownMenuSubTrigger>
+                  <DropdownMenuSubContent>
+                    <DropdownMenuGroup>
+                    <DropdownMenuItem disabled={!sessionCopyPath} onClick={() => { if (sessionCopyPath) handleCopySessionField(sessionCopyPath); }}>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><path d="M8 13h8M8 17h5" /></svg>{translate("session.copyPath")}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem disabled={!selectedSession?.id} onClick={() => { if (selectedSession?.id) handleCopySessionField(selectedSession.id); }}>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M4 9h16M3 15h16M10 3 8 21M16 3l-2 18" /></svg>{translate("session.copyId")}
+                    </DropdownMenuItem>
+                    </DropdownMenuGroup>
+                  </DropdownMenuSubContent>
+                </DropdownMenuSub>
                 <SessionToolPermissionsMenu key={selectedSession?.id} controls={currentToolPermissions} />
               </DropdownMenuGroup>
             </DropdownMenuContent>
@@ -1498,217 +1659,6 @@ export function AppShell({ initialGuest = false }: { initialGuest?: boolean }) {
     );
   };
 
-  const renderSessionStatsButton = (mobile: boolean) => {
-    if (!mobile && (!showChat || (!sessionStats && !contextUsage))) return null;
-
-    const tokens = sessionStats?.tokens;
-    const cost = sessionStats?.cost ?? 0;
-    const formatCompact = (value: number) => value >= 1_000_000
-      ? `${(value / 1_000_000).toFixed(1)}M`
-      : value >= 1000
-        ? `${(value / 1000).toFixed(0)}k`
-        : String(value);
-    const costText = cost > 0 ? (cost >= 0.01 ? `$${cost.toFixed(2)}` : `<$0.01`) : null;
-
-    let contextColor = "var(--text-muted)";
-    let desktopContextText: string | null = null;
-    let mobileContextText: string | null = null;
-    if (contextUsage?.contextWindow) {
-      const percent = contextUsage.percent;
-      if (percent !== null && percent > 90) contextColor = "#ef4444";
-      else if (percent !== null && percent > 70) contextColor = "rgba(234,179,8,0.95)";
-      desktopContextText = percent !== null
-        ? `${percent.toFixed(0)}% / ${formatCompact(contextUsage.contextWindow)}`
-        : `? / ${formatCompact(contextUsage.contextWindow)}`;
-      mobileContextText = percent !== null ? `${percent.toFixed(0)}%` : null;
-    }
-
-    const tooltipParts: string[] = [];
-    if (tokens) {
-      tooltipParts.push(`in: ${tokens.input.toLocaleString(locale)}`);
-      tooltipParts.push(`out: ${tokens.output.toLocaleString(locale)}`);
-      tooltipParts.push(`cache read: ${tokens.cacheRead.toLocaleString(locale)}`);
-      tooltipParts.push(`cache write: ${tokens.cacheWrite.toLocaleString(locale)}`);
-      if (cost > 0) tooltipParts.push(`cost: $${cost.toFixed(4)}`);
-    }
-    if (contextUsage?.contextWindow) {
-      const percent = contextUsage.percent;
-      tooltipParts.push(`context: ${percent !== null ? percent.toFixed(1) + "%" : "unknown"} of ${contextUsage.contextWindow.toLocaleString()} tokens`);
-    }
-    const tooltip = tooltipParts.join("  |  ");
-    const tooltipLines = tooltip ? tooltip.split(/\s+\|\s+/) : [translate("session.title")];
-    const covered = mobile && mobileToolbarMoreOpen;
-    const hasMobileValues = Boolean(
-      (tokens && (tokens.input > 0 || tokens.output > 0))
-      || costText
-      || mobileContextText,
-    );
-
-    return (
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <button
-        type="button"
-        onClick={() => toggleTopPanel("session")}
-        disabled={!showChat || covered}
-        tabIndex={covered ? -1 : undefined}
-        aria-label={translate("session.title")}
-        aria-pressed={activeTopPanel === "session"}
-        aria-hidden={covered ? true : undefined}
-        className={mobile ? "mobile-session-stats" : undefined}
-        data-mobile-toolbar-stats={mobile ? "true" : undefined}
-        style={{
-          marginLeft: mobile ? 0 : "auto",
-          display: "flex", alignItems: "center", justifyContent: "flex-end",
-          flex: mobile ? 1 : "0 0 400px",
-          width: mobile ? undefined : 400,
-          minWidth: mobile ? 0 : 400,
-          gap: mobile ? 7 : 10,
-          paddingLeft: mobile ? 6 : 12,
-          paddingRight: mobile ? 6 : 12,
-          height: "100%",
-          overflow: "hidden",
-          visibility: covered ? "hidden" : "visible",
-          pointerEvents: covered ? "none" : "auto",
-          background: "transparent",
-          border: "none",
-          fontSize: 11, color: "var(--text-muted)",
-          whiteSpace: "nowrap", cursor: showChat ? "pointer" : "default",
-          fontVariantNumeric: "tabular-nums",
-          transition: "color 0.1s, background 0.1s",
-        }}
-        onMouseEnter={(event) => {
-          if (showChat && !covered) {
-            event.currentTarget.style.color = "var(--text)";
-          }
-        }}
-        onMouseLeave={(event) => {
-          event.currentTarget.style.color = activeTopPanel === "session" ? "var(--text)" : "var(--text-muted)";
-          event.currentTarget.style.background = "transparent";
-        }}
-      >
-        {mobile ? (
-          <>
-            {tokens && tokens.input > 0 && (
-              <span className="mobile-session-stat-io" style={{ display: "flex", alignItems: "center", gap: 2, flexShrink: 0 }}>
-                <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <line x1="5" y1="8.5" x2="5" y2="1.5" /><polyline points="2 4 5 1.5 8 4" />
-                </svg>
-                {formatCompact(tokens.input)}
-              </span>
-            )}
-            {tokens && tokens.output > 0 && (
-              <span className="mobile-session-stat-io" style={{ display: "flex", alignItems: "center", gap: 2, flexShrink: 0 }}>
-                <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <line x1="5" y1="1.5" x2="5" y2="8.5" /><polyline points="2 6 5 8.5 8 6" />
-                </svg>
-                {formatCompact(tokens.output)}
-              </span>
-            )}
-            {costText && (
-              <span className="mobile-session-stat-cost" style={{ color: "var(--text)", fontWeight: 500, flexShrink: 0 }}>
-                {costText}
-              </span>
-            )}
-            {mobileContextText && (
-              <span style={{ color: contextColor, flexShrink: 0 }}>
-                {mobileContextText}
-              </span>
-            )}
-            {!hasMobileValues && showChat && (
-              <span style={{ overflow: "hidden", textOverflow: "ellipsis", color: "var(--text-dim)" }}>
-                {translate("session.title")}
-              </span>
-            )}
-          </>
-        ) : (
-          <>
-            {tokens && tokens.input > 0 && (
-              <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                <svg width="12" height="12" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <line x1="5" y1="8.5" x2="5" y2="1.5" /><polyline points="2 4 5 1.5 8 4" />
-                </svg>
-                {formatCompact(tokens.input)}
-              </span>
-            )}
-            {tokens && tokens.output > 0 && (
-              <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                <svg width="12" height="12" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <line x1="5" y1="1.5" x2="5" y2="8.5" /><polyline points="2 6 5 8.5 8 6" />
-                </svg>
-                {formatCompact(tokens.output)}
-              </span>
-            )}
-            {tokens && tokens.cacheRead > 0 && (
-              <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                <svg width="12" height="12" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <path d="M8.5 5a3.5 3.5 0 1 1-1-2.45" /><polyline points="6.5 1.5 8.5 2.5 7.5 4.5" />
-                </svg>
-                {formatCompact(tokens.cacheRead)}
-              </span>
-            )}
-            {costText && (
-              <span style={{ display: "flex", alignItems: "center", color: "var(--text)", fontWeight: 500 }}>
-                {costText}
-              </span>
-            )}
-            {desktopContextText && (
-              <span style={{ display: "flex", alignItems: "center", gap: 4, color: contextColor }}>
-                <svg width="12" height="12" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <path d="M1 9 L1 5 Q1 1 5 1 Q9 1 9 5 L9 9" /><line x1="1" y1="9" x2="9" y2="9" />
-                </svg>
-                {desktopContextText}
-              </span>
-            )}
-          </>
-        )}
-            </button>
-          }
-        />
-        <TooltipContent className="min-w-40">
-          <div style={{ display: "grid", gap: 2 }}>
-            {tooltipLines.map((line) => <div key={line}>{line}</div>)}
-          </div>
-        </TooltipContent>
-      </Tooltip>
-    );
-  };
-
-  const renderSoundToggle = (mobile: boolean) => (
-    <button
-      type="button"
-      onClick={onSoundToggle}
-      title={soundEnabled ? translate("chat.disableSound") : translate("chat.enableSound")}
-      aria-label={soundEnabled ? translate("chat.disableSound") : translate("chat.enableSound")}
-      style={{
-        marginLeft: !mobile && !sessionStats && !contextUsage ? "auto" : 0,
-        display: "flex", alignItems: "center", justifyContent: "center",
-        width: TOP_BAR_ICON_BUTTON_SIZE, height: TOP_BAR_ICON_BUTTON_SIZE, padding: 0,
-        background: "var(--chat-bg)", border: "none",
-        color: soundEnabled ? "var(--text-muted)" : "var(--text-dim)",
-        cursor: "pointer", flexShrink: 0, transition: "color 0.12s, background 0.12s, opacity 0.12s",
-        opacity: soundEnabled ? 1 : 0.55,
-      }}
-      onMouseEnter={(event) => { event.currentTarget.style.color = "var(--text)"; event.currentTarget.style.opacity = "1"; }}
-      onMouseLeave={(event) => { event.currentTarget.style.color = soundEnabled ? "var(--text-muted)" : "var(--text-dim)"; event.currentTarget.style.opacity = soundEnabled ? "1" : "0.55"; }}
-    >
-      {soundEnabled ? (
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-          <path d="M10.268 21a2 2 0 0 0 3.464 0" />
-          <path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326" />
-        </svg>
-      ) : (
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-          <path d="M10.268 21a2 2 0 0 0 3.464 0" />
-          <path d="M17 17H4a1 1 0 0 1-.74-1.673C4.59 13.956 6 12.499 6 8a6 6 0 0 1 .258-1.742" />
-          <path d="m2 2 20 20" />
-          <path d="M8.668 3.01A6 6 0 0 1 18 8c0 2.687.77 4.653 1.707 6.05" />
-        </svg>
-      )}
-    </button>
-  );
-
   const renderMainFileToggle = (mobile: boolean) => {
     const covered = mobile && mobileToolbarMoreOpen;
     return (
@@ -1724,7 +1674,7 @@ export function AppShell({ initialGuest = false }: { initialGuest?: boolean }) {
         aria-label={rightPanelOpen ? translate("files.hidePanel") : translate("files.showPanel")}
         data-mobile-toolbar-file={mobile ? "true" : undefined}
         style={{
-          marginLeft: 0,
+          marginLeft: mobile ? 0 : "auto",
           display: "flex", alignItems: "center", justifyContent: "center",
           width: TOP_BAR_ICON_BUTTON_SIZE, height: TOP_BAR_ICON_BUTTON_SIZE, padding: 0,
           visibility: covered ? "hidden" : "visible",
@@ -1747,23 +1697,6 @@ export function AppShell({ initialGuest = false }: { initialGuest?: boolean }) {
   return (
     <>
     <style>{`
-      .session-info-popover {
-        position: relative;
-        overflow: hidden;
-      }
-      .mobile-session-stats {
-        container-type: inline-size;
-      }
-      @container (max-width: 158px) {
-        .mobile-session-stat-io {
-          display: none !important;
-        }
-      }
-      @container (max-width: 88px) {
-        .mobile-session-stat-cost {
-          display: none !important;
-        }
-      }
       @media (max-width: 640px) {
         .sidebar-overlay-backdrop.sidebar-mobile-pending {
           opacity: 0 !important;
@@ -1784,6 +1717,11 @@ export function AppShell({ initialGuest = false }: { initialGuest?: boolean }) {
       overflow: "hidden",
       background: "var(--sidebar-bg)",
     }}>
+      {!isMobile && (
+        <AppNavigation view={mainView} onNavigate={handleNavigate} extensionsEnabled={Boolean(projectTrustCwd)}>
+          {accountMenu}
+        </AppNavigation>
+      )}
       {/* Mobile overlay backdrop */}
       <div
         className={`sidebar-overlay-backdrop${mobileSidebarReady ? "" : " sidebar-mobile-pending"}`}
@@ -1803,12 +1741,13 @@ export function AppShell({ initialGuest = false }: { initialGuest?: boolean }) {
       <div
         ref={sidebarResizer.panelRef}
         id="session-sidebar"
+        inert={!sidebarOpen || (!isMobile && mainView !== "chat")}
         className={`sidebar-container${sidebarOpen ? " sidebar-open" : " sidebar-closed"}${mobileSidebarReady ? "" : " sidebar-mobile-pending"}${sidebarResizer.isResizing ? " sidebar-resizing" : ""}`}
         style={{
           "--sidebar-width": `${sidebarResizer.width}px`,
           background: "var(--sidebar-bg)",
-          borderRight: `1.5px solid ${(hoveredResizeHandle === "sidebar" || sidebarResizer.isResizing) ? "#b8b7b7" : "var(--border)"}`,
-          display: "flex",
+          borderRight: `1px solid ${(hoveredResizeHandle === "sidebar" || sidebarResizer.isResizing) ? "#b8b7b7" : "var(--border)"}`,
+          display: !isMobile && mainView !== "chat" ? "none" : "flex",
           flexDirection: "column",
           flexShrink: 0,
           paddingTop: "env(safe-area-inset-top)",
@@ -1818,7 +1757,7 @@ export function AppShell({ initialGuest = false }: { initialGuest?: boolean }) {
       >
         {sidebarContent}
       </div>
-      {sidebarOpen && (
+      {mainView === "chat" && sidebarOpen && (
         <Tooltip>
           <TooltipTrigger
             render={
@@ -1906,8 +1845,7 @@ export function AppShell({ initialGuest = false }: { initialGuest?: boolean }) {
                   </svg>
                 )}
               </button>
-              {renderSessionStatsButton(true)}
-              {renderSoundToggle(true)}
+              <div style={{ flex: 1 }} aria-hidden="true" />
               {renderMainFileToggle(true)}
               {mobileToolbarMoreOpen && (
                 <div
@@ -1938,10 +1876,9 @@ export function AppShell({ initialGuest = false }: { initialGuest?: boolean }) {
             <>
               {renderProjectTrustWarning()}
               {renderChatToolbarActions(false)}
-              {renderSessionStatsButton(false)}
             </>
           )}
-          {!isMobile && mainView === "chat" && <>{renderSoundToggle(false)}{renderMainFileToggle(false)}</>}
+          {!isMobile && mainView === "chat" && renderMainFileToggle(false)}
           {isMobile && mainView === "chat" && (
             <BranchNavigator
               tree={branchTree}
@@ -1961,11 +1898,9 @@ export function AppShell({ initialGuest = false }: { initialGuest?: boolean }) {
             <div data-top-panel style={{
               position: "fixed",
               top: topPanelPos.top,
-              left: activeTopPanel === "session" && !isMobile ? undefined : topPanelPos.left,
-              right: activeTopPanel === "session" && !isMobile ? 0 : undefined,
-              bottom: activeTopPanel === "session" && !isMobile ? 0 : undefined,
-              width: activeTopPanel === "session" && !isMobile ? 400 : topPanelPos.width,
-              maxHeight: activeTopPanel === "session" && !isMobile ? undefined : `calc(100dvh - ${topPanelPos.top}px)`,
+              left: topPanelPos.left,
+              width: topPanelPos.width,
+              maxHeight: `calc(100dvh - ${topPanelPos.top}px)`,
               overflowY: "auto",
               zIndex: 500,
             }}>
@@ -2046,176 +1981,6 @@ export function AppShell({ initialGuest = false }: { initialGuest?: boolean }) {
                   )}
                 </div>
               )}
-              {activeTopPanel === "session" && (
-                <div className="session-info-popover" style={{
-                  background: "var(--bg-panel)",
-                  minHeight: !isMobile ? "100%" : undefined,
-                  borderLeft: !isMobile ? "1px solid var(--border)" : undefined,
-                  borderBottom: isMobile ? "1px solid var(--border)" : undefined,
-                  boxShadow: !isMobile ? "-10px 0 28px rgba(0,0,0,0.06)" : "0 10px 28px rgba(0,0,0,0.10)",
-                  padding: "12px 16px",
-                }}>
-                  {sessionStats ? (() => {
-                    const formatDuration = (ms: number) => {
-                      if (ms <= 0) return "0s";
-                      const totalSec = Math.floor(ms / 1000);
-                      const h = Math.floor(totalSec / 3600);
-                      const m = Math.floor((totalSec % 3600) / 60);
-                      const s = totalSec % 60;
-                      if (h > 0) return `${h}h ${m}m`;
-                      if (m > 0) return `${m}m ${s}s`;
-                      return `${s}s`;
-                    };
-                    const totalActiveMs = sessionStats.totalActiveMs ?? 0;
-                    const sessionRows = [
-                       ...(sessionStats.sessionName ? [{ label: translate("session.name"), value: sessionStats.sessionName, copyField: null }] : []),
-                       { label: translate("session.file"), value: sessionStats.sessionFile ?? translate("session.inMemory"), copyField: "file" as const },
-                       { label: translate("session.id"), value: sessionStats.sessionId, copyField: "id" as const },
-                       ...(totalActiveMs > 0 ? [{ label: translate("session.totalActive"), value: formatDuration(totalActiveMs), copyField: null }] : []),
-                    ];
-                    const messageRows = [
-                       [translate("session.user"), sessionStats.userMessages.toLocaleString(locale)],
-                       [translate("session.assistant"), sessionStats.assistantMessages.toLocaleString(locale)],
-                       [translate("session.toolCalls"), sessionStats.toolCalls.toLocaleString(locale)],
-                       [translate("session.toolResults"), sessionStats.toolResults.toLocaleString(locale)],
-                       [translate("session.total"), sessionStats.totalMessages.toLocaleString(locale)],
-                    ];
-                    const tokenRows = [
-                       [translate("session.input"), sessionStats.tokens.input.toLocaleString(locale)],
-                       [translate("session.output"), sessionStats.tokens.output.toLocaleString(locale)],
-                       ...(sessionStats.tokens.cacheRead > 0 ? [[translate("session.cacheRead"), sessionStats.tokens.cacheRead.toLocaleString(locale)]] : []),
-                       ...(sessionStats.tokens.cacheWrite > 0 ? [[translate("session.cacheWrite"), sessionStats.tokens.cacheWrite.toLocaleString(locale)]] : []),
-                       [translate("session.total"), sessionStats.tokens.total.toLocaleString(locale)],
-                    ];
-                    const ctx = contextUsage ?? sessionStats.contextUsage;
-                    const formatCompact = (n: number) => n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M` : n >= 1000 ? `${(n / 1000).toFixed(0)}k` : String(n);
-                    const extraTokenRows = [
-                       ...(sessionStats.cost > 0 ? [[translate("session.cost"), `$${sessionStats.cost.toFixed(4)}`]] : []),
-                       ...(ctx?.contextWindow ? [[translate("session.context"), `${ctx.percent !== null ? `${ctx.percent.toFixed(1)}%` : "?"} / ${formatCompact(ctx.contextWindow)}`]] : []),
-                       // Cache hit rate = cache reads / (input + cache writes + cache reads) — the denominator covers all input-class tokens.
-                       ...(sessionStats.tokens.cacheRead + sessionStats.tokens.cacheWrite > 0 && sessionStats.tokens.cacheRead + sessionStats.tokens.cacheWrite + sessionStats.tokens.input > 0
-                         ? [[translate("session.cacheHitRate"), `${(sessionStats.tokens.cacheRead / (sessionStats.tokens.cacheRead + sessionStats.tokens.cacheWrite + sessionStats.tokens.input) * 100).toFixed(1)}%`]]
-                         : []),
-                    ];
-                    const section = (
-                      title: string,
-                      sectionRows: string[][],
-                      valueAlign: "left" | "right" = "left",
-                      compact = false,
-                    ) => (
-                        <div style={{ minWidth: 0 }}>
-                          <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text)", marginBottom: 8 }}>{title}</div>
-                          <div style={{
-                            display: "grid",
-                            gridTemplateColumns: compact ? "max-content max-content" : "auto minmax(0, 1fr)",
-                            columnGap: compact ? 14 : 12,
-                            rowGap: 4,
-                            justifyContent: compact ? "start" : undefined,
-                          }}>
-                            {sectionRows.map(([label, value]) => (
-                              <div key={`${title}:${label}`} style={{ display: "contents" }}>
-                                <div style={{ color: "var(--text-dim)", whiteSpace: "nowrap" }}>{label}</div>
-                                <div style={{
-                                  color: "var(--text-muted)",
-                                  minWidth: 0,
-                                  overflowWrap: compact ? "normal" : "anywhere",
-                                  textAlign: valueAlign,
-                                  whiteSpace: valueAlign === "right" ? "nowrap" : "normal",
-                                }}>{value}</div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      );
-                    const copyButton = (field: SessionCopyField, value: string) => {
-                      const copied = copiedSessionField === field;
-                      return (
-                        <button
-                          type="button"
-                           title={copied ? translate("session.copied") : translate(field === "file" ? "session.copyFile" : "session.copyId")}
-                          onClick={() => handleCopySessionField(field, value)}
-                          style={{
-                            alignSelf: "start",
-                            display: "inline-flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            width: 22,
-                            height: 22,
-                            marginTop: -2,
-                            color: copied ? "var(--accent)" : "var(--text-dim)",
-                            background: "transparent",
-                            border: "1px solid var(--border)",
-                            borderRadius: 4,
-                            cursor: "pointer",
-                            flex: "0 0 auto",
-                            transition: "color 0.12s, border-color 0.12s, background 0.12s",
-                          }}
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.color = "var(--accent)";
-                            e.currentTarget.style.borderColor = "var(--accent)";
-                            e.currentTarget.style.background = "var(--bg-hover)";
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.color = copied ? "var(--accent)" : "var(--text-dim)";
-                            e.currentTarget.style.borderColor = "var(--border)";
-                            e.currentTarget.style.background = "transparent";
-                          }}
-                        >
-                          {copied ? (
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                              <polyline points="20 6 9 17 4 12" />
-                            </svg>
-                          ) : (
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                              <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-                              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-                            </svg>
-                          )}
-                        </button>
-                      );
-                    };
-                    const sessionInfoSection = (
-                      <div style={{ minWidth: 0 }}>
-                         <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text)", marginBottom: 8 }}>{translate("session.infoSection")}</div>
-                        <div style={{ display: "grid", gridTemplateColumns: "auto minmax(0, 1fr) auto", columnGap: 12, rowGap: 8, alignItems: "start" }}>
-                          {sessionRows.map((row) => (
-                            <div key={`session-info:${row.label}`} style={{ display: "contents" }}>
-                              <div style={{ color: "var(--text-dim)", whiteSpace: "nowrap" }}>{row.label}</div>
-                              <div style={{
-                                color: "var(--text-muted)",
-                                minWidth: 0,
-                                overflowWrap: "anywhere",
-                                wordBreak: "break-word",
-                                whiteSpace: "normal",
-                              }}>{row.value}</div>
-                              <div>{row.copyField ? copyButton(row.copyField, row.value) : null}</div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    );
-
-                    return (
-                      <div style={{
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: 0,
-                        fontSize: 12,
-                        lineHeight: 1.5,
-                        fontFamily: "var(--font-mono)",
-                      }}>
-                        <div style={{ paddingBottom: 16 }}>{sessionInfoSection}</div>
-                        <div style={{ borderTop: "1px solid var(--border)", padding: "16px 0" }}>{section(translate("session.messages"), messageRows)}</div>
-                        <div style={{ borderTop: "1px solid var(--border)", paddingTop: 16 }}>{section(translate("session.tokens"), [...tokenRows, ...extraTokenRows], "right", true)}</div>
-                      </div>
-                    );
-                  })() : (
-                    <div style={{ fontSize: 12, color: "var(--text-muted)", fontStyle: "italic" }}>
-                       {translate("session.load")}
-                    </div>
-                  )}
-                </div>
-              )}
             </div>
           )}
 
@@ -2223,18 +1988,9 @@ export function AppShell({ initialGuest = false }: { initialGuest?: boolean }) {
         {isMobile && renderProjectTrustWarning()}
         </div>
 
-        {/* Chat content */}
-        <div style={{ flex: 1, overflow: "hidden", position: "relative" }}>
-          {mainView === "extensions" && projectTrustCwd ? (
-            <ExtensionsCenter
-              cwd={projectTrustCwd}
-              guest={guest}
-              sessionId={selectedSession?.id ?? null}
-              onReloaded={() => setSessionKey((key) => key + 1)}
-              onShowSidebar={sidebarOpen ? undefined : handleSidebarToggle}
-              onOpenExtensionDetails={handleOpenExtensionDetails}
-            />
-          ) : showChat ? (
+        {/* Keep the home workspace mounted while another page is visible. */}
+        <div data-app-page="chat" inert={mainView !== "chat"} style={{ display: mainView === "chat" ? "block" : "none", flex: 1, minHeight: 0, overflow: "hidden", position: "relative" }}>
+          {showChat ? (
             <ChatWindow
               key={sessionKey}
               session={selectedSession}
@@ -2251,13 +2007,9 @@ export function AppShell({ initialGuest = false }: { initialGuest?: boolean }) {
               onSystemPromptChange={handleSystemPromptChange}
               onSystemPromptLoaderChange={handleSystemPromptLoaderChange}
               onSessionStatsChange={handleSessionStatsChange}
-              onSessionStatsPanelOpen={openSessionStatsPanel}
-              onContextUsageChange={handleContextUsageChange}
               onOpenFile={handleOpenLinkedFile}
               onOpenChanges={handleOpenTurnChanges}
               onOpenComposerReference={handleOpenComposerReference}
-              soundEnabled={soundEnabled}
-              onSoundToggle={onSoundToggle}
               playDoneSound={playDoneSound}
               unlockAudio={unlockAudio}
               onPlanStateChange={handlePlanStateChange}
@@ -2279,43 +2031,62 @@ export function AppShell({ initialGuest = false }: { initialGuest?: boolean }) {
             <NotificationNotice title={translate("workspace.unable")} message={initialCwdError ?? initialNavigation.requestedCwd} />
           ) : null}
         </div>
+        {extensionsVisited && projectTrustCwd && (
+          <div data-app-page="extensions" inert={mainView !== "extensions"} style={{ display: mainView === "extensions" ? "flex" : "none", flexDirection: "column", flex: 1, minHeight: 0, overflow: "hidden" }}>
+            <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
+              <ExtensionsCenter
+                key={projectTrustCwd}
+                cwd={projectTrustCwd}
+                guest={guest}
+                active={mainView === "extensions"}
+                sidebarOpen={sidebarOpen}
+                installedRevision={installedCapabilitiesRevision}
+                sessionId={selectedSession?.id ?? null}
+                onReloaded={() => setSessionKey((key) => key + 1)}
+                onTrustProject={() => { setProjectTrustError(null); setProjectTrustDialogOpen(true); }}
+                onShowSidebar={!sidebarOpen ? handleSidebarToggle : undefined}
+                onOpenExtensionDetails={handleOpenExtensionDetails}
+                onCloseExtensionDetails={() => setExtensionPanelOpen(false)}
+              />
+            </div>
+          </div>
+        )}
       </div>
 
       <div
         aria-hidden="true"
-        className={`right-panel-overlay-backdrop${rightPanelOpen && rightPanelMode !== "extension" ? " is-open" : ""}`}
+        className={`right-panel-overlay-backdrop${homeRightPanelVisible ? " is-open" : ""}`}
         onClick={() => setRightPanelOpen(false)}
       />
-      {rightPanelOpen && (
+      {homeRightPanelVisible && (
         <Tooltip>
           <TooltipTrigger
             render={
               <div
-                ref={rightPanelMode === "extension" ? extensionPanelHandleRef : undefined}
-                {...(rightPanelMode === "extension" ? extensionPanelResizer.separatorProps : rightPanelResizer.separatorProps)}
+                {...rightPanelResizer.separatorProps}
                 aria-controls="file-panel"
-                className={`panel-resize-handle right-panel-resize-handle${rightPanelMode === "extension" ? " organization-extension-resize-handle" : ""}${(rightPanelMode === "extension" ? extensionPanelResizer.isResizing : rightPanelResizer.isResizing) ? " is-resizing" : ""}`}
-                data-resize-handle={rightPanelMode === "extension" ? "extension-panel" : "right-panel"}
-                style={rightPanelMode === "extension" ? { "--right-panel-width": `${extensionPanelResizer.width}px` } as React.CSSProperties : undefined}
+                className={`panel-resize-handle right-panel-resize-handle${rightPanelResizer.isResizing ? " is-resizing" : ""}`}
+                data-resize-handle="right-panel"
                 onPointerEnter={() => setHoveredResizeHandle("right")}
                 onPointerLeave={() => setHoveredResizeHandle((current) => current === "right" ? null : current)}
               />
             }
           />
-          <TooltipContent side="left">{rightPanelMode === "extension" ? "拖动调整详情侧边栏宽度" : `${translate("layout.resizeFilePanel")}: ${translate("layout.resizeHint")}`}</TooltipContent>
+          <TooltipContent side="left">{`${translate("layout.resizeFilePanel")}: ${translate("layout.resizeHint")}`}</TooltipContent>
         </Tooltip>
       )}
 
       {/* Right panel: file viewer — always mounted, width animated via CSS */}
       <div
-        ref={rightPanelMode === "extension" ? extensionPanelResizer.panelRef : rightPanelResizer.panelRef}
+        ref={rightPanelResizer.panelRef}
         id="file-panel"
-        className={`right-panel-container${rightPanelMode === "extension" ? " organization-extension-overlay" : ""}${rightPanelOpen ? " right-panel-open" : " right-panel-closed"}${(rightPanelMode === "extension" ? extensionPanelResizer.isResizing : rightPanelResizer.isResizing) ? " right-panel-resizing" : ""}`}
+        inert={!homeRightPanelVisible}
+        className={`right-panel-container${rightPanelOpen ? " right-panel-open" : " right-panel-closed"}${rightPanelResizer.isResizing ? " right-panel-resizing" : ""}`}
         style={{
-          "--right-panel-width": `${rightPanelMode === "extension" ? extensionPanelResizer.width : rightPanelResizer.width}px`,
-          display: "flex",
+          "--right-panel-width": `${rightPanelResizer.width}px`,
+          display: mainView === "chat" ? "flex" : "none",
           flexDirection: "column",
-          borderLeft: `1.5px solid ${(hoveredResizeHandle === "right" || (rightPanelMode === "extension" ? extensionPanelResizer.isResizing : rightPanelResizer.isResizing)) ? "#b8b7b7" : "var(--border)"}`,
+          borderLeft: `1px solid ${(hoveredResizeHandle === "right" || rightPanelResizer.isResizing) ? "#b8b7b7" : "var(--border)"}`,
           background: "var(--chat-bg)",
         } as React.CSSProperties}
       >
@@ -2337,14 +2108,6 @@ export function AppShell({ initialGuest = false }: { initialGuest?: boolean }) {
             onApprove={planReview.controls.approve}
             onAbandon={planReview.controls.abandon}
             readOnly={planReview.readOnly}
-          />
-        ) : rightPanelMode === "extension" && extensionDetails ? (
-          <OrganizationExtensionDetails
-            sessionId={selectedSession?.id ?? null}
-            item={extensionDetails.item}
-            cwd={activeCwd ?? ""}
-            onClose={() => { setExtensionDetails(null); setRightPanelOpen(false); }}
-            onFavoriteChange={handleExtensionFavoriteChange}
           />
         ) : <>
         {/* Right panel tab bar */}
@@ -2397,6 +2160,7 @@ export function AppShell({ initialGuest = false }: { initialGuest?: boolean }) {
               sourceSessionId={activeFileTab.sourceSessionId}
               gitRefreshKey={explorerRefreshKey}
               initialDisplayMode={activeFileTab.initialDisplayMode}
+              gitDiffMode={activeFileTab.gitDiffMode}
               initialState={activeFileTab.viewerState}
               watchEnabled={rightPanelOpen}
               onStateChange={(viewerState) => handleFileViewerStateChange(
@@ -2419,6 +2183,46 @@ export function AppShell({ initialGuest = false }: { initialGuest?: boolean }) {
           )}
         </div>
         </>}
+      </div>
+      {extensionPanelVisible && (
+        <Tooltip>
+          <TooltipTrigger render={
+            <div
+              ref={extensionPanelHandleRef}
+              {...extensionPanelResizer.separatorProps}
+              aria-controls="extension-panel"
+              className={`panel-resize-handle right-panel-resize-handle organization-extension-resize-handle${extensionPanelResizer.isResizing ? " is-resizing" : ""}`}
+              data-resize-handle="extension-panel"
+              style={{ "--right-panel-width": `${extensionPanelResizer.width}px` } as React.CSSProperties}
+            />
+          } />
+          <TooltipContent side="left">{translate("layout.resizeHint")}</TooltipContent>
+        </Tooltip>
+      )}
+      <div
+        ref={extensionPanelResizer.panelRef}
+        id="extension-panel"
+        inert={!extensionPanelVisible}
+        className={`right-panel-container organization-extension-overlay${extensionPanelVisible ? " right-panel-open" : " right-panel-closed"}${extensionPanelResizer.isResizing ? " right-panel-resizing" : ""}`}
+        style={{
+          "--right-panel-width": `${extensionPanelResizer.width}px`,
+          display: extensionPanelVisible ? "flex" : "none",
+          flexDirection: "column",
+          background: "var(--chat-bg)",
+          borderLeft: "1px solid var(--border)",
+        } as React.CSSProperties}
+      >
+        {visibleExtensionDetails && (
+          <OrganizationExtensionDetails
+            key={visibleExtensionDetails.cwd}
+            sessionId={selectedSession?.id ?? null}
+            item={visibleExtensionDetails.item}
+            cwd={visibleExtensionDetails.cwd}
+            onClose={() => setExtensionPanelOpen(false)}
+            onFavoriteChange={handleExtensionFavoriteChange}
+            onInstalledChange={() => setInstalledCapabilitiesRevision(value => value + 1)}
+          />
+        )}
       </div>
     </div>
     {projectTrustDialogOpen && projectTrustCwd && (

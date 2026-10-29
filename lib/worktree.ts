@@ -4,6 +4,7 @@ import { basename, dirname, join, resolve } from "path";
 import { promisify } from "util";
 import { allowFileRoot } from "./allowed-roots";
 import { samePath, toNativePath } from "./paths";
+import { isPathWithinRoots } from "./path-security";
 
 const execFileAsync = promisify(execFile);
 
@@ -184,6 +185,15 @@ function findWorktreeByPath(worktrees: readonly WorktreeInfo[], candidate: strin
 
 export function findCurrentWorktreePath(worktrees: readonly WorktreeInfo[], cwd: string): string | null {
   return findWorktreeByPath(worktrees, realPathOrSelf(cwd))?.path ?? null;
+}
+
+/** Resolve the current checkout's branch, including sessions opened in subdirectories. */
+export function findCurrentWorktreeBranch(worktrees: readonly WorktreeInfo[], cwd: string): string | null {
+  const candidate = realPathOrSelf(cwd);
+  const containing = worktrees
+    .filter((worktree) => isPathWithinRoots(candidate, new Set([worktree.path])))
+    .sort((a, b) => b.path.length - a.path.length);
+  return containing[0]?.branch ?? null;
 }
 
 function sanitizeBranchForDir(branch: string): string {

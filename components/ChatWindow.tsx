@@ -1,12 +1,13 @@
 "use client";
 import { ClarificationGroupCard } from "./ClarificationGroupCard";
 import { blockingClarification } from "@/lib/clarification";
+import { clarificationContinuationIndices, clarificationToolResult } from "@/lib/clarification-display";
 import { splitPluginSelection } from "@/lib/plugin-selection";
 
 import { NotificationNotice } from "@/components/Notifications";
 
 import { registerAbortHandler } from "@/hooks/useKeyboardShortcuts";
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { AgentMessage, AssistantContentBlock, AssistantMessage, BashExecutionMessage, BlockingExtensionUiRequest, CustomMessage, ExtensionUiRequest, SessionInfo, SessionTreeNode, ToolResultMessage, UserMessage } from "@/lib/types";
 import { normalizeCustomPanelLines, parseAnsiLine } from "@/lib/ansi";
 import { asBracketedPaste, toTerminalKeyData } from "@/lib/terminal-input";
@@ -19,6 +20,8 @@ import { PlanCard } from "./PlanCard";
 import { PlanQuestionCard } from "./PlanQuestionCard";
 import { TurnWrittenFiles } from "./TurnWrittenFiles";
 import { ChatInput, type ChatInputHandle } from "./ChatInput";
+import { ContextPopover } from "./ContextPopover";
+import { JumpToLatestButton } from "./JumpToLatestButton";
 import { ChatMinimap, useMessageRefs } from "./ChatMinimap";
 import { ExtensionStatusBar } from "./ExtensionStatusBar";
 import { useI18n } from "@/hooks/useI18n";
@@ -26,6 +29,7 @@ import { useTheme } from "@/hooks/useTheme";
 import { useAgentSession } from "@/hooks/useAgentSession";
 import { useSessionToolPermissions } from "@/hooks/useSessionToolPermissions";
 import type { SessionToolPermissions } from "@/lib/tool-permissions";
+import type { ContextControls } from "@/lib/context-details";
 import { useDragDrop } from "@/hooks/useDragDrop";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { Skeleton } from "./ui/skeleton";
@@ -55,15 +59,10 @@ interface Props {
   onSystemPromptChange?: (prompt: string | null) => void;
   onSystemPromptLoaderChange?: (loader: (() => Promise<void>) | null) => void;
   onSessionStatsChange?: (stats: SessionStatsInfo | null) => void;
-  onSessionStatsPanelOpen?: () => void;
-  onContextUsageChange?: (usage: { percent: number | null; contextWindow: number; tokens: number | null } | null) => void;
   onOpenFile?: (filePath: string) => void;
   onOpenChanges?: OpenTurnChanges;
   onOpenComposerReference?: (reference: ChatDraftReference) => void;
-  /** Completion sound state + controls, owned by AppShell so tasks finishing in
-   *  a non-active workspace can still ring. */
-  soundEnabled?: boolean;
-  onSoundToggle?: () => void;
+  /** Playback uses the global preference owned by AppShell, including background tasks. */
   playDoneSound?: () => void;
   unlockAudio?: () => void;
   onPlanStateChange?: (plan: EurekaPlanState, controls: PlanReviewControls) => void;
@@ -130,12 +129,8 @@ function groupPlanQuestions(questions: EurekaPlanQuestion[]): EurekaPlanQuestion
 
 // A user message normally anchors a turn (user prompt → process → final
 // answer), and the process messages in between get folded into a collapsed
-// ProcessDetailsGroup. When compaction fires mid-turn, pi drops the original
-// user prompt and inserts a compaction summary (role "custom", customType
-// "compaction") in its place; the agent then keeps producing tool calls and a
-// final answer with no user message left to anchor them. Treat a compaction
-// summary as an anchor too, otherwise every post-compaction message renders
-// standalone and never collapses.
+// Compaction boundaries split a logical user turn into display segments, so
+// markers stay chronological and subsequent tool work still groups normally.
 function isGroupAnchor(message: AgentMessage): boolean {
   if (message.role === "user") return true;
   return message.role === "custom" && (message as CustomMessage).customType === "compaction";
@@ -151,10 +146,12 @@ function withAssistantBlocks(
   return next;
 }
 
-export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionDraftKey, onAgentEnd, onAttentionNeeded, onSessionCreated, onSessionForked, modelsRefreshKey, chatInputRef, onBranchDataChange, onSystemPromptChange, onSystemPromptLoaderChange, onSessionStatsChange, onSessionStatsPanelOpen, onContextUsageChange, onOpenFile, onOpenChanges, onOpenComposerReference, soundEnabled = true, onSoundToggle, playDoneSound = () => {}, unlockAudio, onPlanStateChange, onOpenPlanReview, onContentLoadingChange, onToolPermissionsChange }: Props) {
+export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionDraftKey, onAgentEnd, onAttentionNeeded, onSessionCreated, onSessionForked, modelsRefreshKey, chatInputRef, onBranchDataChange, onSystemPromptChange, onSystemPromptLoaderChange, onSessionStatsChange, onOpenFile, onOpenChanges, onOpenComposerReference, playDoneSound = () => {}, unlockAudio, onPlanStateChange, onOpenPlanReview, onContentLoadingChange, onToolPermissionsChange }: Props) {
   const { t } = useI18n();
   const { isDark } = useTheme();
   const isMobile = useIsMobile();
+  const [contextOpen, setContextOpen] = useState(false);
+  const openContextPanel = useCallback(() => setContextOpen(true), []);
 
   // Wrap onAgentEnd to play the completion sound. This is more reliable than
   // wrapping handleAgentEventRef because useAgentSession overwrites that ref
@@ -162,13 +159,9 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
   // externally-installed wrapper after the first re-render.
   const playDoneSoundRef = useRef(playDoneSound);
   playDoneSoundRef.current = playDoneSound;
-  const soundEnabledRef = useRef(soundEnabled);
-  soundEnabledRef.current = soundEnabled;
   const soundedExtensionDialogIdRef = useRef<string | null>(null);
   const wrappedOnAgentEnd = useCallback(() => {
-    if (soundEnabledRef.current) {
-      playDoneSoundRef.current();
-    }
+    playDoneSoundRef.current();
     onAgentEnd?.();
   }, [onAgentEnd]);
 
@@ -178,7 +171,7 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
   }, [chatInputRef]);
 
   const {
-    loading, error, messages, entryIds, streamState,
+    loading, error, historyDisplay, historyHasMore, historyLoading, historyError, loadEarlierHistory, streamState, activeLeafId,
     agentRunning, bashRunning, pendingBash, modelNames, modelList, modelError, modelScopeWarnings, modelThinkingLevels, modelThinkingLevelMaps, toolPreset, thinkingLevel,
     retryInfo, contextUsage, forkingEntryId,
     isCompacting, compactError, compactResult, displayModel: displayModelValue, modelSwitching, sessionStats,
@@ -187,7 +180,7 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
     isAutoModelSelection,
     agentPhase,
     isNew,
-    sessionIdRef, messagesEndRef, scrollContainerRef, messageContentRef,
+    sessionIdRef, messagesEndRef, scrollContainerRef, messageContentRef, followTail,
     handleSend, handleAbort, handleFork, handleNavigate, handleModelChange,
     handleCompact, handleSteer, handleFollowUp, handlePromptWithStreamingBehavior, handleAbortCompaction,
     handleRecallQueue,
@@ -196,7 +189,7 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
     handlePlanModeChange, handleSubmitPlan, handlePlanQuestionAnswer, handlePlanReviewUpdate, handleReturnPlanForRevision, handleApprovePlan, handleAbandonPlan,
   } = useAgentSession({
     session, sessionRunning, newSessionCwd, newSessionDraftKey, onAgentEnd: wrappedOnAgentEnd, onAttentionNeeded, onSessionCreated, onSessionForked,
-    modelsRefreshKey, chatInputRef, onBranchDataChange, onSystemPromptChange, onSystemPromptLoaderChange, onSessionStatsPanelOpen,
+    modelsRefreshKey, chatInputRef, onBranchDataChange, onSystemPromptChange, onSystemPromptLoaderChange, onSessionStatsPanelOpen: openContextPanel,
   });
 
   useEffect(() => {
@@ -213,7 +206,23 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
   useEffect(() => {
     onPlanStateChange?.(planMode, planReviewControls);
   }, [onPlanStateChange, planMode, planReviewControls]);
+  const { messages, entryIds, keys: messageKeys, readOnly: messageReadOnly, editAnchorEntryIds } = historyDisplay;
   const sessionBusy = agentRunning || bashRunning;
+  const contextSessionId = session?.id ?? sessionIdRef.current;
+  const contextControls = useMemo<ContextControls | null>(() => contextSessionId ? {
+    sessionId: contextSessionId, busy: sessionBusy, isCompacting,
+    error: compactError, result: compactResult, compact: handleCompact, abort: handleAbortCompaction,
+  } : null, [contextSessionId, sessionBusy, isCompacting, compactError, compactResult, handleCompact, handleAbortCompaction]);
+  const contextControl = useMemo(() => contextSessionId ? <ContextPopover
+    key={contextSessionId}
+    sessionId={contextSessionId}
+    leafId={activeLeafId}
+    stats={sessionStats}
+    usage={contextUsage}
+    controls={contextControls}
+    open={contextOpen}
+    onOpenChange={setContextOpen}
+  /> : null, [contextSessionId, activeLeafId, sessionStats, contextUsage, contextControls, contextOpen]);
   const toolPermissions = useSessionToolPermissions({
     sessionId: session?.id ?? sessionIdRef.current,
     preset: toolPreset,
@@ -251,6 +260,18 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
   const [visibleCount, setVisibleCount] = useState(VISIBLE_PAGE_SIZE);
   const sentinelRef = useRef<HTMLDivElement>(null);
   const prevScrollDistanceRef = useRef<number | null>(null);
+  const revealEarlierHistory = useCallback(async () => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+    prevScrollDistanceRef.current = captureScrollDistance(container.scrollHeight, container.scrollTop);
+    if (sentinelRef.current?.dataset.localMore === "true") {
+      setVisibleCount(prev => getNextVisibleCount(prev));
+    } else if (await loadEarlierHistory()) {
+      setVisibleCount(prev => getNextVisibleCount(prev));
+    } else {
+      prevScrollDistanceRef.current = null;
+    }
+  }, [loadEarlierHistory, scrollContainerRef]);
 
   // IntersectionObserver on the sentinel div at the top of the message list.
   // When it becomes visible, load the next page of older messages.
@@ -260,27 +281,25 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
     if (!sentinel || !container) return;
     const observer = new IntersectionObserver(
       (entries) => {
-        if (entries[0]?.isIntersecting) {
-          // Save distance from top before prepending to restore scroll later
-          prevScrollDistanceRef.current = captureScrollDistance(container.scrollHeight, container.scrollTop);
-          setVisibleCount((prev) => getNextVisibleCount(prev));
+        if (entries[0]?.isIntersecting && !historyLoading && !historyError) {
+          void revealEarlierHistory();
         }
       },
       { root: container, threshold: 0 }
     );
     observer.observe(sentinel);
     return () => observer.disconnect();
-  }, [visibleCount, messages.length, scrollContainerRef]);
+  }, [visibleCount, messages.length, scrollContainerRef, historyHasMore, historyLoading, historyError, revealEarlierHistory]);
 
   // After visibleCount increases (more messages prepended), restore the
   // scroll position so the viewport doesn't jump.
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (prevScrollDistanceRef.current == null) return;
     const container = scrollContainerRef.current;
     if (!container) return;
     container.scrollTop = restoreScrollTop(container.scrollHeight, prevScrollDistanceRef.current);
     prevScrollDistanceRef.current = null;
-  }, [visibleCount, scrollContainerRef]);
+  }, [visibleCount, messages.length, scrollContainerRef]);
   // Push session stats up to AppShell for the top bar.
   // Compare scalar fields to avoid loops from new object identity each render.
   const statsKey = sessionStats
@@ -309,16 +328,6 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
   }, [statsKey, onSessionStatsChange]);
   useEffect(() => () => { onSessionStatsChange?.(null); }, [onSessionStatsChange]);
 
-  // Push context usage up to AppShell as well.
-  const ctxKey = contextUsage
-    ? `${contextUsage.percent ?? "null"}|${contextUsage.contextWindow}|${contextUsage.tokens ?? "null"}`
-    : null;
-  const contextUsageRef = useRef(contextUsage);
-  contextUsageRef.current = contextUsage;
-  useEffect(() => {
-    onContextUsageChange?.(contextUsageRef.current);
-  }, [ctxKey, onContextUsageChange]);
-  useEffect(() => () => { onContextUsageChange?.(null); }, [onContextUsageChange]);
 
   const onDrop = useCallback((files: File[]) => {
     chatInputRef?.current?.addImages(files);
@@ -326,7 +335,10 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
 
   const { isDragOver, handleDragEnter, handleDragOver, handleDragLeave, handleDrop } = useDragDrop(onDrop);
 
-  const visibleMessages = messages.filter((m) => m.role === "user" || m.role === "assistant");
+  const continuationIndices = useMemo(() => clarificationContinuationIndices(messages, clarification.groups), [messages, clarification.groups]);
+  const presentationMessages = useMemo(() => messages.filter((_, index) => !continuationIndices.has(index)), [messages, continuationIndices]);
+  const clarificationGroups = useMemo(() => new Map(clarification.groups.map((group) => [group.id, group])), [clarification.groups]);
+  const visibleMessages = presentationMessages.filter((m) => m.role === "user" || m.role === "assistant");
   // Only the newest assistant response can belong to the currently active
   // planning turn. Older replies are session history, never resubmittable plans.
   const latestAssistantMessageIndex = useMemo(() => {
@@ -346,12 +358,19 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
         map.set((msg as ToolResultMessage).toolCallId, msg as ToolResultMessage);
       }
     }
+    for (const group of clarification.groups) {
+      const original = map.get(group.id);
+      if (original) map.set(group.id, clarificationToolResult(group, original, {
+        waiting: t("taskPhase.waiting_input"), skipped: t("clarification.questionSkipped"), cancelled: t("clarification.cancelled"),
+      }));
+    }
     return map;
-  }, [messages]);
+  }, [messages, clarification.groups, t]);
   const inputHistory = useMemo(() => {
     const seen = new Set<string>();
     const history: string[] = [];
     for (let i = messages.length - 1; i >= 0; i -= 1) {
+      if (continuationIndices.has(i)) continue;
       const text = getUserInputText(messages[i]);
       if (!text || seen.has(text)) continue;
       seen.add(text);
@@ -359,7 +378,7 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
       if (history.length >= 50) break;
     }
     return history.reverse();
-  }, [messages]);
+  }, [messages, continuationIndices]);
   const messageRefs = useMessageRefs(visibleMessages.length);
   const revealHistoryForMinimap = useCallback(() => {
     setVisibleCount((current) => Math.max(current, messages.length * 2));
@@ -380,7 +399,7 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
   const pendingQuestionGroup = blockingClarification(clarification);
   const planQuestionElement = pendingQuestionGroup || pendingPlanQuestions.length > 0 ? (
     <div style={{ flexShrink: 0, padding: "0 16px 1px", paddingRight: isMobile ? 16 : CHAT_INPUT_RIGHT_PADDING }}>
-      <div style={{ width: "100%", maxWidth: 820, margin: "0 auto" }}>
+      <div style={{ width: "100%", maxWidth: "var(--chat-content-width)", margin: "0 auto" }}>
         {pendingQuestionGroup ? <ClarificationGroupCard key={pendingQuestionGroup.id} group={pendingQuestionGroup} onAction={handleClarificationAction} /> : <PlanQuestionCard questions={pendingPlanQuestions} onAnswer={handlePlanQuestionAnswer} />}
       </div>
     </div>
@@ -395,6 +414,7 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
       onFollowUp={agentRunning ? handleFollowUp : undefined}
       onPromptWithStreamingBehavior={agentRunning ? handlePromptWithStreamingBehavior : undefined}
       isStreaming={sessionBusy}
+      contextControl={contextControl}
       inputLocked={Boolean(pendingQuestionGroup) || planMode.questions.some((question) => question.status === "pending")}
       model={displayModelValue}
       isAutoModelSelection={isAutoModelSelection}
@@ -409,8 +429,6 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
       isCompacting={isCompacting}
       compactError={compactError}
       compactResult={compactResult}
-      soundEnabled={soundEnabled}
-      onSoundToggle={onSoundToggle}
       planMode={planMode}
       onPlanModeChange={session || isNew ? handlePlanModeChange : undefined}
       onCancelPlan={session || isNew ? handleAbandonPlan : undefined}
@@ -437,7 +455,7 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
   if (loading) {
     return (
       <div className="flex h-full min-w-0 flex-col overflow-hidden bg-[var(--chat-bg)]" role="status" aria-busy="true" aria-label={t("chat.loadingSession")}>
-        <div className="mx-auto flex w-full max-w-[820px] flex-1 flex-col gap-7 overflow-hidden px-6 py-8">
+        <div className="mx-auto flex w-full max-w-[var(--chat-content-width)] flex-1 flex-col gap-7 overflow-hidden px-6 py-8">
           <div className="flex max-w-[74%] flex-col gap-3"><Skeleton className="h-3.5 w-24" /><Skeleton className="h-3.5 w-full" /><Skeleton className="h-3.5 w-4/5" /><Skeleton className="h-3 w-16" /></div>
           <div className="ml-auto flex w-[min(70%,30rem)] flex-col gap-3 rounded-2xl bg-[var(--bg-panel)] p-4"><Skeleton className="h-3.5 w-full" /><Skeleton className="h-3.5 w-3/4" /><Skeleton className="ml-auto h-3 w-14" /></div>
           <div className="flex max-w-[62%] flex-col gap-3"><Skeleton className="h-3.5 w-20" /><Skeleton className="h-3.5 w-full" /><Skeleton className="h-3.5 w-2/3" /><Skeleton className="h-3 w-12" /></div>
@@ -509,7 +527,7 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
 
       {isEmptyNew ? (
         <div className="flex flex-1 flex-col items-center justify-center overflow-y-auto px-4 py-8">
-          <div className="w-full max-w-[820px]">
+          <div className="w-full max-w-[var(--chat-content-width)]">
             <div className="mb-16 flex flex-col items-center px-4 text-center text-[var(--text)]">
               <div className="flex items-center justify-center gap-4">
                 <img
@@ -519,7 +537,7 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
                   draggable={false}
                   style={{ width: isMobile ? 58 : 76, height: isMobile ? 58 : 76, objectFit: "contain", flex: "0 0 auto" }}
                 />
-                <h1 style={{ margin: 0, fontSize: isMobile ? 28 : 32, fontWeight: 750, letterSpacing: "-0.04em", lineHeight: 1.15 }}>
+                <h1 style={{ margin: 0, fontSize: isMobile ? 24 : 28, fontWeight: 600, letterSpacing: "-0.02em", lineHeight: 1.15 }}>
                   将灵感付诸行动吧！
                 </h1>
               </div>
@@ -537,19 +555,19 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
       <div className="relative flex min-w-0 flex-1 overflow-hidden">
         <div ref={scrollContainerRef} className="min-w-0 flex-1 overflow-x-hidden overflow-y-auto pt-4 [scrollbar-width:none]">
           <div style={{ minWidth: 0, minHeight: "100%", display: "flex", flexDirection: "column", padding: `0 ${CHAT_COLUMN_PADDING}px` }}>
-            <div ref={messageContentRef} style={{ width: "100%", minWidth: 0, maxWidth: 820, margin: "0 auto", flex: "1 0 auto", display: "flex", flexDirection: "column", justifyContent: "flex-start" }}>
+            <div ref={messageContentRef} style={{ width: "100%", minWidth: 0, maxWidth: "var(--chat-content-width)", margin: "0 auto", flex: "1 0 auto", display: "flex", flexDirection: "column", justifyContent: "flex-start" }}>
             {(() => {
               let streamingConsumed = false;
               // Compaction summaries may anchor a live segment after the last user prompt.
               let lastAnchorIdx = -1;
               for (let i = messages.length - 1; i >= 0; i--) {
-                if (isGroupAnchor(messages[i])) { lastAnchorIdx = i; break; }
+                if (!continuationIndices.has(i) && isGroupAnchor(messages[i])) { lastAnchorIdx = i; break; }
               }
 
               const visibleRefIndexByMessage = new Map<number, number>();
               let refIdx = 0;
               messages.forEach((msg, idx) => {
-                if (msg.role === "user" || msg.role === "assistant") {
+                if (!continuationIndices.has(idx) && (msg.role === "user" || msg.role === "assistant")) {
                   visibleRefIndexByMessage.set(idx, refIdx++);
                 }
               });
@@ -559,14 +577,16 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
               };
 
               const renderMessage = (idx: number, options: { attachRef?: boolean; keyPrefix?: string; messageOverride?: AgentMessage; showTimestamp?: boolean; writtenFiles?: WrittenFile[]; renderPlan?: boolean; isStreaming?: boolean } = {}): ReactNode => {
+                if (continuationIndices.has(idx)) return null;
                 const msg = options.messageOverride ?? messages[idx];
                 const prevAssistantEntryId =
                   msg.role === "user" && idx > 0 && messages[idx - 1].role === "assistant"
                     ? entryIds[idx - 1]
-                    : undefined;
+                    : editAnchorEntryIds[idx] || undefined;
                 const isVisible = msg.role === "user" || msg.role === "assistant";
                 const currentRefIdx = visibleRefIndexByMessage.get(idx);
                 const keyPrefix = options.keyPrefix ?? "message";
+                const readOnly = messageReadOnly[idx];
                 let showTimestamp = false;
                 if (msg.role === "assistant") {
                   showTimestamp = true;
@@ -583,7 +603,7 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
                 if (options.showTimestamp !== undefined) showTimestamp = options.showTimestamp;
                 const messageView = (
                   <MessageView
-                    key={`${keyPrefix}-view-${idx}`}
+                    key={`${keyPrefix}-view-${messageKeys[idx]}`}
                     message={msg}
                     isStreaming={options.isStreaming}
                     toolResults={toolResultsMap}
@@ -593,11 +613,11 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
                     onOpenFile={onOpenFile}
                     onOpenReference={onOpenComposerReference}
                     entryId={entryIds[idx]}
-                    onFork={sessionBusy || isNew || (idx === 0 && msg.role === "user") ? undefined : handleFork}
+                    onFork={readOnly || sessionBusy || isNew || !entryIds[idx] || (!historyHasMore && idx === 0 && msg.role === "user") ? undefined : handleFork}
                     forking={forkingEntryId === entryIds[idx]}
-                    onNavigate={sessionBusy ? undefined : handleNavigate}
-                    prevAssistantEntryId={sessionBusy ? undefined : prevAssistantEntryId}
-                    onEditContent={handleEditContent}
+                    onNavigate={readOnly || sessionBusy ? undefined : handleNavigate}
+                    prevAssistantEntryId={readOnly || sessionBusy ? undefined : prevAssistantEntryId}
+                    onEditContent={readOnly ? undefined : handleEditContent}
                     showTimestamp={showTimestamp}
                     prevTimestamp={idx > 0 ? (messages[idx - 1] as AgentMessage & { timestamp?: number }).timestamp : undefined}
                     sessionId={session?.id ?? sessionIdRef.current ?? undefined}
@@ -606,6 +626,7 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
                   />
                 );
                 const canSubmitPlan = planMode.planModeActive
+                  && !readOnly
                   && planMode.phase === "planning"
                   && msg.role === "assistant"
                   && (msg as AssistantMessage).stopReason !== "error"
@@ -641,7 +662,7 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
                   },
                 } : currentPlanAction && sourcePlan ? {
                   label: sourcePlanIsCurrent && sourcePlan.phase === "reviewing" ? t("plan.openReview") : t("plan.view"),
-                  onClick: () => onOpenPlanReview?.(sourcePlan, planReviewControls, !sourcePlanIsCurrent || sourcePlan.phase !== "reviewing"),
+                  onClick: () => onOpenPlanReview?.(sourcePlan, planReviewControls, readOnly || !sourcePlanIsCurrent || sourcePlan.phase !== "reviewing"),
                 } : undefined;
                 const content = planMarkdown ? (
                   <PlanCard
@@ -654,11 +675,9 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
                     primaryAction={planPrimaryAction}
                   />
                 ) : messageView;
-                const questionGroups = clarification.groups.filter((group) => group.id !== pendingQuestionGroup?.id && getPlanQuestionsForMessage(msg, group.questions).length > 0);
-                const view = planQuestionGroups.length > 0 || questionGroups.length > 0 ? (
+                const view = planQuestionGroups.length > 0 ? (
                   <div>
                     {content}
-                    {questionGroups.map((group) => <ClarificationGroupCard key={group.id} group={group} history />)}
                     {planQuestionGroups.map((questions) => (
                       <PlanQuestionCard
                         key={questions[0]?.toolCallId}
@@ -668,15 +687,16 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
                     ))}
                   </div>
                 ) : content;
-                if (!isVisible || options.attachRef === false || currentRefIdx === undefined) return view;
+                if (!isVisible || options.attachRef === false || currentRefIdx === undefined) return <Fragment key={`${keyPrefix}-${messageKeys[idx]}`}>{view}</Fragment>;
                 return (
-                  <div key={`${keyPrefix}-${idx}`} ref={attachVisibleRef(currentRefIdx)}>
+                  <div key={`${keyPrefix}-${messageKeys[idx]}`} data-history-entry={messageKeys[idx]} ref={attachVisibleRef(currentRefIdx)}>
                     {view}
                   </div>
                 );
               };
 
               const rendered: ReactNode[] = [];
+              let logicalTurnId = "";
               for (let idx = 0; idx < messages.length;) {
                 const msg = messages[idx];
                 if (!isGroupAnchor(msg)) {
@@ -686,8 +706,9 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
                 }
 
                 const userIdx = idx;
+                if (msg.role === "user") logicalTurnId = messageKeys[idx];
                 let endIdx = userIdx + 1;
-                while (endIdx < messages.length && !isGroupAnchor(messages[endIdx])) endIdx += 1;
+                while (endIdx < messages.length && (continuationIndices.has(endIdx) || !isGroupAnchor(messages[endIdx]))) endIdx += 1;
 
                 const isLiveTail = (agentRunning || streamState.isStreaming) && endIdx === messages.length && userIdx === lastAnchorIdx;
                 if (isLiveTail) streamingConsumed = true;
@@ -695,6 +716,7 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
                 const extraIndices: number[] = [];
                 const sources: TaskPhaseSource[] = [];
                 for (let sourceIdx = userIdx + 1; sourceIdx < endIdx; sourceIdx++) {
+                  if (continuationIndices.has(sourceIdx)) continue;
                   const sourceMessage = messages[sourceIdx];
                   if (sourceMessage.role === "assistant") {
                     assistantIndices.push(sourceIdx);
@@ -715,11 +737,12 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
                   toolResults: toolResultsMap,
                   runningToolIds,
                   summaryExcludedMessageIndices: protectedPlanIndices,
+                  clarificationGroups,
                 });
                 rendered.push(renderMessage(userIdx));
                 if (turn.phases.length > 0 || (sources.length > 0 && turn.status !== "completed" && turn.status !== "running")) {
                   const tail = sources.at(-1);
-                  const turnKey = (entryIds[userIdx] ?? String(userIdx)) + ":" + (isLiveTail ? "live" : tail?.entryId ?? String(tail?.message.timestamp ?? endIdx));
+                  const turnKey = messageKeys[userIdx] + ":" + (isLiveTail ? "live" : tail?.entryId ?? String(tail?.message.timestamp ?? endIdx));
                   rendered.push(<div key={"task-turn-" + turnKey} ref={(element) => {
                     for (const sourceIdx of assistantIndices) {
                       const refIndex = visibleRefIndexByMessage.get(sourceIdx);
@@ -730,6 +753,9 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
                     }
                   }}>
                     <TaskTurnView turn={turn} toolResults={toolResultsMap} runningToolIds={runningToolIds}
+                      turnId={logicalTurnId || messageKeys[userIdx]}
+                      continuation={endIdx < messages.length && messages[endIdx].role === "custom" && (messages[endIdx] as CustomMessage).customType === "compaction"}
+                      archived={messageReadOnly[userIdx]}
                       agentPhase={isLiveTail ? agentPhase : null}
                       cwd={messageCwd} onOpenFile={onOpenFile} sessionId={session?.id ?? sessionIdRef.current ?? undefined} modelNames={modelNames}
                       phaseRef={(phase) => (element) => {
@@ -746,7 +772,6 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
                         const indices = new Set([...phase.summary, ...phase.items].map((ref) => ref.source.messageIndex));
                         const phaseToolIds = new Set(phase.items.flatMap((ref) => ref.block.type === "toolCall" ? [ref.block.toolCallId] : []));
                         return <>
-                          {clarification.groups.filter((group) => group.id !== pendingQuestionGroup?.id && phaseToolIds.has(group.id)).map((group) => <ClarificationGroupCard key={group.id} group={group} history />)}
                           {extraIndices.filter((sourceIdx) => sourceIdx >= start && sourceIdx < end).map((sourceIdx) => renderMessage(sourceIdx, { attachRef: false }))}
                           {[...indices].filter((sourceIdx) => sourceIdx < messages.length && !protectedPlanIndices.has(sourceIdx)).flatMap((sourceIdx) =>
                             groupPlanQuestions(getPlanQuestionsForMessage(messages[sourceIdx], planMode.questions).filter((question) => question.status === "answered" && phaseToolIds.has(question.toolCallId)))
@@ -781,9 +806,11 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
               const { startIndex, hasMore } = getVisibleRenderWindow(rendered.length, visibleCount);
               return (
                 <>
-                  {hasMore && (
-                     <div ref={sentinelRef} className="py-3 text-center text-xs text-text-muted">
-                       {t("chat.loadEarlier", { count: startIndex })}
+                  {(hasMore || historyHasMore) && (
+                     <div ref={sentinelRef} data-local-more={String(hasMore)} className="py-3 text-center text-xs text-text-muted">
+                       <button type="button" disabled={historyLoading} onClick={() => void revealEarlierHistory()} title={historyError ?? undefined}>
+                         {historyLoading ? t("chat.historyLoading") : historyError ? t("chat.historyRetry") : hasMore ? t("chat.loadEarlier", { count: startIndex }) : t("chat.historyEarlier")}
+                       </button>
                     </div>
                   )}
                   {rendered.slice(startIndex)}
@@ -818,9 +845,11 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
             </div>
           </div>
         </div>
+        <JumpToLatestButton scrollContainer={scrollContainerRef} content={messageContentRef}
+          ready={!loading} rightInset={isMobile ? 0 : CHAT_MINIMAP_WIDTH} onJump={followTail} />
         {isMobile ? null : (
           <ChatMinimap
-            messages={messages}
+            messages={presentationMessages}
             streamingMessage={streamState.streamingMessage}
             scrollContainer={scrollContainerRef}
             messageRefs={messageRefs}
@@ -890,7 +919,7 @@ function ExtensionDialog({
         }}
       >
         <div style={{ padding: "12px 14px", borderBottom: "1px solid var(--border)" }}>
-          <div style={{ color: "var(--text)", fontSize: 15, fontWeight: 550, letterSpacing: "-0.01em" }}>{request.title}</div>
+          <div style={{ color: "var(--text)", fontSize: 15, fontWeight: 500, letterSpacing: "-0.01em" }}>{request.title}</div>
           <div style={{ marginTop: 3, color: "var(--text-dim)", fontSize: 11, fontFamily: "var(--font-mono)" }}>{t("chat.extensionRequest")}</div>
         </div>
 
@@ -1125,7 +1154,7 @@ function ExtensionCustomPanel({
           }}
         />
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "10px 12px", borderBottom: "1px solid var(--border)" }}>
-           <div style={{ color: "var(--text)", fontSize: 13, fontWeight: 650 }}>{t("chat.extensionPanel")}</div>
+           <div style={{ color: "var(--text)", fontSize: 13, fontWeight: 600 }}>{t("chat.extensionPanel")}</div>
           <button
             onClick={() => onInput(request, "\x03")}
             style={{

@@ -1,17 +1,31 @@
-:root { color-scheme: light; --background: #f6f6f6; --text: #30302e; --hover: rgba(0,0,0,.06); --active: rgba(0,0,0,.11); }
+/* Keep the platform font stack in sync with app/globals.css. */
+:root { color-scheme: light; --background: #f6f6f6; --text: #30302e; --hover: rgba(0,0,0,.06); --active: rgba(0,0,0,.11); --font-ui: -apple-system, BlinkMacSystemFont, "Segoe WPC", "Segoe UI", "PingFang SC", "Noto Sans SC", sans-serif; }
 :root.dark { color-scheme: dark; --background: #242424; --text: #e8e8e8; --hover: rgba(255,255,255,.08); --active: rgba(255,255,255,.14); }
 * { box-sizing: border-box; }
-html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: var(--background); color: var(--text); font: 12px "Segoe UI", system-ui, sans-serif; user-select: none; }
+html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: var(--background); color: var(--text); font: 400 12px var(--font-ui); font-synthesis: none; user-select: none; }
 header { display: flex; width: 100%; height: 32px; }
-#drag-region { display: flex; flex: 1; min-width: 0; align-items: center; padding-left: 10px; }
-#drag-region span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-#logo { width: 16px; height: 16px; margin-right: 6px; pointer-events: none; }
+.resize-top, .resize-corner { position: fixed; top: 0; height: 5px; z-index: 10; }
+.resize-top { left: 8px; right: 8px; cursor: ns-resize; }
+.resize-corner { width: 8px; }
+.resize-northwest { left: 0; cursor: nwse-resize; }
+.resize-northeast { right: 0; cursor: nesw-resize; }
+.non-resizable .resize-top, .non-resizable .resize-corner { display: none; }
+.brand { display: flex; align-items: center; padding: 0 6px 0 10px; }
+#drag-region { flex: 1; min-width: 0; }
+#logo { width: 16px; height: 16px; pointer-events: none; }
+.navigation { display: flex; align-items: center; gap: 2px; }
+.navigation button { width: 28px; height: 26px; border-radius: 5px; cursor: pointer; }
+.navigation button svg { width: 16px; height: 16px; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.menubar { display: flex; align-items: center; gap: 2px; margin-left: 7px; }
+.menubar button { width: auto; min-width: 42px; height: 27px; padding: 0 9px; border-radius: 5px; color: var(--text); font: 400 13px var(--font-ui); }
+.menubar button[aria-expanded="true"] { background: var(--hover); }
 .controls { display: flex; flex: 0 0 auto; height: 32px; }
 button { display: grid; place-items: center; width: 46px; height: 32px; padding: 0; color: inherit; background: transparent; border: 0; border-radius: 0; cursor: default; }
-button:hover { background: var(--hover); }
-button:active { background: var(--active); }
+button:hover:not(:disabled) { background: var(--hover); }
+button:active:not(:disabled) { background: var(--active); }
+button:disabled { opacity: .35; cursor: default; }
 button:focus-visible { outline: 2px solid #60a5fa; outline-offset: -3px; }
 button svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-linecap: square; stroke-width: 1.1; }
 #close:hover { color: #fff; background: #e81123; }
 #close:active { color: #fff; background: #c50f1f; }
-.unfocused #drag-region, .unfocused button:not(:hover) { opacity: .65; }
+.unfocused .brand, .unfocused button:not(:hover):not(:disabled) { opacity: .65; }

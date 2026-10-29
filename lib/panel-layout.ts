@@ -26,27 +26,29 @@ export function getSidebarMaxWidth(options: {
   viewportWidth: number;
   rightPanelOpen: boolean;
   rightPanelWidth: number;
+  navigationWidth?: number;
 }): number {
-  const { viewportWidth, rightPanelOpen, rightPanelWidth } = options;
+  const { viewportWidth, rightPanelOpen, rightPanelWidth, navigationWidth = 0 } = options;
   if (viewportWidth <= MOBILE_MAX_WIDTH) return SIDEBAR_MAX_WIDTH;
 
   const compact = viewportWidth < SPLIT_PANEL_MIN_WIDTH;
   const chatWidth = compact ? COMPACT_CHAT_MIN_WIDTH : DESKTOP_CHAT_MIN_WIDTH;
   const visibleRightPanelWidth = !compact && rightPanelOpen ? rightPanelWidth : 0;
-  return Math.min(SIDEBAR_MAX_WIDTH, viewportWidth - chatWidth - visibleRightPanelWidth);
+  return Math.min(SIDEBAR_MAX_WIDTH, viewportWidth - navigationWidth - chatWidth - visibleRightPanelWidth);
 }
 
 export function getRightPanelMaxWidth(options: {
   viewportWidth: number;
   sidebarOpen: boolean;
   sidebarWidth: number;
+  navigationWidth?: number;
 }): number {
-  const { viewportWidth, sidebarOpen, sidebarWidth } = options;
+  const { viewportWidth, sidebarOpen, sidebarWidth, navigationWidth = 0 } = options;
   if (viewportWidth < SPLIT_PANEL_MIN_WIDTH) return RIGHT_PANEL_MAX_WIDTH;
 
   const visibleSidebarWidth = sidebarOpen ? sidebarWidth : 0;
   return Math.min(
     RIGHT_PANEL_MAX_WIDTH,
-    viewportWidth - DESKTOP_CHAT_MIN_WIDTH - visibleSidebarWidth,
+    viewportWidth - navigationWidth - DESKTOP_CHAT_MIN_WIDTH - visibleSidebarWidth,
   );
 }

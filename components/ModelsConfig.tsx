@@ -4,11 +4,16 @@ import { notify } from "@/lib/notification-store";
 import { NotificationNotice } from "@/components/Notifications";
 
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useId } from "react";
+import { Dialog } from "@base-ui/react/dialog";
+import { ArrowUpRightIcon, ChevronDownIcon, PlusIcon, SearchIcon, XIcon } from "lucide-react";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { useI18n } from "@/hooks/useI18n";
 import { Button } from "./ui/button";
 import { PiCatalogSync } from "./PiCatalogSync";
+import { LabelTooltip } from "./LabelTooltip";
+import { SettingsCard, SettingsLayout, SettingsSection } from "./SettingsLayout";
+import settingsStyles from "./ModelsSettings.module.css";
 import type { ModelCatalogPreset, ModelCatalogRecommendation } from "@/lib/model-catalog";
 import type { DiscoveredModel } from "@/lib/model-discovery";
 import {
@@ -217,6 +222,7 @@ function TextInput({ value, onChange, placeholder, mono }: { value: string; onCh
 }
 
 function SecretTextInput({
+  id,
   value,
   onChange,
   placeholder,
@@ -226,6 +232,7 @@ function SecretTextInput({
   spellCheck = false,
   style,
 }: {
+  id?: string;
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
@@ -245,6 +252,7 @@ function SecretTextInput({
   return (
     <div style={{ position: "relative", width: "100%", ...style }}>
       <input
+        id={id}
         type={visible ? "text" : "password"}
         value={value}
         onChange={(e) => onChange(e.target.value)}
@@ -1307,7 +1315,7 @@ function ModelDetail({
 
 // ── OAuth detail ──────────────────────────────────────────────────────────────
 
-function OAuthDetail({ provider, onRefresh }: { provider: OAuthProvider; onRefresh: () => void }) {
+function OAuthDetail({ provider, onRefresh, compact = false }: { provider: OAuthProvider; onRefresh: () => void; compact?: boolean }) {
   const [loginState, setLoginState] = useState<OAuthLoginState>({ phase: "idle" });
   const { t } = useI18n();
   const [inputValue, setInputValue] = useState("");
@@ -1431,9 +1439,17 @@ function OAuthDetail({ provider, onRefresh }: { provider: OAuthProvider; onRefre
     loginState.phase === "auth" || loginState.phase === "device_code" ||
     loginState.phase === "prompt" || loginState.phase === "select";
 
+  const disconnectButton = provider.loggedIn ? (
+    <button type="button" onClick={handleLogout}
+      className={compact ? settingsStyles.disconnect : undefined}
+      style={compact ? undefined : { padding: "6px 12px", background: "none", border: "1px solid var(--danger)", borderRadius: 6, color: "var(--danger)", cursor: "pointer", fontSize: 12 }}>
+      {t("i18n.disconnect")}
+    </button>
+  ) : null;
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+    <div className={compact ? settingsStyles.authDetail : undefined} style={{ display: "flex", flexDirection: "column", gap: compact ? 12 : 16 }}>
+      {!compact && <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
            <SectionTitle>{t("i18n.subscription")}</SectionTitle>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <span style={{ width: 7, height: 7, borderRadius: "50%", background: provider.loggedIn ? "#4ade80" : "var(--border)", display: "inline-block" }} />
@@ -1441,13 +1457,13 @@ function OAuthDetail({ provider, onRefresh }: { provider: OAuthProvider; onRefre
              {provider.loggedIn ? t("i18n.connected") : t("i18n.notConnected")}
           </span>
         </div>
-      </div>
+      </div>}
 
       {/* Status */}
-      <div style={{ minHeight: 48 }}>
+      <div style={{ minHeight: compact ? undefined : 48 }}>
         {loginState.phase === "idle" && (
           <p style={{ margin: 0, fontSize: 12, color: "var(--text-muted)", lineHeight: 1.5 }}>
-             {provider.loggedIn ? "Already connected. You can re-login or disconnect." : `Connect your ${provider.name} account.`}
+             {provider.loggedIn ? t("models.accountConnectedDescription") : t("models.accountConnectDescription", { name: provider.name })}
           </p>
         )}
         {loginState.phase === "connecting" && (
@@ -1532,7 +1548,7 @@ function OAuthDetail({ provider, onRefresh }: { provider: OAuthProvider; onRefre
       </div>
 
       {/* Actions */}
-      <div style={{ display: "flex", gap: 8 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: compact ? "flex-end" : undefined, gap: 8 }}>
         {isWorking ? (
           <button
             onClick={() => { eventSourceRef.current?.close(); setLoginState({ phase: "idle" }); }}
@@ -1542,20 +1558,14 @@ function OAuthDetail({ provider, onRefresh }: { provider: OAuthProvider; onRefre
           </button>
         ) : (
           <>
+            {compact && disconnectButton}
             <button
               onClick={handleLogin}
-              style={{ padding: "5px 14px", background: "var(--accent)", border: "none", borderRadius: 5, color: "#fff", cursor: "pointer", fontSize: 12, fontWeight: 600 }}
+              style={{ padding: "6px 12px", background: compact ? "var(--text)" : "var(--accent)", border: "none", borderRadius: 6, color: compact ? "var(--bg-panel)" : "#fff", cursor: "pointer", fontSize: 12, fontWeight: 500 }}
             >
                {provider.loggedIn ? t("i18n.relogin") : t("i18n.login")}
             </button>
-            {provider.loggedIn && (
-              <button
-                onClick={handleLogout}
-                style={{ padding: "5px 12px", background: "none", border: "1px solid rgba(239,68,68,0.3)", borderRadius: 5, color: "#ef4444", cursor: "pointer", fontSize: 12 }}
-              >
-                 {t("i18n.disconnect")}
-              </button>
-            )}
+            {!compact && disconnectButton}
           </>
         )}
       </div>
@@ -1565,7 +1575,7 @@ function OAuthDetail({ provider, onRefresh }: { provider: OAuthProvider; onRefre
 
 // ── API Key detail ────────────────────────────────────────────────────────────
 
-function ApiKeyDetail({ provider, onRefresh }: { provider: ApiKeyProvider; onRefresh: () => void }) {
+function ApiKeyDetail({ provider, onRefresh, compact = false }: { provider: ApiKeyProvider; onRefresh: () => void; compact?: boolean }) {
   const [apiKey, setApiKey] = useState("");
   const [saving, setSaving] = useState(false);
   const [removing, setRemoving] = useState(false);
@@ -1622,6 +1632,24 @@ function ApiKeyDetail({ provider, onRefresh }: { provider: ApiKeyProvider; onRef
       setRemoving(false);
     }
   }, [provider.id, onRefresh]);
+
+  if (compact) return (
+    <div className={settingsStyles.authDetail}>
+      <p className={settingsStyles.description}>{provider.configured ? t("models.keyStoredDescription") : t("models.keyConnectDescription", { name: provider.displayName })}</p>
+      <label className={settingsStyles.fieldLabel} htmlFor={`model-api-key-${provider.id}`}>API Key</label>
+      <SecretTextInput id={`model-api-key-${provider.id}`} value={apiKey} onChange={setApiKey}
+        onKeyDown={(event) => { if (event.key === "Enter" && apiKey.trim() && !saving) void handleSave(); }}
+        placeholder={provider.configured ? t("models.replaceKeyPlaceholder") : "sk-…"} />
+      {error && <NotificationNotice message={error} type="error" />}
+      <div className={settingsStyles.authFooter}>
+        <span className={settingsStyles.savedHint}>{t(provider.configured ? "models.keyStored" : "i18n.notConfigured")}</span>
+        <div className={settingsStyles.actions}>
+          {provider.configured && <button type="button" className={settingsStyles.disconnect} disabled={removing || saving} onClick={handleRemove}>{t(removing ? "i18n.removing" : "i18n.disconnect")}</button>}
+          <Button type="button" size="sm" disabled={saving || removing || !apiKey.trim() || savedOk} onClick={handleSave}>{t(savedOk ? "i18n.saved" : saving ? "i18n.saving" : "models.saveChanges")}</Button>
+        </div>
+      </div>
+    </div>
+  );
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -1738,6 +1766,22 @@ function ProviderIcon({ id, size }: { id: string; size: number }) {
 
 // ── Add provider picker ───────────────────────────────────────────────────────
 
+function SettingsProviderRow({ name, subtitle, status, connected, icon, expanded, onToggle, children }: {
+  name: string; subtitle: string; status: string; connected?: boolean;
+  icon: React.ReactNode; expanded: boolean; onToggle: () => void; children?: React.ReactNode;
+}) {
+  const contentId = useId();
+  return <div className={settingsStyles.provider}>
+    <button type="button" className={settingsStyles.providerToggle} onClick={onToggle} aria-expanded={expanded} aria-controls={contentId}>
+      <span className={settingsStyles.providerIcon}>{icon}</span>
+      <span className={settingsStyles.providerIdentity}><span className={settingsStyles.providerName}>{name}</span><span className={settingsStyles.providerSubtitle}>{subtitle}</span></span>
+      <span className={settingsStyles.status} data-connected={connected ? "true" : undefined}>{status}</span>
+      <svg className={settingsStyles.chevron} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
+    </button>
+    <div id={contentId} hidden={!expanded}>{expanded && <div className={settingsStyles.detail}>{children}</div>}</div>
+  </div>;
+}
+
 interface AddProviderPickerProps {
   oauthProviders: OAuthProvider[];
   apiKeyProviders: ApiKeyProvider[];
@@ -1753,123 +1797,67 @@ function AddProviderPicker({
 }: AddProviderPickerProps) {
   const [search, setSearch] = useState("");
   const { t } = useI18n();
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => { setTimeout(() => inputRef.current?.focus(), 30); }, []);
+  const popupRef = useRef<HTMLDivElement>(null);
 
   const q = search.trim().toLowerCase();
 
-  const availableOAuth = oauthProviders.filter((p) => !p.loggedIn && (!q || p.name.toLowerCase().includes(q)));
+  const availableOAuth = oauthProviders.filter((p) => !p.loggedIn && (!q || `${p.name} ${p.id}`.toLowerCase().includes(q)));
   const availableApiKey = apiKeyProviders.filter((p) => !p.configured && (!q || p.displayName.toLowerCase().includes(q) || p.id.toLowerCase().includes(q)));
-  const showCustom = !q || "custom".includes(q) || "openai-compatible".includes(q) || "anthropic-compatible".includes(q);
-
-  const totalCount = availableOAuth.length + availableApiKey.length + (showCustom ? 1 : 0);
-
-  const cardStyle: React.CSSProperties = {
-    display: "flex", flexDirection: "row", alignItems: "center", gap: 8,
-    padding: "10px 12px",
-    background: "var(--bg-panel)",
-    border: "1px solid var(--border)",
-    borderRadius: 7,
-    boxSizing: "border-box",
-    cursor: "pointer",
-    minWidth: 0,
-    textAlign: "left",
-    transition: "border-color 0.12s, background 0.12s",
-    width: "100%",
-  };
-
-
-
-  return (
-    <div
-      style={{ position: "fixed", inset: 0, zIndex: 1100, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center" }}
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
-    >
-      <div style={{ width: 820, maxWidth: "calc(100vw - 32px)", maxHeight: "min(72vh, calc(100vh - 32px))", background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 10, display: "flex", flexDirection: "column", boxShadow: "0 8px 32px rgba(0,0,0,0.22)", overflow: "hidden" }}>
-        {/* Search */}
-        <div style={{ padding: "10px 14px", borderBottom: "1px solid var(--border)", flexShrink: 0, display: "flex", alignItems: "center", gap: 8 }}>
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: "var(--text-dim)", flexShrink: 0 }}>
-            <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
-          </svg>
-          <input
-            ref={inputRef}
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Escape") onClose(); }}
-             placeholder={t("i18n.searchProviders")}
-            style={{ flex: 1, background: "none", border: "none", outline: "none", color: "var(--text)", fontSize: 13, boxSizing: "border-box" }}
-          />
-        </div>
-
-        {/* Card grid */}
-        <div style={{ flex: 1, overflowY: "auto", padding: 14 }}>
-          {totalCount === 0 ? (
-            <div style={{ padding: "20px 0", fontSize: 12, color: "var(--text-dim)", textAlign: "center" }}>{t("i18n.noProviders")}</div>
-          ) : (
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(240px, 100%), 1fr))", gap: 8 }}>
-              {showCustom && (
-                 <div style={{ gridColumn: "1 / -1", fontSize: 10, fontWeight: 600, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: "0.07em" }}>{t("i18n.custom")}</div>
-              )}
-              {showCustom && (
-                <button
-                  onClick={() => { onAddCustom(); onClose(); }}
-                  style={cardStyle}
-                  onMouseEnter={(e) => { e.currentTarget.style.borderColor = "var(--accent)"; e.currentTarget.style.background = "var(--bg-hover)"; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.background = "var(--bg-panel)"; }}
-                >
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text)", lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>OpenAI / Anthropic compatible</div>
-                     <div style={{ fontSize: 10, color: "var(--text-dim)", marginTop: 2 }}>{t("i18n.customEndpoint")}</div>
-                  </div>
-                  <span style={{ width: 26, height: 26, borderRadius: 5, background: "var(--bg-hover)", border: "1px dashed var(--border)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: "var(--text-dim)" }}>
-                      <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
-                    </svg>
-                  </span>
-                </button>
-              )}
-
-              {availableOAuth.length > 0 && (
-                 <div style={{ gridColumn: "1 / -1", paddingTop: showCustom ? 6 : 0, fontSize: 10, fontWeight: 600, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: "0.07em" }}>{t("i18n.subscriptions")}</div>
-              )}
-              {availableOAuth.map((p) => (
-                <button key={p.id} onClick={() => { onSelectOAuth(p.id); onClose(); }}
-                  style={cardStyle}
-                  onMouseEnter={(e) => { e.currentTarget.style.borderColor = "var(--accent)"; e.currentTarget.style.background = "var(--bg-hover)"; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.background = "var(--bg-panel)"; }}
-                >
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text)", lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</div>
-                    <div style={{ fontSize: 10, color: "var(--text-dim)", marginTop: 2 }}>OAuth</div>
-                  </div>
-                  <ProviderIcon id={p.id} size={28} />
-                </button>
-              ))}
-
-              {availableApiKey.length > 0 && (
-                <div style={{ gridColumn: "1 / -1", paddingTop: availableOAuth.length > 0 ? 6 : 0, fontSize: 10, fontWeight: 600, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: "0.07em" }}>API Key</div>
-              )}
-              {availableApiKey.map((p) => (
-                <button key={p.id} onClick={() => { onSelectApiKey(p.id); onClose(); }}
-                  style={cardStyle}
-                  onMouseEnter={(e) => { e.currentTarget.style.borderColor = "var(--accent)"; e.currentTarget.style.background = "var(--bg-hover)"; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.background = "var(--bg-panel)"; }}
-                >
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text)", lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.displayName}</div>
-                    <div style={{ fontSize: 10, color: "var(--text-dim)", marginTop: 2 }}>{p.modelCount} models</div>
-                  </div>
-                  <ProviderIcon id={p.id} size={28} />
-                </button>
-              ))}
-
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
+  const renderCard = (id: string, name: string, subtitle: string, onSelect: (id: string) => void) => (
+    <LabelTooltip key={id} content={name}>
+      <button type="button" className={settingsStyles.pickerCard} onClick={() => { onSelect(id); onClose(); }}>
+        <span className={settingsStyles.pickerLogo}><ProviderIcon id={id} size={20} /></span>
+        <span className={settingsStyles.providerIdentity}>
+          <span className={settingsStyles.providerName}>{name}</span>
+          <span className={settingsStyles.providerSubtitle}>{subtitle}</span>
+        </span>
+        <ChevronDownIcon size={14} strokeWidth={1.6} className={settingsStyles.pickerForward} aria-hidden="true" />
+      </button>
+    </LabelTooltip>
   );
+
+  return <Dialog.Root open onOpenChange={(open) => { if (!open) onClose(); }}>
+    <Dialog.Portal>
+      <Dialog.Backdrop className={settingsStyles.pickerBackdrop} />
+      <Dialog.Popup ref={popupRef} className={settingsStyles.picker} initialFocus={popupRef}>
+        <header className={settingsStyles.pickerHeader}>
+          <div>
+            <Dialog.Title className={settingsStyles.pickerTitle}>{t("models.addProvider")}</Dialog.Title>
+            <Dialog.Description className={settingsStyles.pickerDescription}>{t("models.addProviderDescription")}</Dialog.Description>
+          </div>
+          <Dialog.Close className={settingsStyles.pickerClose} aria-label={t("common.close")}><XIcon size={16} strokeWidth={1.6} aria-hidden="true" /></Dialog.Close>
+        </header>
+        <div className={settingsStyles.pickerSearch}>
+          <SearchIcon size={16} strokeWidth={1.6} aria-hidden="true" />
+          <input type="search" value={search} onChange={(event) => setSearch(event.target.value)}
+            placeholder={t("models.searchProviders")} aria-label={t("models.searchProviders")} />
+          <kbd aria-hidden="true">Esc</kbd>
+        </div>
+        <div className={settingsStyles.pickerContent}>
+          <button type="button" className={settingsStyles.pickerCustom} onClick={() => { onAddCustom(); onClose(); }}>
+            <span className={settingsStyles.pickerLogo}><PlusIcon size={16} strokeWidth={1.6} aria-hidden="true" /></span>
+            <span className={settingsStyles.providerIdentity}>
+              <span className={settingsStyles.providerName}>{t("models.customProvider")}</span>
+              <span className={settingsStyles.providerSubtitle}>{t("models.customProviderDescription")}</span>
+            </span>
+            <ChevronDownIcon size={14} strokeWidth={1.6} className={settingsStyles.pickerForward} aria-hidden="true" />
+          </button>
+          {availableOAuth.length > 0 && <section className={settingsStyles.pickerSection}>
+            <h3>{t("models.accountAuthorization")} <span>{availableOAuth.length}</span></h3>
+            <div className={settingsStyles.pickerGrid}>{availableOAuth.map((provider) => renderCard(provider.id, provider.name, "OAuth", onSelectOAuth))}</div>
+          </section>}
+          {availableApiKey.length > 0 && <section className={settingsStyles.pickerSection}>
+            <h3>API Key <span>{availableApiKey.length}</span></h3>
+            <div className={settingsStyles.pickerGrid}>{availableApiKey.map((provider) => renderCard(provider.id, provider.displayName, `${provider.modelCount} models`, onSelectApiKey))}</div>
+          </section>}
+          {!availableOAuth.length && !availableApiKey.length && <div className={settingsStyles.pickerEmpty} role="status">
+            <SearchIcon size={18} strokeWidth={1.6} aria-hidden="true" />
+            <p>{t("models.noMatchingProviders")}</p><span>{t("models.tryCustomProvider")}</span>
+          </div>}
+        </div>
+      </Dialog.Popup>
+    </Dialog.Portal>
+  </Dialog.Root>;
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
@@ -1887,7 +1875,21 @@ export function ModelsConfig({ onClose, embedded = false }: { onClose: () => voi
   const [apiKeyProviders, setApiKeyProviders] = useState<ApiKeyProvider[]>([]);
   const [discoveryProviders, setDiscoveryProviders] = useState<Record<string, { enabled: boolean }>>({});
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [openingConfig, setOpeningConfig] = useState(false);
   const lastSavedConfigRef = useRef<string | null>(null);
+
+  const openConfigFile = async () => {
+    if (openingConfig) return;
+    setOpeningConfig(true);
+    try {
+      const response = await fetch("/api/models-config/open", { method: "POST" });
+      if (!response.ok) throw new Error("Could not open models configuration");
+    } catch {
+      notify({ type: "error", message: t("models.openConfigFailed") });
+    } finally {
+      setOpeningConfig(false);
+    }
+  };
 
   const loadOAuthProviders = useCallback(() => {
     fetch("/api/auth/providers")
@@ -1920,7 +1922,7 @@ export function ModelsConfig({ onClose, embedded = false }: { onClose: () => voi
         lastSavedConfigRef.current = JSON.stringify(normalized);
         setConfig(normalized);
         const keys = Object.keys(normalized.providers ?? {});
-        if (keys.length > 0) setSelection({ type: "provider", name: keys[0] });
+        if (!embedded && keys.length > 0) setSelection({ type: "provider", name: keys[0] });
       })
       .catch(() => setConfig({ providers: {} }))
       .finally(() => setLoading(false));
@@ -1929,7 +1931,7 @@ export function ModelsConfig({ onClose, embedded = false }: { onClose: () => voi
       .then((d: { providers?: Record<string, { enabled: boolean }> }) => setDiscoveryProviders(d.providers ?? {}))
       .catch(() => {});
     refreshAuthProviders();
-  }, [refreshAuthProviders]);
+  }, [embedded, refreshAuthProviders]);
 
   const addCustomProvider = useCallback(() => {
     let finalName = "new-provider";
@@ -2079,18 +2081,27 @@ export function ModelsConfig({ onClose, embedded = false }: { onClose: () => voi
   const activeOAuth = oauthProviders.filter((p) => p.loggedIn);
   const activeApiKey = apiKeyProviders.filter((p) => p.configured);
 
+  useEffect(() => {
+    if (!embedded || !selection) return;
+    if (selection.type === "oauth" && oauthProviders.find((provider) => provider.id === selection.providerId)?.loggedIn === false && apiKeyProviders.some((provider) => provider.id === selection.providerId && provider.configured)) {
+      setSelection({ type: "apikey", providerId: selection.providerId });
+    } else if (selection.type === "apikey" && apiKeyProviders.find((provider) => provider.id === selection.providerId)?.configured === false && oauthProviders.some((provider) => provider.id === selection.providerId && provider.loggedIn)) {
+      setSelection({ type: "oauth", providerId: selection.providerId });
+    }
+  }, [embedded, selection, apiKeyProviders, oauthProviders]);
+
   // Resolve current detail
   const detailContent = (() => {
     if (!selection) return null;
     if (selection.type === "oauth") {
       const p = oauthProviders.find((p) => p.id === selection.providerId);
       if (!p) return null;
-      return <OAuthDetail key={p.id} provider={p} onRefresh={refreshAuthProviders} />;
+      return <OAuthDetail key={p.id} provider={p} onRefresh={refreshAuthProviders} compact={embedded} />;
     }
     if (selection.type === "apikey") {
       const p = apiKeyProviders.find((p) => p.id === selection.providerId);
       if (!p) return null;
-      return <ApiKeyDetail key={p.id} provider={p} onRefresh={refreshAuthProviders} />;
+      return <ApiKeyDetail key={p.id} provider={p} onRefresh={refreshAuthProviders} compact={embedded} />;
     }
     if (selection.type === "provider") {
       const provider = config.providers?.[selection.name];
@@ -2123,6 +2134,74 @@ export function ModelsConfig({ onClose, embedded = false }: { onClose: () => voi
       />
     );
   })();
+
+  if (embedded) {
+    const shownOAuth = oauthProviders.filter((provider) => provider.loggedIn || (selection?.type === "oauth" && selection.providerId === provider.id && !activeApiKey.some((other) => other.id === provider.id)));
+    const shownApiKey = apiKeyProviders.filter((provider) => provider.configured || (selection?.type === "apikey" && selection.providerId === provider.id && !activeOAuth.some((other) => other.id === provider.id)));
+    const configuredCount = activeOAuth.length + activeApiKey.length;
+    const selectedCustomName = selection?.type === "provider" ? selection.name : selection?.type === "model" ? selection.providerName : null;
+    return <>
+      <SettingsLayout title={t("common.models")} description={t("models.settingsDescription")}
+        actions={<Button type="button" size="sm" className="gap-1.5" onClick={() => setPickerOpen(true)}><PlusIcon size={13} strokeWidth={1.6} aria-hidden="true" />{t("models.addProvider")}</Button>}>
+        <SettingsSection title={t("models.catalogHeading")}>
+          <PiCatalogSync settings />
+        </SettingsSection>
+        <SettingsSection title={t("models.providersHeading")} meta={t("models.configuredCount", { count: configuredCount })}>
+          <SettingsCard aria-busy={loading}>
+            {loading && <p className={settingsStyles.empty}>{t("common.loading")}</p>}
+            {shownOAuth.map((provider) => {
+              const expanded = selection?.type === "oauth" && selection.providerId === provider.id;
+              return <SettingsProviderRow key={`oauth-${provider.id}`} name={provider.name} subtitle={t("models.accountAuthorization")} status={t(provider.loggedIn ? "i18n.connected" : "i18n.notConnected")} connected={provider.loggedIn}
+                icon={<ProviderIcon id={provider.id} size={18} />} expanded={expanded} onToggle={() => setSelection(expanded ? null : { type: "oauth", providerId: provider.id })}>{expanded && detailContent}</SettingsProviderRow>;
+            })}
+            {shownApiKey.map((provider) => {
+              const expanded = selection?.type === "apikey" && selection.providerId === provider.id;
+              return <SettingsProviderRow key={`apikey-${provider.id}`} name={provider.displayName} subtitle={t("models.builtinApiKey")} status={t(provider.configured ? "i18n.configured" : "i18n.notConfigured")} connected={provider.configured}
+                icon={<ProviderIcon id={provider.id} size={18} />} expanded={expanded} onToggle={() => setSelection(expanded ? null : { type: "apikey", providerId: provider.id })}>{expanded && detailContent}</SettingsProviderRow>;
+            })}
+            {providers.map(([name, provider]) => {
+              const expanded = selectedCustomName === name;
+              return <SettingsProviderRow key={`custom-${name}`} name={name} subtitle={t("models.customProviderSummary", { count: provider.models?.length ?? 0 })} status={t("i18n.custom")}
+                icon={<ProviderIcon id={name} size={18} />} expanded={expanded} onToggle={() => setSelection(expanded ? null : { type: "provider", name })}>
+                {selection?.type === "model" && expanded ? <>
+                  <button type="button" className={settingsStyles.backButton} onClick={() => setSelection({ type: "provider", name })}><span aria-hidden="true">←</span>{t("models.backToProvider")}</button>
+                  {detailContent}
+                </> : <>
+                  {expanded && detailContent}
+                  <div className={settingsStyles.modelListHeading}><h3>{t("models.customModels")} <span>{provider.models?.length ?? 0}</span></h3><Button type="button" variant="outline" size="sm" onClick={() => addModel(name)}>＋ {t("i18n.model")}</Button></div>
+                  {(provider.models ?? []).map((model, index) => <button type="button" className={settingsStyles.modelRow} key={`${index}-${model.id}`} onClick={() => setSelection({ type: "model", providerName: name, index })}>
+                    <span><span className={settingsStyles.modelName}>{model.name || model.id || t("i18n.unnamed")}</span>{model.name && <code>{model.id}</code>}</span>
+                    <span className={settingsStyles.modelEdit}>{t("models.editModel")} <span aria-hidden="true">›</span></span>
+                  </button>)}
+                  {!provider.models?.length && <p className={settingsStyles.emptyModels}>{t("models.noCustomModels")}</p>}
+                </>}
+              </SettingsProviderRow>;
+            })}
+            {!loading && !shownOAuth.length && !shownApiKey.length && !providers.length && <div className={settingsStyles.empty}><p>{t("models.noProvidersDescription")}</p><Button type="button" variant="outline" size="sm" onClick={() => setPickerOpen(true)}>{t("models.addProvider")}</Button></div>}
+          </SettingsCard>
+          <p className={settingsStyles.sectionNote}>{t("models.providersDescription")}</p>
+          {providers.length > 0 && <p className={settingsStyles.saveStatus} role="status">{t(saving ? "i18n.saving" : savedOk ? "i18n.saved" : "models.autoSaveDescription")}</p>}
+          <NotificationNotice message={saveError} type="error" />
+        </SettingsSection>
+        <details className={settingsStyles.advanced}>
+          <summary>{t("models.advancedSettings")}</summary>
+          <div>
+            <span>{t("models.configFileDescription")}</span>
+            <LabelTooltip content={t(openingConfig ? "models.openingConfig" : "models.openConfigFile")}>
+              <button type="button" className={settingsStyles.openConfig} disabled={openingConfig} aria-busy={openingConfig}
+                aria-label={`${t(openingConfig ? "models.openingConfig" : "models.openConfigFile")} ~/.pi/agent/models.json`}
+                onClick={() => { void openConfigFile(); }}>
+                <code>~/.pi/agent/models.json</code><ArrowUpRightIcon size={13} strokeWidth={1.6} aria-hidden="true" />
+              </button>
+            </LabelTooltip>
+          </div>
+        </details>
+      </SettingsLayout>
+      {pickerOpen && <AddProviderPicker oauthProviders={oauthProviders} apiKeyProviders={apiKeyProviders}
+        onSelectOAuth={(id) => setSelection({ type: "oauth", providerId: id })} onSelectApiKey={(id) => setSelection({ type: "apikey", providerId: id })}
+        onAddCustom={addCustomProvider} onClose={() => setPickerOpen(false)} />}
+    </>;
+  }
 
   return (
     <>

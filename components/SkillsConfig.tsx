@@ -1,7 +1,12 @@
 "use client";
 
-import { NotificationNotice } from "@/components/Notifications";
+import { ExtensionErrorText } from "./ExtensionNotice";
+
+import { ExtensionNotice as NotificationNotice } from "./ExtensionNotice";
 import { OrganizationCapabilityIcon } from "./OrganizationCapabilityIcon";
+import { MarketSkillSearch } from "./MarketSkillSearch";
+import { ProjectTrustNotice } from "./ProjectTrustNotice";
+import { MarketSkillManagement } from "./MarketInstalledCapability";
 
 
 import { useState, useEffect, useCallback, useRef } from "react";
@@ -106,6 +111,9 @@ function SkillDetail({
   updateError,
   onCheckUpdate,
   onUpdate,
+  onUninstall,
+  uninstalling = false,
+  compact = false,
 }: {
   skill: Skill;
   cwd: string;
@@ -118,10 +126,15 @@ function SkillDetail({
   updateError: string | null;
   onCheckUpdate: () => void;
   onUpdate: () => void;
+  onUninstall?: () => void;
+  uninstalling?: boolean;
+  compact?: boolean;
 }) {
   const { t } = useI18n();
   const label = sourceLabel(skill);
   const enabled = !skill.disableModelInvocation;
+
+  if (compact) return <><MarketSkillManagement skill={skill} cwd={cwd} busy={toggling || checkingUpdate || updating || uninstalling || Boolean(skill.managedPlugin)} checking={checkingUpdate} updating={updating} uninstalling={uninstalling} update={updateStatus} onToggle={() => onToggle(skill)} onCheck={onCheckUpdate} onUpdate={onUpdate} onUninstall={onUninstall} /><NotificationNotice message={saveError} type="error" /><NotificationNotice message={updateError} type="error" /></>;
 
   function displayPath(p: string): string {
     if (label === "project" && p.startsWith(cwd)) {
@@ -287,7 +300,7 @@ function SkillDetail({
             )}
             {(checkingUpdate ||
               (updateStatus && updateStatus.state !== "update-available")) && (
-              <span
+              <div
                 style={{
                   fontSize: 12,
                   color: checkingUpdate
@@ -305,8 +318,8 @@ function SkillDetail({
                      ? t("i18n.upToDate")
                     : updateStatus?.state === "unsupported"
                          ? t("i18n.automaticChecksUnavailable")
-                         : updateStatus?.message || t("i18n.checkFailed")}
-              </span>
+                         : updateStatus?.message ? <ExtensionErrorText error={updateStatus.message} /> : t("i18n.checkFailed")}
+              </div>
             )}
             {updateStatus?.state === "update-available" && (
               <button
@@ -369,34 +382,46 @@ function SkillDetail({
 
 function AddSkillPanel({
   cwd,
+  fixedScope,
+  compact = false,
+  onManage,
   installedPackages,
   projectResourcesLoaded,
   onInstalled,
 }: {
   cwd: string;
+  fixedScope?: SkillInstallScope;
+  compact?: boolean;
+  onManage?: (pkg: string, scope: SkillInstallScope) => void | Promise<void>;
   installedPackages: Record<SkillInstallScope, ReadonlySet<string>>;
   projectResourcesLoaded: boolean;
-  onInstalled: () => void;
+  onInstalled: () => void | Promise<void>;
 }) {
   const { t } = useI18n();
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SkillSearchResult[]>([]);
   const [searching, setSearching] = useState(false);
+  const [hasSearched, setHasSearched] = useState(false);
+  const searchSequence = useRef(0);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [installing, setInstalling] = useState<string | null>(null);
   const [installError, setInstallError] = useState<string | null>(null);
   const [newlyInstalledPkgs, setNewlyInstalledPkgs] = useState<Set<string>>(
     new Set(),
   );
-  const [scope, setScope] = useState<"global" | "project">("global");
+  const [scopeSelection, setScope] = useState<"global" | "project">("global");
+  const scope = fixedScope ?? scopeSelection;
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     inputRef.current?.focus();
+    return () => { searchSequence.current += 1; };
   }, []);
 
   const search = useCallback(async (q: string) => {
     if (!q.trim()) return;
+    const sequence = ++searchSequence.current;
+    setHasSearched(true);
     setSearching(true);
     setSearchError(null);
     setResults([]);
@@ -410,18 +435,19 @@ function AddSkillPanel({
         results?: SkillSearchResult[];
         error?: string;
       };
-      if (d.error) {
-        setSearchError(d.error);
+      if (sequence !== searchSequence.current) return;
+      if (!res.ok || d.error) {
+        setSearchError(d.error ?? `HTTP ${res.status}`);
         return;
       }
       setResults(d.results ?? []);
-      if ((d.results ?? []).length === 0) setSearchError("No skills found");
+      if (!compact && (d.results ?? []).length === 0) setSearchError("No skills found");
     } catch (e) {
-      setSearchError(String(e));
+      if (sequence === searchSequence.current) setSearchError(String(e));
     } finally {
-      setSearching(false);
+      if (sequence === searchSequence.current) setSearching(false);
     }
-  }, []);
+  }, [compact]);
 
   const install = useCallback(
     async (pkg: string) => {
@@ -441,7 +467,7 @@ function AddSkillPanel({
         setNewlyInstalledPkgs((prev) =>
           new Set(prev).add(`${scope}:${pkg}`),
         );
-        onInstalled();
+        await onInstalled();
       } catch (e) {
         setInstallError(String(e));
       } finally {
@@ -455,6 +481,8 @@ function AddSkillPanel({
     scope === "global"
       ? "~/.pi/agent/skills/"
       : `${shortenPath(cwd)}/.pi/skills/`;
+
+  if (compact) return <MarketSkillSearch query={query} results={results} searching={searching} searched={hasSearched} searchError={searchError} installError={installError} installing={installing} scope={scope} installPath={installPath} inputRef={inputRef} isInstalled={pkg => installedPackages[scope].has(pkg)} onQueryChange={setQuery} onSearch={search} onInstall={install} onManage={onManage ? pkg => onManage(pkg, scope) : undefined} />;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
@@ -513,7 +541,7 @@ function AddSkillPanel({
 
         {/* Scope + install path row */}
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <div
+          {!fixedScope && <div
             style={{
               display: "flex",
               borderRadius: 5,
@@ -546,7 +574,7 @@ function AddSkillPanel({
                 {s}
               </button>
             ))}
-          </div>
+          </div>}
           <span
             style={{
               fontSize: 12,
@@ -689,7 +717,7 @@ function AddSkillPanel({
           <div
             style={{ fontSize: 13, color: "var(--text-dim)", lineHeight: 1.8 }}
           >
-            Search{" "}
+            {t("i18n.search")}{" "}
             <a
               href="https://skills.sh"
               target="_blank"
@@ -698,7 +726,7 @@ function AddSkillPanel({
             >
               skills.sh
             </a>{" "}
-            to discover and install skills for your agent.
+            {t("extensions.skillSearchHint")}
           </div>
         )
       )}
@@ -708,19 +736,33 @@ function AddSkillPanel({
 
 export function SkillsConfig({
   cwd,
+  fixedInstallScope,
+  onManageSkill,
   onClose,
   embedded = false,
+  selection,
+  onInstalledChange,
+  onTrustProject,
+  view,
+  revision = 0,
 }: {
   cwd: string;
+  fixedInstallScope?: SkillInstallScope;
+  onManageSkill?: (skill: Skill) => void;
   onClose: () => void;
   embedded?: boolean;
+  view?: "installed" | "market";
+  revision?: number;
+  selection?: { filePath: string; requestId: number };
+  onInstalledChange?: () => void;
+  onTrustProject?: () => void;
 }) {
   const isMobile = useIsMobile();
   const { t } = useI18n();
   const [skills, setSkills] = useState<Skill[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selected, setSelected] = useState<string | null>(null);
+  const [selected, setSelected] = useState<string | null>(selection?.filePath ?? null);
   const [toggling, setToggling] = useState<Set<string>>(new Set());
   const [saveError, setSaveError] = useState<string | null>(null);
   const [addMode, setAddMode] = useState(false);
@@ -728,9 +770,17 @@ export function SkillsConfig({
   const [checkingUpdates, setCheckingUpdates] = useState<Set<string>>(new Set());
   const [checkingAll, setCheckingAll] = useState(false);
   const [updatingSkill, setUpdatingSkill] = useState<string | null>(null);
+  const [uninstallingSkill, setUninstallingSkill] = useState<string | null>(null);
+  const [uninstallError, setUninstallError] = useState<string | null>(null);
+  const [uninstallMessage, setUninstallMessage] = useState<string | null>(null);
   const [updateError, setUpdateError] = useState<string | null>(null);
   const [projectResourcesLoaded, setProjectResourcesLoaded] = useState(true);
   const [dormantGroupsOpen, setDormantGroupsOpen] = useState<Record<string, boolean>>({});
+  useEffect(() => {
+    if (!selection) return;
+    setSelected(selection.filePath);
+    setAddMode(false);
+  }, [selection]);
 
   const loadSkills = useCallback(async () => {
     setLoading(true);
@@ -739,10 +789,10 @@ export function SkillsConfig({
       const res = await fetch(`/api/skills?cwd=${encodeURIComponent(cwd)}`);
       const d = (await res.json()) as Partial<SkillsResponse> & { error?: string };
       if (!res.ok || d.error) throw new Error(d.error ?? `HTTP ${res.status}`);
-      const list = d.skills ?? [];
+      const list = (d.installedSkills ?? d.skills ?? []).filter(skill => !view || (!skill.organizationCapability && !skill.managedPlugin));
       setSkills(list);
       setProjectResourcesLoaded(d.projectResourcesLoaded ?? true);
-      if (list.length > 0 && !selected) {
+      if (list.length > 0 && !selected && view !== "installed") {
         const initialSkill = list.find((skill) => !skill.disableModelInvocation) ?? list[0];
         setSelected(initialSkill.filePath);
         if (initialSkill.disableModelInvocation) {
@@ -759,13 +809,17 @@ export function SkillsConfig({
     } finally {
       setLoading(false);
     }
-  }, [cwd, selected]);
+  }, [cwd, selected, view]);
 
   useEffect(() => {
     setUpdateStatuses({});
     setUpdateError(null);
     void loadSkills();
-  }, [cwd]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [cwd, revision]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (selection) void loadSkills();
+  }, [selection]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const checkForUpdates = useCallback(async (skill?: Skill) => {
     const targets = skill
@@ -837,6 +891,7 @@ export function SkillsConfig({
         throw new Error(data.error ?? `HTTP ${res.status}`);
       }
       await loadSkills();
+      onInstalledChange?.();
       const versionHash = data.skill?.install?.versionHash;
       setUpdateStatuses((current) => ({
         ...current,
@@ -853,7 +908,32 @@ export function SkillsConfig({
     } finally {
       setUpdatingSkill(null);
     }
-  }, [cwd, loadSkills]);
+  }, [cwd, loadSkills, onInstalledChange]);
+
+  const uninstallSkill = useCallback(async (skill: Skill) => {
+    if (!skill.install || skill.managedPlugin || skill.organizationCapability || uninstallingSkill) return;
+    setUninstallingSkill(skill.filePath);
+    setUninstallError(null);
+    setUninstallMessage(null);
+    try {
+      const response = await fetch("/api/skills/uninstall", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cwd, scope: skill.install.scope, package: skill.install.package, filePath: skill.filePath }),
+      });
+      const payload = await response.json() as { success?: boolean; error?: string };
+      if (!response.ok || !payload.success || payload.error) throw new Error(payload.error ?? `HTTP ${response.status}`);
+      setSkills(current => current.filter(item => item.filePath !== skill.filePath));
+      setUpdateStatuses(current => { const next = { ...current }; const key = updateKey(skill); if (key) delete next[key]; return next; });
+      await loadSkills();
+      onInstalledChange?.();
+      setUninstallMessage(t("extensions.marketSkillUninstalled", { name: skill.name }));
+    } catch (error) {
+      setUninstallError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setUninstallingSkill(null);
+    }
+  }, [cwd, loadSkills, onInstalledChange, t, uninstallingSkill]);
 
   const toggle = useCallback(async (skill: Skill) => {
     if (skill.managedPlugin) return;
@@ -881,6 +961,7 @@ export function SkillsConfig({
             : s,
         ),
       );
+      onInstalledChange?.();
       if (next) {
         setDormantGroupsOpen((current) => ({
           ...current,
@@ -896,9 +977,9 @@ export function SkillsConfig({
         return n;
       });
     }
-  }, []);
+  }, [onInstalledChange]);
 
-  const selectedSkill = skills.find((s) => s.filePath === selected) ?? null;
+  const selectedSkill = skills.find((s) => s.filePath === (view === "installed" && selection ? selection.filePath : selected)) ?? null;
 
   return (
     <div
@@ -933,7 +1014,7 @@ export function SkillsConfig({
         }}
       >
         {/* Header */}
-        <div
+        {!view && <div
           style={{
             display: "flex",
             alignItems: "center",
@@ -979,22 +1060,9 @@ export function SkillsConfig({
           >
             ×
           </button>}
-        </div>
+        </div>}
 
-        {!projectResourcesLoaded && (
-          <div
-            role="status"
-            style={{
-              padding: "8px 18px",
-              borderBottom: "1px solid var(--border)",
-              background: "var(--bg-panel)",
-              color: "var(--text-muted)",
-              fontSize: 12,
-            }}
-          >
-            {t("trust.skillsNotLoaded")}
-          </div>
-        )}
+        {!projectResourcesLoaded && <ProjectTrustNotice kind="skills" onTrustProject={onTrustProject} />}
 
         {/* Body */}
         <div style={{ flex: 1, display: "flex", flexDirection: isMobile ? "column" : "row", overflow: "hidden" }}>
@@ -1005,7 +1073,7 @@ export function SkillsConfig({
               maxHeight: isMobile ? "40vh" : undefined,
               borderRight: isMobile ? "none" : "1px solid var(--border)",
               borderBottom: isMobile ? "1px solid var(--border)" : "none",
-              display: "flex",
+              display: view ? "none" : "flex",
               flexDirection: "column",
               flexShrink: 0,
               background: "var(--bg-panel)",
@@ -1023,7 +1091,7 @@ export function SkillsConfig({
                    {t("i18n.loading")}
                 </div>
               ) : error ? (
-                <NotificationNotice message={error} type="error" />
+                !view && <NotificationNotice message={error} type="error" />
               ) : skills.length === 0 ? (
                 <div
                   style={{
@@ -1268,10 +1336,21 @@ export function SkillsConfig({
           </div>
 
           {/* Right: detail or add panel */}
-          <div style={{ flex: 1, overflowY: "auto", padding: 20, background: "var(--chat-bg)" }}>
-            {addMode ? (
+          <div style={{ flex: 1, minWidth: 0, overflowY: "auto", padding: embedded && view ? 24 : 20, background: "var(--chat-bg)" }}>
+            <NotificationNotice message={uninstallError} type="error" />
+            <NotificationNotice message={uninstallMessage} type="success" />
+            {view && error ? <NotificationNotice message={error} type="error" action={embedded && view === "market" ? { label: t("context.retry"), onClick: () => void loadSkills() } : undefined} /> : null}
+            {(view ? view === "market" : addMode) ? (
               <AddSkillPanel
                 cwd={cwd}
+                fixedScope={fixedInstallScope}
+                compact={embedded && view === "market"}
+                onManage={onManageSkill ? async (pkg, scope) => {
+                  let skill = skills.find(item => item.install?.package === pkg && item.install.scope === scope);
+                  if (!skill) skill = (await loadSkills()).find(item => item.install?.package === pkg && item.install.scope === scope);
+                  if (skill) onManageSkill(skill);
+                  else setError(t("extensions.skillManageUnavailable"));
+                } : undefined}
                 projectResourcesLoaded={projectResourcesLoaded}
                 installedPackages={{
                   global: new Set(
@@ -1285,12 +1364,14 @@ export function SkillsConfig({
                       .map((skill) => skill.install!.package),
                   ),
                 }}
-                onInstalled={() => {
-                  void loadSkills();
+                onInstalled={async () => {
+                  await loadSkills();
+                  onInstalledChange?.();
                 }}
               />
-            ) : loading ? null : selectedSkill ? (
+            ) : loading && !selectedSkill ? null : selectedSkill ? (
               <SkillDetail
+                compact={embedded && view === "installed"}
                 key={selectedSkill.filePath}
                 skill={selectedSkill}
                 cwd={cwd}
@@ -1311,6 +1392,8 @@ export function SkillsConfig({
                 updateError={updateError}
                 onCheckUpdate={() => void checkForUpdates(selectedSkill)}
                 onUpdate={() => void updateInstalledSkill(selectedSkill)}
+                onUninstall={() => void uninstallSkill(selectedSkill)}
+                uninstalling={uninstallingSkill === selectedSkill.filePath}
               />
             ) : (
               <div
@@ -1323,7 +1406,7 @@ export function SkillsConfig({
                   fontSize: 13,
                 }}
               >
-                 {t("i18n.selectSkill")}
+                 {t(view === "installed" ? "extensions.marketInstallationMissing" : "i18n.selectSkill")}
               </div>
             )}
           </div>

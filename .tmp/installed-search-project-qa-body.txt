@@ -1,0 +1,31 @@
+ const workspace=page.locator('[data-app-page="extensions"]'),sidebar=workspace.locator('[data-installed-capabilities]');
+ const project=sidebar.locator('header').getByText('Eureka',{exact:true});await project.waitFor();
+ assert.equal(await workspace.getByText('Eureka',{exact:true}).count(),1);
+ assert.equal(await sidebar.locator('header').getByRole('button',{name:'搜索已安装能力…',exact:true}).count(),0);
+ assert.equal(await sidebar.getByRole('button',{name:'刷新已安装能力',exact:true}).count(),0);
+ const initialRect=await project.boundingBox();assert.ok(initialRect.y<64);
+ const projectStyle=await project.evaluate(el=>({color:getComputedStyle(el).color,dim:getComputedStyle(document.documentElement).getPropertyValue('--text-dim').trim(),fontSize:getComputedStyle(el).fontSize}));
+ assert.equal(projectStyle.fontSize,'11px');
+ assert.equal(await project.evaluate(el=>{const probe=document.createElement('span');probe.style.color='var(--text-dim)';el.append(probe);const matched=getComputedStyle(el).color===getComputedStyle(probe).color;probe.remove();return matched;}),true);
+ const scope=async(name)=>sidebar.getByRole('tab',{name,exact:true}).click();
+ await scope('项目');await sidebar.getByRole('button',{name:'未加载的组织技能',exact:true}).waitFor();assert.equal(await sidebar.locator('li').count(),2);
+ const heading=sidebar.getByRole('heading',{name:/^已安装/}).locator('..'),searchButton=sidebar.getByRole('button',{name:'搜索已安装能力…',exact:true});
+ assert.ok(await heading.getByRole('button',{name:'搜索已安装能力…',exact:true}).isVisible());
+ const before=await heading.boundingBox();await searchButton.click();
+ const input=sidebar.getByRole('textbox',{name:'搜索已安装能力…',exact:true});assert.ok(await input.evaluate(el=>el===document.activeElement));
+ const searchRect=await input.locator('..').boundingBox();assert.equal(searchRect.y,before.y);assert.equal(searchRect.height,36);
+ const installedStyle=await input.evaluate(el=>({border:getComputedStyle(el).borderWidth,font:getComputedStyle(el).fontSize,bg:getComputedStyle(el).backgroundColor}));assert.equal(installedStyle.border,'0px');assert.equal(installedStyle.font,'13px');assert.equal(installedStyle.bg,'rgba(0, 0, 0, 0)');
+ await input.fill('未加载');assert.equal(await sidebar.locator('li').count(),1);await input.press('Escape');await searchButton.waitFor();assert.equal(await sidebar.locator('li').count(),2);
+ await searchButton.click();assert.equal(await input.inputValue(),'');await input.fill('不存在的能力');await sidebar.getByText('没有匹配的能力',{exact:true}).waitFor();await sidebar.getByRole('button',{name:'关闭',exact:true}).click();assert.equal(await sidebar.locator('li').count(),2);
+ await searchButton.click();await input.fill('未加载');await page.getByRole('button',{name:'主页',exact:true}).click();await page.getByRole('button',{name:'扩展中心',exact:true}).click();assert.equal(await input.inputValue(),'未加载');await input.press('Escape');
+ // The input presentation matches the existing session search.
+ await page.getByRole('button',{name:'主页',exact:true}).click();await page.getByRole('button',{name:'搜索任务',exact:true}).click();
+ const sessionInput=page.getByRole('textbox',{name:'搜索任务',exact:true});
+ const sessionStyle=await sessionInput.evaluate(el=>({border:getComputedStyle(el).borderWidth,font:getComputedStyle(el).fontSize,bg:getComputedStyle(el).backgroundColor}));assert.deepEqual(installedStyle,sessionStyle);await sessionInput.press('Escape');
+ await page.getByRole('button',{name:'扩展中心',exact:true}).click();await page.screenshot({path:'.tmp/installed-project-search-desktop.png'});
+ await page.setViewportSize({width:390,height:844});await sidebar.getByRole('button',{name:'展开扩展导航',exact:true}).click();await searchButton.click();assert.ok(await input.evaluate(el=>el===document.activeElement));await input.fill('组织技能');
+ await page.emulateMedia({colorScheme:'dark'});await page.waitForFunction(()=>document.documentElement.classList.contains('dark'));await page.screenshot({path:'.tmp/installed-project-search-mobile-dark.png',animations:'disabled'});assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+ // A long project name stays in the header without forcing horizontal overflow.
+ await page.setViewportSize({width:1440,height:960});await page.goto(`${base}/?cwd=${encodeURIComponent('E:/a-very-long-project-name-for-overflow-checking')}`,{waitUntil:'domcontentloaded'});await page.getByRole('button',{name:'扩展中心',exact:true}).click();
+ const longProject=sidebar.locator('header').getByText('a-very-long-project-name-for-overflow-checking',{exact:true});await longProject.waitFor();assert.equal(await longProject.evaluate(el=>getComputedStyle(el).textOverflow),'ellipsis');assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+ assert.deepEqual(errors,[]);console.log(JSON.stringify({refreshRemoved:true,searchMovedToInstalledHeading:true,inlineSearchMatchesSessions:true,searchFocusFilterEscapeAndClose:true,searchPreserved:true,projectMovedAndDimmed:true,duplicateProjectHeaderRemoved:true,longNameTruncated:true,mobileDarkNoOverflow:true,pageErrors:errors}));

@@ -1,0 +1,196 @@
+/* Sidebar typography and selection share one scale across tasks and files. */
+.root {
+  min-height: 0;
+  font-family: var(--font-ui);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.sectionLabel {
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 20px;
+}
+
+.panelTabs {
+  flex-shrink: 0;
+  padding: 4px 12px 0;
+}
+
+.panelTabList {
+  display: flex;
+  width: 100%;
+  height: 38px;
+  background: color-mix(in srgb, var(--text) 6%, var(--sidebar-bg));
+}
+
+.panelTab {
+  flex: 1;
+  height: 30px;
+  gap: 7px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.contentPanel {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.taskList,
+.fileList {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.taskList {
+  padding-bottom: 8px;
+}
+
+.contentPanel[hidden],
+.fileList[hidden] {
+  display: none;
+}
+
+.emptyPanel {
+  padding: 16px 14px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.projectTrigger:hover {
+  border-color: color-mix(in srgb, var(--text-muted) 35%, var(--border)) !important;
+}
+
+.projectTrigger:focus-visible,
+.fileRow:focus-within {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.sessionRow {
+  min-width: 0;
+  margin: 0 8px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+}
+
+.sessionRow:hover,
+.sessionRow:focus-within {
+  background: color-mix(in srgb, var(--text) 4%, var(--sidebar-bg));
+}
+
+.sessionRow[data-selected="true"] {
+  border-color: color-mix(in srgb, var(--text) 8%, transparent);
+  background: color-mix(in srgb, var(--text) 7%, var(--sidebar-bg));
+}
+
+.sessionTitle {
+  color: var(--text-muted);
+  font-weight: 400;
+  transition: color 120ms ease;
+}
+
+.sessionRow:hover .sessionTitle,
+.sessionRow:focus-within .sessionTitle,
+.sessionRow[data-selected="true"] .sessionTitle {
+  color: var(--text);
+}
+
+.sessionTime {
+  flex-shrink: 0;
+  max-width: 76px;
+  overflow: hidden;
+  color: var(--text-dim);
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 16px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.fileRow {
+  min-width: 0;
+  font-family: var(--font-ui);
+  font-weight: 400;
+}
+
+.treeList { padding: 8px 12px 12px; }
+.treeNode { min-width: 0; }
+.treeRow { display: flex; align-items: center; min-height: 28px; border-radius: 8px; transition: background-color 100ms ease; }
+.treeRow:hover { background: color-mix(in srgb, var(--text) 4%, var(--sidebar-bg)); }
+.treeRow[data-selected="true"] { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text) 8%, transparent); background: color-mix(in srgb, var(--text) 7%, var(--sidebar-bg)); }
+.treeRow:active { background: color-mix(in srgb, var(--text) 10%, var(--sidebar-bg)); }
+.treeRow:focus-within { outline: none; }
+.treeRow:has(:focus-visible) { outline: 2px solid var(--accent); outline-offset: -2px; }
+.treeButton { flex: 1; justify-content: flex-start; width: 100%; min-width: 0; height: 28px; gap: 6px; padding: 4px 8px; border-radius: inherit; color: var(--text); font: 400 13px/20px var(--font-ui); text-align: left; user-select: none; cursor: pointer; }
+.treeButton:hover { background: transparent; }
+.treeButton:focus-visible { outline: none; }
+.treeChevron { flex-shrink: 0; margin-inline-end: -4px; transform: rotate(0); transition: transform 150ms ease; }
+.treeChevron[data-open="true"] { transform: rotate(90deg); }
+.treeName { flex: 1; min-width: 0; overflow: hidden; color: var(--text); text-overflow: ellipsis; white-space: nowrap; }
+.treeChildren { margin-inline-start: 16px; }
+.treeContent { height: var(--collapsible-panel-height); overflow: hidden; transition: height 180ms ease, opacity 150ms ease; }
+.treeContent[data-starting-style], .treeContent[data-ending-style] { height: 0; opacity: 0; }
+.treeActions { display: flex; flex-shrink: 0; align-items: center; gap: 4px; padding-right: 8px; }
+.treeAction { display: inline-flex; flex-shrink: 0; align-items: center; justify-content: center; gap: 4px; height: 20px; padding: 0 5px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg-panel); color: var(--text-muted); font-size: 11px; font-weight: 600; text-decoration: none; white-space: nowrap; cursor: pointer; }
+.treeAction:hover { background: var(--bg-selected); }
+.treeMention { padding-inline: 8px; color: var(--accent); }
+.treeEmpty { display: flex; align-items: center; height: 28px; padding-left: 8px; color: var(--text-muted); font-size: 12px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .treeRow, .treeChevron, .treeContent { transition: none; }
+}
+
+.accountFooter {
+  padding: 8px 10px;
+  border-color: color-mix(in srgb, var(--border) 65%, transparent);
+  background: var(--sidebar-bg);
+}
+
+.accountTrigger {
+  min-height: 56px;
+  gap: 10px;
+  padding: 8px;
+}
+
+.accountAvatar {
+  width: 32px;
+  height: 32px;
+}
+
+.accountName {
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 20px;
+}
+
+.accountEmail {
+  color: var(--text-dim);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 18px;
+}
+
+.avatarOnlyFooter {
+  width: 52px;
+  padding: 6px;
+  border-top: 0;
+}
+
+.avatarOnlyTrigger {
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  min-height: 40px;
+  padding: 4px;
+}
+

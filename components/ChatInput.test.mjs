@@ -1,8 +1,17 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import test, { after } from "node:test";
+import { registerHooks } from "node:module";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { createJiti } from "jiti";
+
+const cssHook = registerHooks({
+  load(url, context, nextLoad) {
+    if (url.endsWith(".module.css")) return { format: "module", source: "export default new Proxy({}, { get: (_, name) => String(name) });", shortCircuit: true };
+    return nextLoad(url, context);
+  },
+});
+after(() => cssHook.deregister());
 
 const jiti = createJiti(import.meta.url, {
   jsx: { runtime: "automatic" },
@@ -78,7 +87,7 @@ test("keeps tool permissions and manual compaction out of the bottom toolbar", (
   assert.doesNotMatch(html, /aria-label="Change tool preset"/);
   assert.doesNotMatch(html, /aria-label="Compact context"/);
   assert.doesNotMatch(html, />Read-only<\/span>/);
-  assert.match(html, /aria-label="Add images or commands"/);
+  assert.match(html, /aria-label="Add files or commands"/);
 });
 
 test("shows and locks the optimistic model while a switch is pending", () => {

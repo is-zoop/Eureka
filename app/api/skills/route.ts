@@ -5,6 +5,7 @@ import { homedir } from "os";
 import path from "path";
 import { getAgentDir, parseFrontmatter } from "@earendil-works/pi-coding-agent";
 import { loadSkillsWithInstallInfo } from "@/lib/skills-service";
+import { loadCommandResources } from "@/lib/command-catalog";
 import { getAllowedFileRoots, isExistingFilePathAllowed } from "@/lib/file-access";
 
 export const dynamic = "force-dynamic";
@@ -22,6 +23,7 @@ export async function GET(req: Request) {
     if (!isExistingFilePathAllowed(cwd, allowedRoots)) {
       return NextResponse.json({ error: "Access denied" }, { status: 403 });
     }
+    if (searchParams.get("metadataOnly") === "1") return NextResponse.json(await loadCommandResources(cwd), { headers: { "Cache-Control": "no-store" } });
     return NextResponse.json(await loadSkillsWithInstallInfo(cwd));
   } catch (e) {
     return NextResponse.json({ error: String(e) }, { status: 500 });

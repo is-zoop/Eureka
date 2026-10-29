@@ -1,0 +1,13 @@
+html[data-surface=first-launch-onboarding-overlay],html[data-surface=first-launch-onboarding-overlay] body,html[data-surface=first-launch-onboarding-overlay] #root,html[data-surface=first-launch-onboarding-overlay] #root>div{background:transparent!important;background-color:transparent!important}
+html[data-surface=first-launch-onboarding-overlay] [data-onboarding-github-card],html[data-surface=first-launch-onboarding-overlay] [data-onboarding-figma-card],html[data-surface=first-launch-onboarding-overlay] [data-onboarding-plan-card],html[data-surface=first-launch-onboarding-overlay] [data-onboarding-generated-preview-card],html[data-surface=first-launch-onboarding-overlay] [data-onboarding-table-card],html[data-surface=first-launch-onboarding-overlay] [data-onboarding-file-card]{background-color:color-mix(in srgb,var(--qde2d3b) 90%,transparent)!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
+html[data-surface=first-launch-onboarding-overlay] [data-onboarding-figma-card]{background-color:color-mix(in srgb,var(--qde2d3b) 98%,transparent)!important}
+html[data-surface=first-launch-onboarding-overlay] [data-onboarding-generated-preview-body]{background-color:#1414141a!important;background-image:none!important}
+html[data-surface=first-launch-onboarding-overlay] [data-onboarding-skip]{right:max(130px,calc(var(--qf2490b, 0px) + 80px))!important;top:60px!important;bottom:auto!important}
+html[data-surface=first-launch-onboarding-overlay] [data-onboarding-user-bubble]{background-color:color-mix(in srgb,var(--q8f0315) 80%,transparent)!important}
+html[data-surface=first-launch-onboarding-overlay] [data-onboarding-loader-icon]{color:color-mix(in srgb,var(--qde2d3b) 80%,transparent)!important}
+html[data-surface=first-launch-onboarding-overlay] [data-onboarding-loader-bar]{background-color:color-mix(in srgb,var(--qde2d3b) 40%,transparent)!important}
+html[data-surface=first-launch-onboarding-overlay] [data-onboarding-plan-skeleton]{background-color:color-mix(in srgb,var(--q3c93d1) 30%,transparent)!important}
+html[data-surface=first-launch-onboarding-overlay] [data-onboarding-native-window-drag-region]{-webkit-app-region:drag}
+html[data-surface=first-launch-onboarding-overlay] [data-onboarding-native-window-drag-region] :is(button,a,input,textarea,select,[role=button],[role=option],[data-radix-collection-item],[data-onboarding-role-reveal-box]){-webkit-app-region:no-drag}
+html[data-surface=first-launch-onboarding-overlay] [role=listbox]{-webkit-app-region:no-drag}
+

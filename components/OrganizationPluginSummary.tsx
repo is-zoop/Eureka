@@ -1,7 +1,9 @@
 "use client";
+
+import { ExtensionErrorText } from "./ExtensionNotice";
 import { useEffect, useState } from "react";
 import { useI18n } from "@/hooks/useI18n";
-type Summary = { name: string; state: string; skills: string[]; servers: Array<{ name: string; url: string }>; error?: string; capabilities?: { requestUserInput?: boolean } };
+type Summary = { name: string; state: string; skills: string[]; servers: Array<{ name: string; url: string }>; error?: string; capabilities?: { requestUserInput?: boolean }; composer?: { selectionMode: "once" | "persistent" } };
 export function OrganizationPluginSummary({ itemId, cwd, sessionId, revision }: { itemId: string; cwd: string; sessionId?: string | null; revision?: unknown }) {
   const { t } = useI18n();
   const [summary, setSummary] = useState<Summary | null>(null);
@@ -21,5 +23,5 @@ export function OrganizationPluginSummary({ itemId, cwd, sessionId, revision }: 
     return () => { active = false; controller.abort(); clearInterval(timer); };
   }, [cwd, itemId, revision, sessionId]);
   if (!summary) return null;
-  return <section className="mb-4 space-y-2 rounded-[var(--radius-card)] border border-[var(--border)] p-4 text-xs"><p className="font-medium">{t("extensions.pluginComponents")} · {t(`extensions.pluginState.${summary.state}`)}</p>{summary.skills.map((skill) => <p key={skill}>Skill · {skill}</p>)}{summary.capabilities?.requestUserInput && <p>{t("extensions.pluginUserInput")}</p>}{summary.servers.map((server) => <p key={server.name} className="break-all">MCP · {server.name} · {server.url}</p>)}{summary.error ? <p className="text-red-600">{summary.error}</p> : null}</section>;
+  return <section className="mb-4 space-y-2 rounded-[var(--radius-card)] border border-[var(--border)] p-4 text-xs"><p className="font-medium">{t("extensions.pluginComponents")} · {t(`extensions.pluginState.${summary.state}`)}</p>{summary.skills.map((skill) => <p key={skill}>{t("extensions.skills")} · {skill}</p>)}{summary.capabilities?.requestUserInput && <p>{t("extensions.pluginUserInput")}</p>}{summary.composer?.selectionMode === "persistent" && <p>{t("extensions.pluginPersistent")}</p>}{summary.servers.map((server) => <p key={server.name} className="break-all">{t("extensions.mcp")} · {server.name} · {server.url}</p>)}{summary.error ? <div className="text-red-600"><ExtensionErrorText error={summary.error} /></div> : null}</section>;
 }

@@ -3,5 +3,5 @@
   "identifier": "default",
   "description": "Core permissions for the Eureka desktop window.",
   "webviews": ["eureka-content"],
-  "permissions": ["core:default", "allow-open-external-url"]
+  "permissions": ["core:default", "allow-open-external-url", "allow-desktop-menu-content", "allow-desktop-clipboard-files", "allow-desktop-select-attachments", "allow-desktop-select-directory"]
 }

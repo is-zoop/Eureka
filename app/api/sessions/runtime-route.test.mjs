@@ -2,13 +2,14 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { createJiti } from "jiti";
+import { resolve } from "node:path";
 
 const listRoute = await readFile(new URL("./route.ts", import.meta.url), "utf8");
 const detailRoute = await readFile(new URL("./[id]/route.ts", import.meta.url), "utf8");
 const contextRoute = await readFile(new URL("./[id]/context/route.ts", import.meta.url), "utf8");
 const stateRoute = await readFile(new URL("./[id]/state/route.ts", import.meta.url), "utf8");
 const jiti = createJiti(import.meta.url, {
-  alias: { "@": process.cwd() },
+  alias: { "@": process.cwd(), "server-only": resolve("node_modules/next/dist/compiled/server-only/empty.js") },
   interopDefault: true,
   moduleCache: false,
 });
@@ -55,6 +56,7 @@ test("live detail and state routes work without a persisted JSONL file", async (
   const sessionManager = {
     getHeader: () => ({ type: "session", id, cwd: "/tmp", timestamp }),
     getEntries: () => [entry],
+    getBranch: () => [entry],
     getLeafId: () => entry.id,
     getTree: () => [],
     getSessionName: () => undefined,

@@ -1,0 +1,25 @@
+✔ unknown capacity preserves current tokens and explicitly explains the unavailable limit (5456.4203ms)
+✔ known capacity retains its percentage, window and approximate marker (4.6644ms)
+(node:41936) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///E:/Eureka/lib/context-details.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to E:\Eureka\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ live categories share the current usage total and separate the skill catalog (16.366ms)
+✔ post-compaction missing usage is estimated from the new messages (0.4923ms)
+✔ history leaves unavailable runtime categories unknown instead of inventing exact counts (0.4637ms)
+✔ estimated history messages cannot overflow a reported context total (0.2514ms)
+✔ capacity handles over-limit contexts and an unknown model window (0.2312ms)
+✔ text estimates handle CJK and do not count image base64 as text tokens (6.3906ms)
+✔ invalid numeric usage is estimated and never leaks NaN into the response (0.252ms)
+✔ uses the first supported browser language and falls back to English (0.7838ms)
+✔ returns only registered locales (33.6208ms)
+✔ context inspector has matching localized labels and parameters (1.0781ms)
+✔ allows a new locale plugin and rejects duplicate ids (0.3893ms)
+ℹ tests 13
+ℹ suites 0
+ℹ pass 13
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 14957.7423

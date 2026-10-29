@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useRef, useCallback, useEffect } from "react";
+import { getCompletionSoundPreference, subscribeCompletionSoundPreference } from "@/lib/completion-sound-preference";
 
 function playTone(ctx: AudioContext) {
   const now = ctx.currentTime;
@@ -22,15 +23,6 @@ function playTone(ctx: AudioContext) {
 }
 
 export function useAudio() {
-  const [enabled, setEnabled] = useState<boolean>(() => {
-    if (typeof window === "undefined") return true;
-    const stored = localStorage.getItem("pi-sound-enabled");
-    return stored === null ? true : stored === "true";
-  });
-
-  const enabledRef = useRef(enabled);
-  useEffect(() => { enabledRef.current = enabled; }, [enabled]);
-
   // Reuse a single AudioContext so it can be resumed if the browser
   // autoplay policy suspends it (contexts created outside user gestures
   // start in "suspended" state and produce no sound).
@@ -46,25 +38,25 @@ export function useAudio() {
   }, []);
 
   const unlockAudio = useCallback((force = false) => {
-    if (!force && !enabledRef.current) return;
+    if (!force && !getCompletionSoundPreference()) return;
     const ctx = getCtx();
     if (!ctx || ctx.state !== "suspended") return;
     ctx.resume().catch(() => {});
   }, [getCtx]);
 
-  const toggle = useCallback(() => {
-    const next = !enabledRef.current;
-    if (next) unlockAudio(true);
-    enabledRef.current = next;
-    localStorage.setItem("pi-sound-enabled", String(next));
-    setEnabled(next);
-  }, [unlockAudio]);
+  // A same-window settings change still runs in the switch's user gesture,
+  // so enabling sound can also unlock the existing AudioContext.
+  useEffect(() => subscribeCompletionSoundPreference(() => {
+    unlockAudio();
+  }), [unlockAudio]);
 
   const playDone = useCallback(() => {
-    if (!enabledRef.current) return;
+    if (!getCompletionSoundPreference()) return;
     const ctx = getCtx();
     if (!ctx) return;
     const play = () => {
+      // The global switch may have changed while resume() was pending.
+      if (!getCompletionSoundPreference()) return;
       try {
         playTone(ctx);
       } catch {
@@ -78,5 +70,5 @@ export function useAudio() {
     play();
   }, [getCtx]);
 
-  return { soundEnabled: enabled, onSoundToggle: toggle, playDoneSound: playDone, unlockAudio, soundEnabledRef: enabledRef };
+  return { playDoneSound: playDone, unlockAudio };
 }

@@ -26,7 +26,7 @@ import { markdownPreviewRehypePlugins, markdownPreviewRemarkPlugins, normalizeDi
 import { CodeBlock, MermaidBlock } from "./MermaidBlock";
 import { FrontmatterCard } from "./FrontmatterCard";
 import { parseUnifiedPatch } from "@/lib/patch";
-import type { GitFileDiffResponse } from "@/lib/git-types";
+import type { GitDiffMode, GitFileDiffResponse } from "@/lib/git-types";
 import { useI18n } from "@/hooks/useI18n";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
@@ -55,6 +55,7 @@ interface Props {
   /** Insert this file's relative path into the chat input (@ mention). */
   onAtMention?: (relativePath: string, isDir: boolean) => void;
   gitRefreshKey?: number;
+  gitDiffMode?: GitDiffMode;
   initialDisplayMode?: DisplayMode;
   initialState?: FileViewerState;
   onStateChange?: (state: FileViewerState) => void;
@@ -313,7 +314,7 @@ function DiffView({ patch }: { patch: string }) {
   if (!hasChanges) {
     return (
       <div style={{ padding: "12px 16px", fontSize: 12, color: "var(--text-dim)", fontFamily: "var(--font-mono)" }}>
-        {t("i18n.noChanges")}
+        <pre style={{ margin: 0, whiteSpace: "pre-wrap" }}>{patch.trim() || t("i18n.noChanges")}</pre>
       </div>
     );
   }
@@ -940,6 +941,7 @@ export function FileViewer({
   onMentionLines,
   onAtMention,
   gitRefreshKey,
+  gitDiffMode,
   initialDisplayMode,
   initialState,
   onStateChange,
@@ -963,6 +965,7 @@ export function FileViewer({
       onMentionLines={onMentionLines}
       onAtMention={onAtMention}
       gitRefreshKey={gitRefreshKey}
+      gitDiffMode={gitDiffMode}
       initialDisplayMode={initialDisplayMode}
       initialState={initialState}
       onStateChange={onStateChange}
@@ -979,6 +982,7 @@ function TextFileViewer({
   onMentionLines,
   onAtMention,
   gitRefreshKey,
+  gitDiffMode,
   initialDisplayMode,
   initialState,
   onStateChange,
@@ -1091,6 +1095,7 @@ function TextFileViewer({
 
     try {
       const params = new URLSearchParams({ cwd, path: targetPath });
+      if (gitDiffMode) params.set("mode", gitDiffMode);
       const response = await fetch(`/api/git/diff?${params.toString()}`);
       const next = await response.json() as GitFileDiffResponse & { error?: string };
       if (requestId !== gitDiffRequestRef.current) return;
@@ -1103,7 +1108,7 @@ function TextFileViewer({
         setGitDiffResolved(true);
       }
     }
-  }, [cwd]);
+  }, [cwd, gitDiffMode]);
 
   // Reset and load the file itself when its identity changes. Live watching is
   // managed separately so pausing it never clears the displayed content.
@@ -1286,13 +1291,13 @@ function TextFileViewer({
     );
   }
 
-  if (error && !isDeletedDiff) {
+  if (error && !(hasGitDiff && displayMode === "diff")) {
     return (
       <NotificationNotice title={filePath} message={error} type="error" />
     );
   }
 
-  if (!data && !isDeletedDiff) return null;
+  if (!data && !(hasGitDiff && displayMode === "diff")) return null;
 
   const language = data?.language ?? "text";
   const content = data?.content ?? "";
@@ -1309,8 +1314,8 @@ function TextFileViewer({
         ...(hasPreview ? ["preview" as const] : []),
         ...(hasGitDiff ? ["diff" as const] : []),
       ];
-  const metadata = isDeletedDiff
-    ? t("files.deleted")
+  const metadata = !data
+    ? t(isDeletedDiff ? "files.deleted" : "git.selected")
     : `${language} · ${lines.length} lines · ${formatSize(data!.size)}`;
 
   return (
@@ -1359,7 +1364,8 @@ function TextFileViewer({
                     key={mode}
                     type="button"
                     onClick={() => updateDisplayMode(mode)}
-                    title={mode === "diff" ? t("i18n.compareHead") : undefined}
+                    title={mode === "diff" ? t(gitDiffMode === "staged" ? "git.selected"
+                      : gitDiffMode === "unstaged" ? "git.other" : "i18n.compareHead") : undefined}
                     aria-pressed={active}
                     className="file-viewer-mode-button"
                     style={{

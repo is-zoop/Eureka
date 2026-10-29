@@ -21,23 +21,27 @@ test("groups commands into add, built-in, plugin, extension, and skill sections"
   assert.match(source, /<SlashCommandPaletteIcon command=\{command\} source=\{group\.source\}/);
 });
 
-test("keeps the existing image-only attachment protocol", () => {
-  assert.match(source, /accept="image\/\*"/);
+test("offers files and folders while retaining the image attachment pipeline", () => {
+  assert.doesNotMatch(source, /accept="image\/\*"/);
+  assert.doesNotMatch(source, /<AttachmentPicker/);
+  assert.match(source, /invoke<string\[\]>\("desktop_select_attachments", \{ cwd: cwd \?\? null \}\)/);
+  assert.match(source, /void openAttachmentPicker\(\)/);
+  assert.match(source, /await processImageFiles\(files\)/);
   assert.match(source, /fileInputRef\.current\?\.click\(\)/);
   assert.match(source, /slashMenuOpen && slashQuery !== null && !addMenuOpen/);
 });
 
 test("keeps command descriptions on one truncated line with a tooltip", () => {
-  assert.match(source, /title=\{description \? `\$\{label\} · \$\{description\}` : label\}/);
-  assert.match(source, /const commandDescriptionColor = "var\(--text-muted\)"/);
-  assert.match(source, /className="truncate text-\[11px\]" style=\{\{ color: commandDescriptionColor \}\}/);
+  assert.match(source, /tooltip=\{description \? `\$\{label\} · \$\{description\}` : label\}/);
+  assert.match(source, /data-command-description className=\{paletteStyles.description\}/);
+  assert.match(source, /element.scrollWidth > element.clientWidth/);
 });
 
 test("uses the same compact command-list treatment for slash commands", () => {
   assert.match(source, /slashMenuOpen && slashQuery !== null && !addMenuOpen/);
   assert.match(source, /height: isMobile \? 280 : 320/);
   assert.doesNotMatch(source, /<CommandInput\s+value=\{slashQuery \?\? ""\}/);
-  assert.match(source, /title=\{description \? `\$\{label\} · \$\{description\}` : label\}/);
+  assert.match(source, /tooltip=\{description \? `\$\{label\} · \$\{description\}` : label\}/);
 });
 
 test("keeps @ file filtering in the composer instead of adding a second search field", () => {

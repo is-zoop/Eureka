@@ -53,6 +53,8 @@ export interface SkillInfo {
 
 export interface SkillsResponse {
   skills: SkillInfo[];
+  /** Installed metadata for management; may include skills not loaded into the runtime. */
+  installedSkills?: SkillInfo[];
   diagnostics: ResourceDiagnostic[];
   projectResourcesLoaded: boolean;
 }

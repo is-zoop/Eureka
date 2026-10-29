@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { existsSync } from "fs";
-import { addWorktree, findCurrentWorktreePath, listWorktrees, removeWorktree, resolveProject } from "@/lib/worktree";
+import { addWorktree, findCurrentWorktreeBranch, findCurrentWorktreePath, listWorktrees, removeWorktree, resolveProject } from "@/lib/worktree";
 import { allowFileRoot, getAllowedFileRoots, isExistingFilePathAllowed, isFilePathAllowed } from "@/lib/file-access";
 
 /** Same gate as /api/files: only session cwds / project roots / explicitly
@@ -44,6 +44,7 @@ export async function GET(req: Request) {
       isGit,
       isTopLevel: project.isTopLevel,
       currentWorktreePath,
+      branch: existsSync(cwd) ? findCurrentWorktreeBranch(worktrees, cwd) : null,
       worktrees,
     });
   } catch (error) {

@@ -1,7 +1,7 @@
 import { readAuthSession } from "@/lib/auth/session";
 import { NextResponse } from "next/server";
 import { resolveSessionPath } from "@/lib/session-reader";
-import { startRpcSession, getRpcSession } from "@/lib/rpc-manager";
+import { startRpcSession, getRpcSession, sendSessionToolCommand, readSessionCommands } from "@/lib/rpc-manager";
 
 // POST /api/agent/[id] - Send a command to an existing session
 export async function POST(
@@ -34,6 +34,15 @@ export async function POST(
           ? { code: "prompt_rejected", accepted: false }
           : {}),
       }, { status: 404 });
+    }
+
+    if (body.type === "get_tools" || body.type === "set_tools") {
+      const result = await sendSessionToolCommand(id, filePath, body);
+      return NextResponse.json({ success: true, data: result });
+    }
+
+    if (body.type === "get_commands") {
+      return NextResponse.json({ success: true, data: await readSessionCommands(id, filePath) });
     }
 
     const { session } = await startRpcSession(id, filePath, undefined);

@@ -1,0 +1,8 @@
+▲ Next.js 16.2.12 (Turbopack)
+- Local:         http://127.0.0.1:8080
+- Network:       http://127.0.0.1:8080
+- Environments: .env.local
+✓ Ready in 539ms
+
+ GET / 500 in 449ms (next.js: 139ms, proxy.ts: 155ms, application-code: 155ms)
+ GET /?session=01a17c1d-23bc-744b-88d3-a06f41558965 500 in 466ms (next.js: 287ms, proxy.ts: 157ms, application-code: 22ms)

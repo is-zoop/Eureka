@@ -1,0 +1,15 @@
+
+E:\Eureka\components\AppShell.tsx
+  1118:9  warning  'renderThemeButton' is assigned a value but never used     @typescript-eslint/no-unused-vars
+  1160:9  warning  'renderLanguageButton' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+E:\Eureka\components\ChatInput.tsx
+  204:7   warning  'SLASH_SOURCES' is assigned a value but never used       @typescript-eslint/no-unused-vars
+  444:45  warning  'onOpenPlanReview' is defined but never used             @typescript-eslint/no-unused-vars
+  493:10  warning  'slashMenuMaxHeight' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+E:\Eureka\components\ChatWindow.tsx
+  534:17  warning  Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+
+✖ 6 problems (0 errors, 6 warnings)
+

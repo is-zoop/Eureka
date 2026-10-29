@@ -2,6 +2,7 @@ import type { NextConfig } from "next";
 import { readFileSync } from "fs";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
+import { desktopTraceExcludes } from "./desktop/scripts/standalone-resources.mjs";
 
 const configDir = dirname(fileURLToPath(import.meta.url));
 const { version } = JSON.parse(readFileSync(join(configDir, "package.json"), "utf8")) as { version: string };
@@ -16,6 +17,7 @@ const nextConfig: NextConfig = {
   // Keep normal web development unchanged.
   ...(process.env.EUREKA_DESKTOP_BUILD === "1" ? { output: "standalone" } : {}),
   outputFileTracingRoot: configDir,
+  outputFileTracingExcludes: { "*": desktopTraceExcludes },
   serverExternalPackages: [
     "playwright",
     "playwright-core",

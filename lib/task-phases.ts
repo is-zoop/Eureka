@@ -1,8 +1,9 @@
 import { getDisplayableAssistantBlocks, splitFinalAssistantBlocks } from "./message-display";
 import { isEditToolName, isWriteToolName } from "./tool-names";
 import type { AssistantContentBlock, AssistantMessage, ToolResultMessage } from "./types";
+import type { ClarificationGroup } from "./clarification";
 
-export type TaskTurnStatus = "running" | "completed" | "failed" | "stopped" | "incomplete";
+export type TaskTurnStatus = "running" | "completed" | "failed" | "stopped" | "incomplete" | "waiting_input";
 export interface TaskPhaseSource {
   message: AssistantMessage;
   messageIndex: number;
@@ -68,6 +69,7 @@ export function buildTaskPhases(input: TaskPhaseSource[], options: {
   toolResults?: ReadonlyMap<string, ToolResultMessage>;
   runningToolIds?: ReadonlySet<string>;
   summaryExcludedMessageIndices?: ReadonlySet<number>;
+  clarificationGroups?: ReadonlyMap<string, ClarificationGroup>;
 }): TaskTurnView {
   const sources = input.filter((source, index) => !(source.isStreaming && index > 0
     && matchesCommittedMessage(source.message, input[index - 1].message)));
@@ -80,10 +82,17 @@ export function buildTaskPhases(input: TaskPhaseSource[], options: {
     ? splitFinalAssistantBlocks(last.message, { isStreaming: last.isStreaming }).answerBlocks : [];
   const answerRefs = last ? references(last).filter((ref) => answerBlocks.includes(ref.block)) : [];
   const hasAnswer = answerRefs.some(({ block }) => block.type === "image" || (block.type === "text" && block.text.trim()));
+  const lastCall = last?.message.content.findLast((block) => block.type === "toolCall");
+  const question = lastCall?.type === "toolCall" && lastCall.toolName === "request_user_input"
+    ? options.clarificationGroups?.get(lastCall.toolCallId) : undefined;
   const status: TaskTurnStatus = options.running ? "running"
     : last?.message.stopReason === "error" ? "failed"
     : last?.message.stopReason === "aborted" ? "stopped"
-    : hasAnswer ? "completed" : "incomplete";
+    : hasAnswer ? "completed"
+    : question?.status === "cancelled" ? "stopped"
+    : question?.continuation === "failed" ? "failed"
+    : question && (question.status === "pending" || question.continuation === "ready") ? "waiting_input"
+    : "incomplete";
   const phases: TaskPhase[] = [];
   let current: TaskPhase | undefined;
   const ensurePhase = () => {

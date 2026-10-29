@@ -1,7 +1,7 @@
 import { selectionEnvelope } from "./plugin-selection";
 import { ClarificationRuntime, clarificationRuntime } from "./clarification-runtime";
-import { type ClarificationGroup, type ClarificationQueuedInput } from "./clarification";
-import { userInputSummary, type UserInputResponse } from "./user-input";
+import { clarificationContinuationText, type ClarificationGroup, type ClarificationQueuedInput } from "./clarification";
+import { type UserInputResponse } from "./user-input";
 import { readRuntimeHazeSession } from "./auth/runtime-session";
 import { installPluginBrowserHandoff } from "./plugin-browser";
 import { prepareSelectedPlugins, taskPluginSelection, taskAllowsClarification } from "./composer-plugins";
@@ -25,9 +25,12 @@ import { validateAgentImages } from "./image-attachments";
 import { invalidateModelsCache } from "./models-cache";
 import { schedulePiCatalogSync } from "./pi-catalog-sync";
 import { resolveVisibleModels, selectInitialModelScope } from "./model-scope";
-import { cacheSessionPath, invalidateSessionListCache } from "./session-reader";
+import { cacheSessionPath, invalidateSessionListCache, readSessionHeader } from "./session-reader";
+import { observeContextSnapshots, persistLiveContextSnapshot } from "./context-snapshot";
 import { getProjectTrustStatus, projectTrustReloadOptions } from "./project-trust";
 import { persistExplicitStartupPreferences } from "./startup-preferences";
+import { readSessionToolNames, saveSessionToolNames, sessionToolEntries, validateSessionToolNames } from "./session-tool-permissions";
+import { loadCommandResources } from "./command-catalog";
 import {
   EMPTY_PLAN_STATE,
   getPendingPlanQuestion,
@@ -570,6 +573,7 @@ export class AgentSessionWrapper {
   }
 
   start(): void {
+    observeContextSnapshots(this);
     this.unsubscribe = this.inner.subscribe((event: AgentEvent) => {
       if (event.type === "agent_end") {
         invalidateSessionListCache();
@@ -624,7 +628,7 @@ export class AgentSessionWrapper {
       const skills = this.inner.resourceLoader.getSkills().skills;
       prepareSelectedPlugins(this.cwd, this.sessionId, group.task.plugins, skills, "");
       if (this.forceEmptySystemPrompt || !taskAllowsClarification(this.cwd, this.sessionId, group.task)) throw new Error("当前权限或插件状态不允许继续，请重新授权后重试；回答已保留");
-      await this.send({ type: "prompt", message: `已回答问题澄清：\n${userInputSummary(group.questions)}\n继续原任务，复用已有业务会话和选数范围。已跳过的问题不代表同意任何选项。` }, group);
+      await this.send({ type: "prompt", message: clarificationContinuationText(group) }, group);
     } catch (error) {
       this.clarification.finish(id, error instanceof Error ? error.message : String(error));
       throw error;
@@ -747,6 +751,20 @@ export class AgentSessionWrapper {
     await this.waitForExtensionsBound();
   }
 
+  getCommandSnapshot() {
+    const commands: Array<SlashCommandInfo & { organizationCapability?: OrganizationCapabilityRef }> = [];
+    for (const registered of this.inner.extensionRunner.getRegisteredCommands()) {
+      commands.push({ name: registered.invocationName, description: registered.description, source: "extension", sourceInfo: registered.sourceInfo });
+    }
+    for (const template of this.inner.promptTemplates) {
+      commands.push({ name: template.name, description: template.description, source: "prompt", sourceInfo: template.sourceInfo });
+    }
+    for (const skill of annotateOrganizationSkills(this.cwd, this.inner.resourceLoader.getSkills().skills)) {
+      commands.push({ name: `skill:${skill.name}`, description: skill.description, source: "skill", organizationCapability: skill.organizationCapability, sourceInfo: skill.sourceInfo });
+    }
+    return { commands };
+  }
+
   private ensureExtensionsBound(options: ExtensionBindingOptions = {}): Promise<void> {
     if (options.forceEmptySystemPrompt) this.forceEmptySystemPrompt = true;
     if (this.extensionsBound) {
@@ -793,6 +811,7 @@ export class AgentSessionWrapper {
       // Extensions may register or re-enable tools during session_start. Reapply
       // the native plan-mode allow-list afterwards so an extension cannot bypass it.
       this.applyPlanModeRuntime();
+      void persistLiveContextSnapshot(this.inner);
       console.log(`[pi-web] session_start dispatched to extensions for session ${this.inner.sessionId}`);
     })().catch((err) => {
       this.extensionBindingError = err;
@@ -819,7 +838,6 @@ export class AgentSessionWrapper {
     return type === "prompt"
       || type === "steer"
       || type === "follow_up"
-      || type === "get_commands"
       || type === "get_state";
   }
 
@@ -1448,44 +1466,19 @@ export class AgentSessionWrapper {
       }
 
       case "get_commands": {
-        const commands: Array<SlashCommandInfo & { organizationCapability?: OrganizationCapabilityRef }> = [];
-        for (const registered of this.inner.extensionRunner.getRegisteredCommands()) {
-          commands.push({
-            name: registered.invocationName,
-            description: registered.description,
-            source: "extension",
-            sourceInfo: registered.sourceInfo,
-          });
-        }
-        for (const template of this.inner.promptTemplates) {
-          commands.push({
-            name: template.name,
-            description: template.description,
-            source: "prompt",
-            sourceInfo: template.sourceInfo,
-          });
-        }
-        for (const skill of annotateOrganizationSkills(this.cwd, this.inner.resourceLoader.getSkills().skills)) {
-          commands.push({
-            name: `skill:${skill.name}`,
-            description: skill.description,
-            source: "skill",
-            organizationCapability: skill.organizationCapability,
-            sourceInfo: skill.sourceInfo,
-          });
-        }
-        return { commands };
+        return this.getCommandSnapshot();
       }
 
       case "set_tools": {
         if (this.planModeState.planModeActive || this.planModeState.phase === "executing") {
           throw new Error("Tool permissions are fixed while a plan is active");
         }
-        const toolNames = command.toolNames as string[];
+        const toolNames = validateSessionToolNames(command.toolNames);
         this.setForceEmptySystemPrompt(toolNames.length === 0);
         if (toolNames.length === 0) this.clarification.allowed = false;
         this.inner.setActiveToolsByName(withExtensionTools(this.inner, toolNames));
         this.applyForcedEmptySystemPrompt();
+        saveSessionToolNames(this.inner.sessionManager, toolNames);
         return null;
       }
 
@@ -1596,6 +1589,7 @@ export class AgentSessionWrapper {
         }
         await this.inner.extensionRunner.emit?.({ type: "session_shutdown", reason: "quit" });
       } finally {
+        await persistLiveContextSnapshot(this.inner);
         this.destroy();
       }
     })();
@@ -2202,7 +2196,36 @@ function trackStartingSession(cwd: string): () => void {
 }
 
 export function getRpcSession(sessionId: string): AgentSessionWrapper | undefined {
-  return getRegistry().get(sessionId);
+  const session = getRegistry().get(sessionId);
+  if (session?.isAlive()) observeContextSnapshots(session);
+  return session;
+}
+
+/** Permission menus must not boot the agent or discover extensions. */
+export async function sendSessionToolCommand(sessionId: string, sessionFile: string, command: { type: string; toolNames?: unknown }) {
+  if (command.type !== "get_tools" && command.type !== "set_tools") throw new Error("Invalid tool command");
+  if (command.type === "set_tools") validateSessionToolNames(command.toolNames);
+  // A prompt may already be starting this session. Apply to that manager rather
+  // than write through a second stale SessionManager while it is loading.
+  const starting = getLocks().get(sessionId);
+  if (starting) await starting;
+  const existing = getRegistry().get(sessionId);
+  if (existing?.isAlive()) return existing.send(command);
+  const manager = SessionManager.open(sessionFile, undefined);
+  if (command.type === "get_tools") return sessionToolEntries(manager.getEntries());
+  const plan = readPlanState(manager.getEntries() as SessionEntry[]);
+  if (plan.planModeActive || plan.phase === "executing") throw new Error("Tool permissions are fixed while a plan is active");
+  saveSessionToolNames(manager, command.toolNames);
+  return null;
+}
+
+export async function readSessionCommands(sessionId: string, sessionFile: string) {
+  const live = getRegistry().get(sessionId);
+  if (live?.isAlive()) return typeof live.getCommandSnapshot === "function" ? live.getCommandSnapshot() : live.send({ type: "get_commands" });
+  const cwd = readSessionHeader(sessionFile)?.cwd;
+  if (!cwd) throw new Error("Session project not found");
+  const { commands } = await loadCommandResources(cwd);
+  return { commands };
 }
 
 function runtimeMessageText(entry: SessionMessageEntry): string {
@@ -2353,7 +2376,7 @@ export async function startRpcSession(
   cwd: string | undefined,
   options: RpcSessionStartOptions = {},
 ): Promise<{ session: AgentSessionWrapper; realSessionId: string }> {
-  const { toolNames, initialModel, thinkingLevel } = options;
+  const { initialModel, thinkingLevel } = options;
   const registry = getRegistry();
   const locks = getLocks();
 
@@ -2371,6 +2394,7 @@ export async function startRpcSession(
     sessionManager = SessionManager.create(cwd, undefined);
   }
   const sessionCwd = sessionManager.getCwd();
+  const toolNames = options.toolNames ?? readSessionToolNames(sessionManager.getEntries());
   const finishStartingSession = trackStartingSession(sessionCwd);
   const starting = (async () => {
     schedulePiCatalogSync();
@@ -2455,6 +2479,7 @@ export async function startRpcSession(
     }
 
     const wrapper = new AgentSessionWrapper(inner);
+    if (toolNames !== undefined) saveSessionToolNames(sessionManager, toolNames);
     // When all tools are disabled, clear the system prompt entirely.
     // pi's buildSystemPrompt always produces a non-empty prompt even with no tools;
     // keep this forced after extension resource discovery and reloads as well.

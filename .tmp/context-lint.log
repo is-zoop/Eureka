@@ -1,0 +1,10 @@
+
+E:\Eureka\components\AppShell.tsx
+  1140:9  warning  'renderThemeButton' is assigned a value but never used     @typescript-eslint/no-unused-vars
+  1182:9  warning  'renderLanguageButton' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+E:\Eureka\components\ChatWindow.tsx
+  539:17  warning  Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+
+✖ 3 problems (0 errors, 3 warnings)
+

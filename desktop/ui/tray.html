@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Eureka 托盘菜单</title>
+  <link rel="stylesheet" href="tray.css">
+  <script defer src="tray.js"></script>
+</head>
+<body>
+  <div id="tray-menu" data-slot="dropdown-menu-content" role="menu" aria-label="Eureka">
+    <div role="group" aria-labelledby="recent-label">
+      <div id="recent-label" data-slot="dropdown-menu-label">最近</div>
+      <div id="recent-sessions"></div>
+    </div>
+    <div data-slot="dropdown-menu-separator" role="separator"></div>
+    <div role="group" aria-label="应用">
+      <button id="new-task" data-slot="dropdown-menu-item" role="menuitem" tabindex="-1" disabled>新建任务</button>
+      <button id="open" data-slot="dropdown-menu-item" role="menuitem" tabindex="-1">打开 Eureka</button>
+      <button id="settings" data-slot="dropdown-menu-item" role="menuitem" tabindex="-1" disabled>设置</button>
+    </div>
+    <div data-slot="dropdown-menu-separator" role="separator"></div>
+    <button id="quit" data-slot="dropdown-menu-item" role="menuitem" tabindex="-1">退出 Eureka</button>
+  </div>
+  <div id="tray-tooltip" data-slot="tooltip-content" role="tooltip" hidden></div>
+</body>
+</html>

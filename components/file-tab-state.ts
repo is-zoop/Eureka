@@ -1,10 +1,12 @@
 import type { FileViewerState } from "@/lib/file-viewer-state";
 import type { Tab } from "./TabBar";
+import type { GitDiffMode } from "@/lib/git-types";
 
 interface OpenFileTabInput {
   fileName: string;
   filePath: string;
   modeHint?: "diff";
+  gitDiffMode?: GitDiffMode;
   sourceSessionId?: string | null;
   tabId: string;
 }
@@ -18,6 +20,7 @@ export function openFileTab(tabs: Tab[], input: OpenFileTabInput): Tab[] {
       filePath: input.filePath,
       sourceSessionId: input.sourceSessionId,
       initialDisplayMode: input.modeHint,
+      gitDiffMode: input.gitDiffMode,
       viewerState: input.modeHint ? {
         displayMode: input.modeHint,
         wrapLines: false,
@@ -39,6 +42,7 @@ export function openFileTab(tabs: Tab[], input: OpenFileTabInput): Tab[] {
     const next: Tab = { ...tab };
     if (sourceChanged) next.sourceSessionId = input.sourceSessionId;
     if (input.modeHint) {
+      next.gitDiffMode = input.gitDiffMode;
       next.initialDisplayMode = input.modeHint;
       next.viewerState = {
         displayMode: input.modeHint,

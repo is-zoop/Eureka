@@ -1,5 +1,5 @@
 export type NoticeType = "info" | "success" | "warning" | "error";
-export type NotificationInput = { id?: string; type?: NoticeType; title?: string; message: string; action?: { label: string; onClick: () => void } };
+export type NotificationInput = { id?: string; type?: NoticeType; title?: string; message: string; details?: string; action?: { label: string; onClick: () => void } };
 export type NotificationItem = NotificationInput & { id: string; type: NoticeType };
 
 // The store lives for this browser page, including navigation between routes.

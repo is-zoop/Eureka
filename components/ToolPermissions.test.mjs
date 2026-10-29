@@ -38,3 +38,10 @@ test("permissions are published by the active session to both top-menu variants,
   assert.match(change, /sessionHookMountedRef\.current/);
   assert.match(hook, /if \(!sessionIdRef\.current && !ensuringNewSessionRef\.current\)/);
 });
+
+test("reading the current preset does not disable permission choices or mark an unknown default", async () => {
+  const source = await readFile(new URL("./ToolPermissions.tsx", import.meta.url), "utf8");
+  assert.match(source, /disabled=\{!controls \|\| controls.saving \|\| controls.locked\}/);
+  assert.doesNotMatch(source, /disabled=\{[^}]*controls\.loading/);
+  assert.match(source, /controls\?\.ready \? controls.preset : ""/);
+});

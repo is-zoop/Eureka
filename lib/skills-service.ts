@@ -5,14 +5,17 @@ import { DefaultResourceLoader, getAgentDir } from "@earendil-works/pi-coding-ag
 import type { SkillInfo, SkillsResponse } from "@/lib/api-types";
 import { annotateSkillsWithInstallInfo } from "@/lib/skill-lock";
 import { getProjectTrustStatus, projectTrustReloadOptions } from "@/lib/project-trust";
+import { readInstalledSkillInventory } from "./skill-inventory";
 
 export async function loadSkillsWithInstallInfo(cwd: string): Promise<SkillsResponse> {
   const agentDir = getAgentDir();
   const loader = new DefaultResourceLoader({ cwd, agentDir, skillsOverride: (base) => applyOrganizationPluginSkills(cwd, applyHazeProjectSkillOverrides(cwd, base)) });
   await loader.reload(projectTrustReloadOptions(cwd, agentDir));
   const { skills, diagnostics } = loader.getSkills();
+  const annotate = (items: SkillInfo[]) => annotateOrganizationSkills(cwd, annotateSkillsWithInstallInfo(items, { cwd, agentDir }));
   return {
-    skills: annotateOrganizationSkills(cwd, annotateSkillsWithInstallInfo(skills as SkillInfo[], { cwd, agentDir })),
+    skills: annotate(skills as SkillInfo[]),
+    installedSkills: annotate(readInstalledSkillInventory(skills as SkillInfo[], { cwd, agentDir })),
     diagnostics,
     projectResourcesLoaded: getProjectTrustStatus(cwd, agentDir).trusted,
   };

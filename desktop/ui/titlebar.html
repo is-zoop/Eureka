@@ -9,11 +9,22 @@
     <script src="titlebar.js" defer></script>
   </head>
   <body>
+    <div class="resize-top" data-resize-direction="North" aria-hidden="true"></div>
+    <div class="resize-corner resize-northwest" data-resize-direction="NorthWest" aria-hidden="true"></div>
+    <div class="resize-corner resize-northeast" data-resize-direction="NorthEast" aria-hidden="true"></div>
     <header aria-label="Eureka 窗口控制">
-      <div id="drag-region">
-        <img id="logo" src="logo-black.png" alt="" draggable="false" />
-        <span>Eureka</span>
-      </div>
+      <div class="brand"><img id="logo" src="logo-black.png" alt="" draggable="false" /></div>
+      <nav class="navigation" aria-label="页面导航">
+        <button id="back" type="button" aria-label="返回" title="返回 (Alt+←)" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 19-7-7 7-7M5 12h14" /></svg></button>
+        <button id="forward" type="button" aria-label="前进" title="前进 (Alt+→)" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 5 7 7-7 7M5 12h14" /></svg></button>
+      </nav>
+      <nav class="menubar" role="menubar" aria-label="应用菜单">
+        <button id="menu-file" type="button" role="menuitem" aria-haspopup="menu" aria-expanded="false" disabled>文件</button>
+        <button id="menu-edit" type="button" role="menuitem" aria-haspopup="menu" aria-expanded="false" disabled>编辑</button>
+        <button id="menu-view" type="button" role="menuitem" aria-haspopup="menu" aria-expanded="false" disabled>视图</button>
+        <button id="menu-help" type="button" role="menuitem" aria-haspopup="menu" aria-expanded="false" disabled>帮助</button>
+      </nav>
+      <div id="drag-region"></div>
       <div class="controls">
         <button id="minimize" type="button" aria-label="最小化"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6.5h8" /></svg></button>
         <button id="maximize" type="button" aria-label="最大化"><svg viewBox="0 0 12 12" aria-hidden="true"><rect x="2.25" y="2.25" width="7.5" height="7.5" /></svg></button>

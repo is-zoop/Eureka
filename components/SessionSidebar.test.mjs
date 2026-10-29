@@ -68,7 +68,7 @@ test("offers an in-memory task search and sidebar hide callback", () => {
   assert.match(source, /onRequestHide\?: \(\) => void/);
   assert.match(source, /onClick=\{\(\) => onRequestHide\?\.\(\)\}/);
   assert.match(source, /const projectSessions = selectedProject/);
-  assert.match(source, /const title = session\.name \|\| firstMessage \|\| session\.id/);
+  assert.match(source, /const title = getSessionDisplayTitle\(session, session\.id\)/);
   assert.match(source, /title\.toLocaleLowerCase\(\)\.includes\(normalizedSessionSearch\)/);
   assert.match(source, /onKeyDown=\{\(e\) => \{ if \(e\.key === "Escape"\)/);
   assert.match(source, /sidebar\.noMatchingTasks/);

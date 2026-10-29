@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useI18n } from "@/hooks/useI18n";
 import type { EurekaPlanTodo } from "@/lib/plan-mode";
 import { InlineMarkdown } from "./InlineMarkdown";
+import { Collapse } from "./Collapse";
 
 type TaskStatus = "completed" | "running" | "pending";
 
@@ -71,9 +72,9 @@ export function PlanTaskRows({ todos, isStreaming }: { todos: EurekaPlanTodo[]; 
             {status === "completed" && <span className="inline-flex h-5 shrink-0 items-center rounded-full bg-[#e8f8ef] px-2 text-[11px] font-medium text-[#15803d]">{statusLabel}</span>}
             <Chevron open={open} />
           </button>
-          <div className="grid transition-[grid-template-rows,opacity] duration-200 motion-reduce:transition-none" style={{ gridTemplateRows: open ? "1fr" : "0fr", opacity: open ? 1 : 0 }}>
+          <Collapse open={open} keepMounted>
             <div className="overflow-hidden"><div className="mx-4 mb-3 ml-[49px] border-l border-[var(--border)] pl-3"><InlineMarkdown className="block whitespace-pre-wrap break-words text-sm font-medium leading-[1.7] text-[var(--text-muted)]">{todo.text}</InlineMarkdown><p className="mt-1 text-[11px] font-medium" style={{ color: status === "completed" ? "#15803d" : status === "running" ? "var(--accent)" : "var(--text-muted)" }}>{statusLabel}</p></div></div>
-          </div>
+          </Collapse>
         </div>;
       })}
     </div>

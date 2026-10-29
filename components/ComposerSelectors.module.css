@@ -1,0 +1,167 @@
+.trigger {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 32px;
+  min-width: 0;
+  padding: 0 10px;
+  border: none;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text);
+  font: 500 12px/20px var(--font-ui);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+
+.trigger:hover,
+.trigger[aria-expanded="true"] {
+  background: var(--bg-hover);
+}
+
+.trigger:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.trigger:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.trigger svg {
+  flex-shrink: 0;
+}
+
+.modelTrigger {
+  max-width: 220px;
+}
+
+.name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.effortLabel {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.modelPopup,
+.reasoningPopup {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--bg-panel);
+  color: var(--text);
+  box-shadow: var(--shadow-soft);
+}
+
+.modelPopup {
+  display: flex;
+  flex-direction: column;
+  width: min(280px, calc(100vw - 16px));
+  max-height: min(360px, var(--available-height));
+  outline: none;
+}
+
+.modelPopup [data-slot="command-input-wrapper"] {
+  flex-shrink: 0;
+  height: 38px;
+  margin: 0;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.modelGroup + .modelGroup {
+  border-top: 1px solid var(--border);
+  margin-top: 2px;
+  padding-top: 2px;
+}
+
+.modelGroup [cmdk-group-heading] {
+  padding: 6px 8px;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.modelItem,
+.reasoningItem {
+  min-height: 32px;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.modelItem {
+  gap: 12px;
+  padding: 6px 8px;
+}
+
+.modelItem[data-selected="true"],
+.reasoningItem[data-highlighted],
+.reasoningItem:focus {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.reasoningPopup {
+  width: 180px;
+  max-width: calc(100vw - 16px);
+  padding: 4px;
+}
+
+.reasoningItem {
+  padding: 6px 8px;
+}
+
+.modelItem[data-current="true"],
+.reasoningItem[data-checked] {
+  background: var(--bg-selected);
+  color: var(--text);
+  font-weight: 500;
+}
+
+.reasoningItem [data-slot="dropdown-menu-radio-item-indicator"] {
+  display: none;
+}
+
+.level {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 5px;
+  color: inherit;
+  line-height: 20px;
+}
+
+.originalLevel {
+  color: inherit;
+  font-size: 11px;
+  opacity: 0.7;
+}
+
+@media (max-width: 640px) {
+  .modelTrigger {
+    max-width: 148px;
+  }
+
+  .trigger {
+    gap: 5px;
+    padding-inline: 8px;
+  }
+
+  .effortLabel {
+    display: none;
+  }
+}

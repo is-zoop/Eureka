@@ -9,5 +9,6 @@ test("uses the shared dropdown menu for the upward reasoning selector", () => {
     source,
     /<DropdownMenu open=\{thinkingDropdownOpen\} onOpenChange=\{setThinkingDropdownOpen\}>[\s\S]*?<DropdownMenuContent[\s\S]*?align=\{isMobile \? "start" : "end"\}[\s\S]*?side="top"/,
   );
-  assert.match(source, /<DropdownMenuCheckboxItem[\s\S]*?onCheckedChange/);
+  assert.match(source, /<DropdownMenuRadioGroup[\s\S]*?onValueChange/);
+  assert.match(source, /<DropdownMenuRadioItem[^>]*closeOnClick/);
 });

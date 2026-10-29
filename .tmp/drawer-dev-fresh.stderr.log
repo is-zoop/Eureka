@@ -1,0 +1,128 @@
+⨯ ./lib/http-dispatcher.ts:2:1
+Module not found: Can't resolve 'undici'
+  [90m1 |[0m [36mimport[0m { [33mEventEmitter[0m } [36mfrom[0m [32m"node:events"[0m;
+[31m[1m>[0m [90m2 |[0m [36mimport[0m * [36mas[0m undici [36mfrom[0m [32m"undici"[0m;
+  [90m  |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m3 |[0m
+  [90m4 |[0m [36mexport[0m [36mconst[0m [33mDEFAULT_HTTP_IDLE_TIMEOUT_MS[0m = [35m300[0m_000;
+  [90m5 |[0m
+
+
+
+Import trace:
+  Instrumentation:
+    ./lib/http-dispatcher.ts
+    ./instrumentation.ts
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+⨯ ./lib/http-dispatcher.ts:2:1
+Module not found: Can't resolve 'undici'
+  [90m1 |[0m [36mimport[0m { [33mEventEmitter[0m } [36mfrom[0m [32m"node:events"[0m;
+[31m[1m>[0m [90m2 |[0m [36mimport[0m * [36mas[0m undici [36mfrom[0m [32m"undici"[0m;
+  [90m  |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m3 |[0m
+  [90m4 |[0m [36mexport[0m [36mconst[0m [33mDEFAULT_HTTP_IDLE_TIMEOUT_MS[0m = [35m300[0m_000;
+  [90m5 |[0m
+
+
+
+Import trace:
+  Instrumentation:
+    ./lib/http-dispatcher.ts
+    ./instrumentation.ts
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+⨯ ./lib/http-dispatcher.ts:2:1
+Module not found: Can't resolve 'undici'
+  [90m1 |[0m [36mimport[0m { [33mEventEmitter[0m } [36mfrom[0m [32m"node:events"[0m;
+[31m[1m>[0m [90m2 |[0m [36mimport[0m * [36mas[0m undici [36mfrom[0m [32m"undici"[0m;
+  [90m  |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m3 |[0m
+  [90m4 |[0m [36mexport[0m [36mconst[0m [33mDEFAULT_HTTP_IDLE_TIMEOUT_MS[0m = [35m300[0m_000;
+  [90m5 |[0m
+
+
+
+Import trace:
+  Instrumentation:
+    ./lib/http-dispatcher.ts
+    ./instrumentation.ts
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+⨯ ./lib/http-dispatcher.ts:2:1
+Module not found: Can't resolve 'undici'
+  [90m1 |[0m [36mimport[0m { [33mEventEmitter[0m } [36mfrom[0m [32m"node:events"[0m;
+[31m[1m>[0m [90m2 |[0m [36mimport[0m * [36mas[0m undici [36mfrom[0m [32m"undici"[0m;
+  [90m  |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m3 |[0m
+  [90m4 |[0m [36mexport[0m [36mconst[0m [33mDEFAULT_HTTP_IDLE_TIMEOUT_MS[0m = [35m300[0m_000;
+  [90m5 |[0m
+
+
+
+Import trace:
+  Instrumentation:
+    ./lib/http-dispatcher.ts
+    ./instrumentation.ts
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+⨯ ./lib/http-dispatcher.ts:2:1
+Module not found: Can't resolve 'undici'
+  [90m1 |[0m [36mimport[0m { [33mEventEmitter[0m } [36mfrom[0m [32m"node:events"[0m;
+[31m[1m>[0m [90m2 |[0m [36mimport[0m * [36mas[0m undici [36mfrom[0m [32m"undici"[0m;
+  [90m  |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m3 |[0m
+  [90m4 |[0m [36mexport[0m [36mconst[0m [33mDEFAULT_HTTP_IDLE_TIMEOUT_MS[0m = [35m300[0m_000;
+  [90m5 |[0m
+
+
+
+Import trace:
+  Instrumentation:
+    ./lib/http-dispatcher.ts
+    ./instrumentation.ts
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+⨯ ./lib/http-dispatcher.ts:2:1
+Module not found: Can't resolve 'undici'
+  [90m1 |[0m [36mimport[0m { [33mEventEmitter[0m } [36mfrom[0m [32m"node:events"[0m;
+[31m[1m>[0m [90m2 |[0m [36mimport[0m * [36mas[0m undici [36mfrom[0m [32m"undici"[0m;
+  [90m  |[0m [31m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m3 |[0m
+  [90m4 |[0m [36mexport[0m [36mconst[0m [33mDEFAULT_HTTP_IDLE_TIMEOUT_MS[0m = [35m300[0m_000;
+  [90m5 |[0m
+
+
+
+Import trace:
+  Instrumentation:
+    ./lib/http-dispatcher.ts
+    ./instrumentation.ts
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+Error: An error occurred while loading instrumentation hook: Cannot find module 'undici'
+    at <unknown> (E:\Eureka\.next\dev\server\chunks\[root-of-the-server]__1dr0j2o._.js:19:15)
+    at module evaluation (E:\Eureka\.next\dev\server\chunks\[root-of-the-server]__1dr0j2o._.js:22:3)
+    at <unknown> (E:\Eureka\.next\dev\server\chunks\lib_http-dispatcher_ts_19mvnah._.js:8:16)
+    at async Module.register (instrumentation.ts:4:39)
+  2 |   if (process.env.NEXT_RUNTIME !== "nodejs") return;
+  3 |
+> 4 |   const { configureHttpDispatcher } = await import("@/lib/http-dispatcher");
+    |                                       ^
+  5 |   configureHttpDispatcher();
+  6 | }
+  7 | {
+  code: 'MODULE_NOT_FOUND'
+}

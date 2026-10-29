@@ -10,6 +10,7 @@ import {
   invalidateSessionPathCache,
   invalidateSessionListCache,
   buildSessionContext,
+  buildSessionHistory,
   readSessionHeader,
 } from "@/lib/session-reader";
 import { sessionPathKey } from "@/lib/session-path";
@@ -78,6 +79,7 @@ export async function GET(
       tree,
       context,
       planMode,
+      ...(searchParams.get("includeHistory") === "1" ? { history: buildSessionHistory(entries as never, leafId, { deferThinking, deferToolResultImages }) } : {}),
       clarification: readClarificationState(sm.getBranch() as never),
       totalActiveMs,
     });
@@ -156,6 +158,7 @@ export async function DELETE(
     await closeSessionBrowsers(id);
     await getRpcSession(id)?.shutdown();
     unlinkSync(filePath);
+    try { unlinkSync(`${filePath}.context-usage.json`); } catch { /* Optional numeric snapshot. */ }
     invalidateSessionPathCache(id);
     invalidateSessionListCache();
     return NextResponse.json({ ok: true });

@@ -17,6 +17,15 @@ const sources = [
 const toolResults = new Map([["a", { role: "toolResult", toolCallId: "a", content: [], timestamp: 2000 }]]);
 const render = (turn, props = {}) => renderToStaticMarkup(React.createElement(I18nProvider, null, React.createElement(TaskTurnView, { turn, toolResults, ...props })));
 
+test("a pre-compaction continuation is folded and shares its logical user turn without a false unfinished notice", () => {
+  const html = render(buildTaskPhases(sources, { running: false, toolResults }), { continuation: true, archived: true, turnId: "original-user" });
+  assert.match(html, /data-turn-id="original-user"/);
+  assert.match(html, /aria-expanded="false"/);
+  assert.match(html, /Process details/);
+  assert.doesNotMatch(html, /class="task-turn-status"/);
+  assert.doesNotMatch(html, /Look at the project config/);
+});
+
 test("current stages show commentary, counts, compact thinking and tool rows", () => {
   const html = render(buildTaskPhases(sources, { running: true, toolResults }));
   assert.match(html, /Inspect the project\./);
@@ -27,6 +36,25 @@ test("current stages show commentary, counts, compact thinking and tool rows", (
   assert.match(html, /Read file/);
   assert.doesNotMatch(html, /Message information|task-phase-message-info/);
   assert.doesNotMatch(html, /Process details/);
+});
+
+test("long process lists retain every record inside a bounded scroll region", () => {
+  const content = [{ type: "thinking", thinking: "Reviewing the task" }, ...Array.from({ length: 35 }, (_, index) => ({
+    type: "toolCall", toolCallId: `call-${index}`, toolName: "read", input: { path: `step-${index}.ts` },
+  }))];
+  const turn = buildTaskPhases([{ messageIndex: 1, message: { role: "assistant", content } }], { running: true, toolResults: new Map() });
+  const html = render(turn, { toolResults: new Map() });
+  assert.match(html, /class="task-process-list" role="region" tabindex="0"/);
+  assert.match(html, /aria-label="Tool calls and thinking"/);
+  assert.match(html, /data-running="true" data-visible-rows="12"/);
+  assert.match(html, /step-0\.ts/);
+  assert.match(html, /step-34\.ts/);
+  assert.equal((html.match(/class="tool-activity(?: thinking-activity)?"/g) ?? []).length, 36);
+});
+
+test("unfinished history is scrollable without being treated as a live list", () => {
+  const html = render(buildTaskPhases(sources, { running: false, toolResults }));
+  assert.match(html, /data-running="false" data-visible-rows="12"/);
 });
 
 test("success folds all commentary and steps beneath processing details", () => {

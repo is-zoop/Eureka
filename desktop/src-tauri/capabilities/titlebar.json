@@ -6,6 +6,8 @@
   "permissions": [
     "core:event:allow-listen",
     "core:event:allow-unlisten",
-    "allow-desktop-window-action"
+    "core:window:allow-start-resize-dragging",
+    "allow-desktop-window-action",
+    "allow-desktop-menu-titlebar"
   ]
 }

@@ -1,0 +1,2650 @@
+⨯ ./app/globals.css
+Error evaluating Node.js code
+Error: Cannot find module 'jiti'
+Require stack:
+- E:\Eureka\node_modules\@tailwindcss\node\dist\index.js
+- E:\Eureka\node_modules\@tailwindcss\postcss\dist\index.js
+- E:\Eureka\.next\dev\build\chunks\[root-of-the-server]__0oj80bi._.js
+- E:\Eureka\.next\dev\build\chunks\[turbopack]_runtime.js
+- E:\Eureka\.next\dev\build\56416d4ae4ce586f.js
+    [at Module._resolveFilename (node:internal/modules/cjs/loader:1421:15)]
+    [at defaultResolveImpl (node:internal/modules/cjs/loader:1059:19)]
+    [at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1064:22)]
+    [at Module._load (node:internal/modules/cjs/loader:1227:37)]
+    [at TracingChannel.traceSync (node:diagnostics_channel:328:14)]
+    [at wrapModuleLoad (node:internal/modules/cjs/loader:245:24)]
+    [at Module.require (node:internal/modules/cjs/loader:1504:12)]
+    [at require (node:internal/modules/helpers:152:16)]
+    [at Object.<anonymous> (E:\Eureka\node_modules\@tailwindcss\node\dist\index.js:1:1269)]
+    [at Module._compile (node:internal/modules/cjs/loader:1761:14)]
+
+Import trace:
+  Client Component Browser:
+    ./app/globals.css [Client Component Browser]
+    ./app/layout.tsx [Server Component]
+
+
+
+./components/AppNavigation.module.css
+Error evaluating Node.js code
+Error: Cannot find module 'jiti'
+Require stack:
+- E:\Eureka\node_modules\@tailwindcss\node\dist\index.js
+- E:\Eureka\node_modules\@tailwindcss\postcss\dist\index.js
+- E:\Eureka\.next\dev\build\chunks\[root-of-the-server]__0oj80bi._.js
+- E:\Eureka\.next\dev\build\chunks\[turbopack]_runtime.js
+- E:\Eureka\.next\dev\build\56416d4ae4ce586f.js
+    [at Module._resolveFilename (node:internal/modules/cjs/loader:1421:15)]
+    [at defaultResolveImpl (node:internal/modules/cjs/loader:1059:19)]
+    [at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1064:22)]
+    [at Module._load (node:internal/modules/cjs/loader:1227:37)]
+    [at TracingChannel.traceSync (node:diagnostics_channel:328:14)]
+    [at wrapModuleLoad (node:internal/modules/cjs/loader:245:24)]
+    [at Module.require (node:internal/modules/cjs/loader:1504:12)]
+    [at require (node:internal/modules/helpers:152:16)]
+    [at Object.<anonymous> (E:\Eureka\node_modules\@tailwindcss\node\dist\index.js:1:1269)]
+    [at Module._compile (node:internal/modules/cjs/loader:1761:14)]
+
+Import traces:
+  Client Component Browser:
+    ./components/AppNavigation.module.css [Client Component Browser]
+    ./components/AppNavigation.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./components/AppNavigation.module.css [Client Component SSR]
+    ./components/AppNavigation.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component]
+
+
+
+./components/ChatMinimap.module.css
+Error evaluating Node.js code
+Error: Cannot find module 'jiti'
+Require stack:
+- E:\Eureka\node_modules\@tailwindcss\node\dist\index.js
+- E:\Eureka\node_modules\@tailwindcss\postcss\dist\index.js
+- E:\Eureka\.next\dev\build\chunks\[root-of-the-server]__0oj80bi._.js
+- E:\Eureka\.next\dev\build\chunks\[turbopack]_runtime.js
+- E:\Eureka\.next\dev\build\56416d4ae4ce586f.js
+    [at Module._resolveFilename (node:internal/modules/cjs/loader:1421:15)]
+    [at defaultResolveImpl (node:internal/modules/cjs/loader:1059:19)]
+    [at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1064:22)]
+    [at Module._load (node:internal/modules/cjs/loader:1227:37)]
+    [at TracingChannel.traceSync (node:diagnostics_channel:328:14)]
+    [at wrapModuleLoad (node:internal/modules/cjs/loader:245:24)]
+    [at Module.require (node:internal/modules/cjs/loader:1504:12)]
+    [at require (node:internal/modules/helpers:152:16)]
+    [at Object.<anonymous> (E:\Eureka\node_modules\@tailwindcss\node\dist\index.js:1:1269)]
+    [at Module._compile (node:internal/modules/cjs/loader:1761:14)]
+
+Import traces:
+  Client Component Browser:
+    ./components/ChatMinimap.module.css [Client Component Browser]
+    ./components/ChatMinimap.tsx [Client Component Browser]
+    ./components/ChatWindow.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./components/ChatMinimap.module.css [Client Component SSR]
+    ./components/ChatMinimap.tsx [Client Component SSR]
+    ./components/ChatWindow.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component]
+
+
+
+./components/CommandPalette.module.css
+Error evaluating Node.js code
+Error: Cannot find module 'jiti'
+Require stack:
+- E:\Eureka\node_modules\@tailwindcss\node\dist\index.js
+- E:\Eureka\node_modules\@tailwindcss\postcss\dist\index.js
+- E:\Eureka\.next\dev\build\chunks\[root-of-the-server]__0oj80bi._.js
+- E:\Eureka\.next\dev\build\chunks\[turbopack]_runtime.js
+- E:\Eureka\.next\dev\build\56416d4ae4ce586f.js
+    [at Module._resolveFilename (node:internal/modules/cjs/loader:1421:15)]
+    [at defaultResolveImpl (node:internal/modules/cjs/loader:1059:19)]
+    [at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1064:22)]
+    [at Module._load (node:internal/modules/cjs/loader:1227:37)]
+    [at TracingChannel.traceSync (node:diagnostics_channel:328:14)]
+    [at wrapModuleLoad (node:internal/modules/cjs/loader:245:24)]
+    [at Module.require (node:internal/modules/cjs/loader:1504:12)]
+    [at require (node:internal/modules/helpers:152:16)]
+    [at Object.<anonymous> (E:\Eureka\node_modules\@tailwindcss\node\dist\index.js:1:1269)]
+    [at Module._compile (node:internal/modules/cjs/loader:1761:14)]
+
+Import traces:
+  Client Component Browser:
+    ./components/CommandPalette.module.css [Client Component Browser]
+    ./components/ChatInput.tsx [Client Component Browser]
+    ./components/ChatWindow.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./components/CommandPalette.module.css [Client Component SSR]
+    ./components/ChatInput.tsx [Client Component SSR]
+    ./components/ChatWindow.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component]
+
+
+
+./components/ComposerSelectors.module.css
+Error evaluating Node.js code
+Error: Cannot find module 'jiti'
+Require stack:
+- E:\Eureka\node_modules\@tailwindcss\node\dist\index.js
+- E:\Eureka\node_modules\@tailwindcss\postcss\dist\index.js
+- E:\Eureka\.next\dev\build\chunks\[root-of-the-server]__0oj80bi._.js
+- E:\Eureka\.next\dev\build\chunks\[turbopack]_runtime.js
+- E:\Eureka\.next\dev\build\56416d4ae4ce586f.js
+    [at Module._resolveFilename (node:internal/modules/cjs/loader:1421:15)]
+    [at defaultResolveImpl (node:internal/modules/cjs/loader:1059:19)]
+    [at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1064:22)]
+    [at Module._load (node:internal/modules/cjs/loader:1227:37)]
+    [at TracingChannel.traceSync (node:diagnostics_channel:328:14)]
+    [at wrapModuleLoad (node:internal/modules/cjs/loader:245:24)]
+    [at Module.require (node:internal/modules/cjs/loader:1504:12)]
+    [at require (node:internal/modules/helpers:152:16)]
+    [at Object.<anonymous> (E:\Eureka\node_modules\@tailwindcss\node\dist\index.js:1:1269)]
+    [at Module._compile (node:internal/modules/cjs/loader:1761:14)]
+
+Import traces:
+  Client Component Browser:
+    ./components/ComposerSelectors.module.css [Client Component Browser]
+    ./components/ChatInput.tsx [Client Component Browser]
+    ./components/ChatWindow.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./components/ComposerSelectors.module.css [Client Component SSR]
+    ./components/ChatInput.tsx [Client Component SSR]
+    ./components/ChatWindow.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component]
+
+
+
+./components/ContextPopover.module.css
+Error evaluating Node.js code
+Error: Cannot find module 'jiti'
+Require stack:
+- E:\Eureka\node_modules\@tailwindcss\node\dist\index.js
+- E:\Eureka\node_modules\@tailwindcss\postcss\dist\index.js
+- E:\Eureka\.next\dev\build\chunks\[root-of-the-server]__0oj80bi._.js
+- E:\Eureka\.next\dev\build\chunks\[turbopack]_runtime.js
+- E:\Eureka\.next\dev\build\56416d4ae4ce586f.js
+    [at Module._resolveFilename (node:internal/modules/cjs/loader:1421:15)]
+    [at defaultResolveImpl (node:internal/modules/cjs/loader:1059:19)]
+    [at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1064:22)]
+    [at Module._load (node:internal/modules/cjs/loader:1227:37)]
+    [at TracingChannel.traceSync (node:diagnostics_channel:328:14)]
+    [at wrapModuleLoad (node:internal/modules/cjs/loader:245:24)]
+    [at Module.require (node:internal/modules/cjs/loader:1504:12)]
+    [at require (node:internal/modules/helpers:152:16)]
+    [at Object.<anonymous> (E:\Eureka\node_modules\@tailwindcss\node\dist\index.js:1:1269)]
+    [at Module._compile (node:internal/modules/cjs/loader:1761:14)]
+
+Import traces:
+  Client Component Browser:
+    ./components/ContextPopover.module.css [Client Component Browser]
+    ./components/ContextPopover.tsx [Client Component Browser]
+    ./components/ChatWindow.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./components/ContextPopover.module.css [Client Component SSR]
+    ./components/ContextPopover.tsx [Client Component SSR]
+    ./components/ChatWindow.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component]
+
+
+
+./components/DesktopMenus.module.css
+Error evaluating Node.js code
+Error: Cannot find module 'jiti'
+Require stack:
+- E:\Eureka\node_modules\@tailwindcss\node\dist\index.js
+- E:\Eureka\node_modules\@tailwindcss\postcss\dist\index.js
+- E:\Eureka\.next\dev\build\chunks\[root-of-the-server]__0oj80bi._.js
+- E:\Eureka\.next\dev\build\chunks\[turbopack]_runtime.js
+- E:\Eureka\.next\dev\build\56416d4ae4ce586f.js
+    [at Module._resolveFilename (node:internal/modules/cjs/loader:1421:15)]
+    [at defaultResolveImpl (node:internal/modules/cjs/loader:1059:19)]
+    [at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1064:22)]
+    [at Module._load (node:internal/modules/cjs/loader:1227:37)]
+    [at TracingChannel.traceSync (node:diagnostics_channel:328:14)]
+    [at wrapModuleLoad (node:internal/modules/cjs/loader:245:24)]
+    [at Module.require (node:internal/modules/cjs/loader:1504:12)]
+    [at require (node:internal/modules/helpers:152:16)]
+    [at Object.<anonymous> (E:\Eureka\node_modules\@tailwindcss\node\dist\index.js:1:1269)]
+    [at Module._compile (node:internal/modules/cjs/loader:1761:14)]
+
+Import traces:
+  Client Component Browser:
+    ./components/DesktopMenus.module.css [Client Component Browser]
+    ./components/DesktopMenus.tsx [Client Component Browser]
+    ./components/DesktopMenus.tsx [Server Component]
+    ./app/layout.tsx [Server Component]
+
+  Client Component SSR:
+    ./components/DesktopMenus.module.css [Client Component SSR]
+    ./components/DesktopMenus.tsx [Client Component SSR]
+    ./components/DesktopMenus.tsx [Server Component]
+    ./app/layout.tsx [Server Component]
+
+
+
+./components/GitPanel.module.css
+Error evaluating Node.js code
+Error: Cannot find module 'jiti'
+Require stack:
+- E:\Eureka\node_modules\@tailwindcss\node\dist\index.js
+- E:\Eureka\node_modules\@tailwindcss\postcss\dist\index.js
+- E:\Eureka\.next\dev\build\chunks\[root-of-the-server]__0oj80bi._.js
+- E:\Eureka\.next\dev\build\chunks\[turbopack]_runtime.js
+- E:\Eureka\.next\dev\build\56416d4ae4ce586f.js
+    [at Module._resolveFilename (node:internal/modules/cjs/loader:1421:15)]
+    [at defaultResolveImpl (node:internal/modules/cjs/loader:1059:19)]
+    [at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1064:22)]
+    [at Module._load (node:internal/modules/cjs/loader:1227:37)]
+    [at TracingChannel.traceSync (node:diagnostics_channel:328:14)]
+    [at wrapModuleLoad (node:internal/modules/cjs/loader:245:24)]
+    [at Module.require (node:internal/modules/cjs/loader:1504:12)]
+    [at require (node:internal/modules/helpers:152:16)]
+    [at Object.<anonymous> (E:\Eureka\node_modules\@tailwindcss\node\dist\index.js:1:1269)]
+    [at Module._compile (node:internal/modules/cjs/loader:1761:14)]
+
+Import traces:
+  Client Component Browser:
+    ./components/GitPanel.module.css [Client Component Browser]
+    ./components/GitPanel.tsx [Client Component Browser]
+    ./components/SessionSidebar.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./components/GitPanel.module.css [Client Component SSR]
+    ./components/GitPanel.tsx [Client Component SSR]
+    ./components/SessionSidebar.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component]
+
+
+
+./components/InstalledCapabilitiesSidebar.module.css
+Error evaluating Node.js code
+Error: Cannot find module 'jiti'
+Require stack:
+- E:\Eureka\node_modules\@tailwindcss\node\dist\index.js
+- E:\Eureka\node_modules\@tailwindcss\postcss\dist\index.js
+- E:\Eureka\.next\dev\build\chunks\[root-of-the-server]__0oj80bi._.js
+- E:\Eureka\.next\dev\build\chunks\[turbopack]_runtime.js
+- E:\Eureka\.next\dev\build\56416d4ae4ce586f.js
+    [at Module._resolveFilename (node:internal/modules/cjs/loader:1421:15)]
+    [at defaultResolveImpl (node:internal/modules/cjs/loader:1059:19)]
+    [at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1064:22)]
+    [at Module._load (node:internal/modules/cjs/loader:1227:37)]
+    [at TracingChannel.traceSync (node:diagnostics_channel:328:14)]
+    [at wrapModuleLoad (node:internal/modules/cjs/loader:245:24)]
+    [at Module.require (node:internal/modules/cjs/loader:1504:12)]
+    [at require (node:internal/modules/helpers:152:16)]
+    [at Object.<anonymous> (E:\Eureka\node_modules\@tailwindcss\node\dist\index.js:1:1269)]
+    [at Module._compile (node:internal/modules/cjs/loader:1761:14)]
+
+Import traces:
+  Client Component Browser:
+    ./components/InstalledCapabilitiesSidebar.module.css [Client Component Browser]
+    ./components/ExtensionsCenter.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./components/InstalledCapabilitiesSidebar.module.css [Client Component SSR]
+    ./components/ExtensionsCenter.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component]
+
+
+
+./components/Sidebar.module.css
+Error evaluating Node.js code
+Error: Cannot find module 'jiti'
+Require stack:
+- E:\Eureka\node_modules\@tailwindcss\node\dist\index.js
+- E:\Eureka\node_modules\@tailwindcss\postcss\dist\index.js
+- E:\Eureka\.next\dev\build\chunks\[root-of-the-server]__0oj80bi._.js
+- E:\Eureka\.next\dev\build\chunks\[turbopack]_runtime.js
+- E:\Eureka\.next\dev\build\56416d4ae4ce586f.js
+    [at Module._resolveFilename (node:internal/modules/cjs/loader:1421:15)]
+    [at defaultResolveImpl (node:internal/modules/cjs/loader:1059:19)]
+    [at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1064:22)]
+    [at Module._load (node:internal/modules/cjs/loader:1227:37)]
+    [at TracingChannel.traceSync (node:diagnostics_channel:328:14)]
+    [at wrapModuleLoad (node:internal/modules/cjs/loader:245:24)]
+    [at Module.require (node:internal/modules/cjs/loader:1504:12)]
+    [at require (node:internal/modules/helpers:152:16)]
+    [at Object.<anonymous> (E:\Eureka\node_modules\@tailwindcss\node\dist\index.js:1:1269)]
+    [at Module._compile (node:internal/modules/cjs/loader:1761:14)]
+
+Import traces:
+  Client Component Browser:
+    ./components/Sidebar.module.css [Client Component Browser]
+    ./components/SidebarUserMenu.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./components/Sidebar.module.css [Client Component SSR]
+    ./components/SidebarUserMenu.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component]
+
+
+
+./node_modules/katex/dist/katex.min.css
+Error evaluating Node.js code
+Error: Cannot find module 'jiti'
+Require stack:
+- E:\Eureka\node_modules\@tailwindcss\node\dist\index.js
+- E:\Eureka\node_modules\@tailwindcss\postcss\dist\index.js
+- E:\Eureka\.next\dev\build\chunks\[root-of-the-server]__0oj80bi._.js
+- E:\Eureka\.next\dev\build\chunks\[turbopack]_runtime.js
+- E:\Eureka\.next\dev\build\56416d4ae4ce586f.js
+    [at Module._resolveFilename (node:internal/modules/cjs/loader:1421:15)]
+    [at defaultResolveImpl (node:internal/modules/cjs/loader:1059:19)]
+    [at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1064:22)]
+    [at Module._load (node:internal/modules/cjs/loader:1227:37)]
+    [at TracingChannel.traceSync (node:diagnostics_channel:328:14)]
+    [at wrapModuleLoad (node:internal/modules/cjs/loader:245:24)]
+    [at Module.require (node:internal/modules/cjs/loader:1504:12)]
+    [at require (node:internal/modules/helpers:152:16)]
+    [at Object.<anonymous> (E:\Eureka\node_modules\@tailwindcss\node\dist\index.js:1:1269)]
+    [at Module._compile (node:internal/modules/cjs/loader:1761:14)]
+
+Import trace:
+  Client Component Browser:
+    ./node_modules/katex/dist/katex.min.css [Client Component Browser]
+    ./app/layout.tsx [Server Component]
+
+
+⨯ ./app/globals.css
+Error evaluating Node.js code
+Error: Cannot find module 'jiti'
+Require stack:
+- E:\Eureka\node_modules\@tailwindcss\node\dist\index.js
+- E:\Eureka\node_modules\@tailwindcss\postcss\dist\index.js
+- E:\Eureka\.next\dev\build\chunks\[root-of-the-server]__0oj80bi._.js
+- E:\Eureka\.next\dev\build\chunks\[turbopack]_runtime.js
+- E:\Eureka\.next\dev\build\56416d4ae4ce586f.js
+    [at Module._resolveFilename (node:internal/modules/cjs/loader:1421:15)]
+    [at defaultResolveImpl (node:internal/modules/cjs/loader:1059:19)]
+    [at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1064:22)]
+    [at Module._load (node:internal/modules/cjs/loader:1227:37)]
+    [at TracingChannel.traceSync (node:diagnostics_channel:328:14)]
+    [at wrapModuleLoad (node:internal/modules/cjs/loader:245:24)]
+    [at Module.require (node:internal/modules/cjs/loader:1504:12)]
+    [at require (node:internal/modules/helpers:152:16)]
+    [at Object.<anonymous> (E:\Eureka\node_modules\@tailwindcss\node\dist\index.js:1:1269)]
+    [at Module._compile (node:internal/modules/cjs/loader:1761:14)]
+
+Import trace:
+  Client Component Browser:
+    ./app/globals.css [Client Component Browser]
+    ./app/layout.tsx [Server Component]
+
+
+
+./components/AppNavigation.module.css
+Error evaluating Node.js code
+Error: Cannot find module 'jiti'
+Require stack:
+- E:\Eureka\node_modules\@tailwindcss\node\dist\index.js
+- E:\Eureka\node_modules\@tailwindcss\postcss\dist\index.js
+- E:\Eureka\.next\dev\build\chunks\[root-of-the-server]__0oj80bi._.js
+- E:\Eureka\.next\dev\build\chunks\[turbopack]_runtime.js
+- E:\Eureka\.next\dev\build\56416d4ae4ce586f.js
+    [at Module._resolveFilename (node:internal/modules/cjs/loader:1421:15)]
+    [at defaultResolveImpl (node:internal/modules/cjs/loader:1059:19)]
+    [at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1064:22)]
+    [at Module._load (node:internal/modules/cjs/loader:1227:37)]
+    [at TracingChannel.traceSync (node:diagnostics_channel:328:14)]
+    [at wrapModuleLoad (node:internal/modules/cjs/loader:245:24)]
+    [at Module.require (node:internal/modules/cjs/loader:1504:12)]
+    [at require (node:internal/modules/helpers:152:16)]
+    [at Object.<anonymous> (E:\Eureka\node_modules\@tailwindcss\node\dist\index.js:1:1269)]
+    [at Module._compile (node:internal/modules/cjs/loader:1761:14)]
+
+Import traces:
+  Client Component Browser:
+    ./components/AppNavigation.module.css [Client Component Browser]
+    ./components/AppNavigation.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./components/AppNavigation.module.css [Client Component SSR]
+    ./components/AppNavigation.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component]
+
+
+
+./components/ChatMinimap.module.css
+Error evaluating Node.js code
+Error: Cannot find module 'jiti'
+Require stack:
+- E:\Eureka\node_modules\@tailwindcss\node\dist\index.js
+- E:\Eureka\node_modules\@tailwindcss\postcss\dist\index.js
+- E:\Eureka\.next\dev\build\chunks\[root-of-the-server]__0oj80bi._.js
+- E:\Eureka\.next\dev\build\chunks\[turbopack]_runtime.js
+- E:\Eureka\.next\dev\build\56416d4ae4ce586f.js
+    [at Module._resolveFilename (node:internal/modules/cjs/loader:1421:15)]
+    [at defaultResolveImpl (node:internal/modules/cjs/loader:1059:19)]
+    [at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1064:22)]
+    [at Module._load (node:internal/modules/cjs/loader:1227:37)]
+    [at TracingChannel.traceSync (node:diagnostics_channel:328:14)]
+    [at wrapModuleLoad (node:internal/modules/cjs/loader:245:24)]
+    [at Module.require (node:internal/modules/cjs/loader:1504:12)]
+    [at require (node:internal/modules/helpers:152:16)]
+    [at Object.<anonymous> (E:\Eureka\node_modules\@tailwindcss\node\dist\index.js:1:1269)]
+    [at Module._compile (node:internal/modules/cjs/loader:1761:14)]
+
+Import traces:
+  Client Component Browser:
+    ./components/ChatMinimap.module.css [Client Component Browser]
+    ./components/ChatMinimap.tsx [Client Component Browser]
+    ./components/ChatWindow.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./components/ChatMinimap.module.css [Client Component SSR]
+    ./components/ChatMinimap.tsx [Client Component SSR]
+    ./components/ChatWindow.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component]
+
+
+
+./components/CommandPalette.module.css
+Error evaluating Node.js code
+Error: Cannot find module 'jiti'
+Require stack:
+- E:\Eureka\node_modules\@tailwindcss\node\dist\index.js
+- E:\Eureka\node_modules\@tailwindcss\postcss\dist\index.js
+- E:\Eureka\.next\dev\build\chunks\[root-of-the-server]__0oj80bi._.js
+- E:\Eureka\.next\dev\build\chunks\[turbopack]_runtime.js
+- E:\Eureka\.next\dev\build\56416d4ae4ce586f.js
+    [at Module._resolveFilename (node:internal/modules/cjs/loader:1421:15)]
+    [at defaultResolveImpl (node:internal/modules/cjs/loader:1059:19)]
+    [at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1064:22)]
+    [at Module._load (node:internal/modules/cjs/loader:1227:37)]
+    [at TracingChannel.traceSync (node:diagnostics_channel:328:14)]
+    [at wrapModuleLoad (node:internal/modules/cjs/loader:245:24)]
+    [at Module.require (node:internal/modules/cjs/loader:1504:12)]
+    [at require (node:internal/modules/helpers:152:16)]
+    [at Object.<anonymous> (E:\Eureka\node_modules\@tailwindcss\node\dist\index.js:1:1269)]
+    [at Module._compile (node:internal/modules/cjs/loader:1761:14)]
+
+Import traces:
+  Client Component Browser:
+    ./components/CommandPalette.module.css [Client Component Browser]
+    ./components/ChatInput.tsx [Client Component Browser]
+    ./components/ChatWindow.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./components/CommandPalette.module.css [Client Component SSR]
+    ./components/ChatInput.tsx [Client Component SSR]
+    ./components/ChatWindow.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component]
+
+
+
+./components/ComposerSelectors.module.css
+Error evaluating Node.js code
+Error: Cannot find module 'jiti'
+Require stack:
+- E:\Eureka\node_modules\@tailwindcss\node\dist\index.js
+- E:\Eureka\node_modules\@tailwindcss\postcss\dist\index.js
+- E:\Eureka\.next\dev\build\chunks\[root-of-the-server]__0oj80bi._.js
+- E:\Eureka\.next\dev\build\chunks\[turbopack]_runtime.js
+- E:\Eureka\.next\dev\build\56416d4ae4ce586f.js
+    [at Module._resolveFilename (node:internal/modules/cjs/loader:1421:15)]
+    [at defaultResolveImpl (node:internal/modules/cjs/loader:1059:19)]
+    [at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1064:22)]
+    [at Module._load (node:internal/modules/cjs/loader:1227:37)]
+    [at TracingChannel.traceSync (node:diagnostics_channel:328:14)]
+    [at wrapModuleLoad (node:internal/modules/cjs/loader:245:24)]
+    [at Module.require (node:internal/modules/cjs/loader:1504:12)]
+    [at require (node:internal/modules/helpers:152:16)]
+    [at Object.<anonymous> (E:\Eureka\node_modules\@tailwindcss\node\dist\index.js:1:1269)]
+    [at Module._compile (node:internal/modules/cjs/loader:1761:14)]
+
+Import traces:
+  Client Component Browser:
+    ./components/ComposerSelectors.module.css [Client Component Browser]
+    ./components/ChatInput.tsx [Client Component Browser]
+    ./components/ChatWindow.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./components/ComposerSelectors.module.css [Client Component SSR]
+    ./components/ChatInput.tsx [Client Component SSR]
+    ./components/ChatWindow.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component]
+
+
+
+./components/ContextPopover.module.css
+Error evaluating Node.js code
+Error: Cannot find module 'jiti'
+Require stack:
+- E:\Eureka\node_modules\@tailwindcss\node\dist\index.js
+- E:\Eureka\node_modules\@tailwindcss\postcss\dist\index.js
+- E:\Eureka\.next\dev\build\chunks\[root-of-the-server]__0oj80bi._.js
+- E:\Eureka\.next\dev\build\chunks\[turbopack]_runtime.js
+- E:\Eureka\.next\dev\build\56416d4ae4ce586f.js
+    [at Module._resolveFilename (node:internal/modules/cjs/loader:1421:15)]
+    [at defaultResolveImpl (node:internal/modules/cjs/loader:1059:19)]
+    [at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1064:22)]
+    [at Module._load (node:internal/modules/cjs/loader:1227:37)]
+    [at TracingChannel.traceSync (node:diagnostics_channel:328:14)]
+    [at wrapModuleLoad (node:internal/modules/cjs/loader:245:24)]
+    [at Module.require (node:internal/modules/cjs/loader:1504:12)]
+    [at require (node:internal/modules/helpers:152:16)]
+    [at Object.<anonymous> (E:\Eureka\node_modules\@tailwindcss\node\dist\index.js:1:1269)]
+    [at Module._compile (node:internal/modules/cjs/loader:1761:14)]
+
+Import traces:
+  Client Component Browser:
+    ./components/ContextPopover.module.css [Client Component Browser]
+    ./components/ContextPopover.tsx [Client Component Browser]
+    ./components/ChatWindow.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./components/ContextPopover.module.css [Client Component SSR]
+    ./components/ContextPopover.tsx [Client Component SSR]
+    ./components/ChatWindow.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component]
+
+
+
+./components/DesktopMenus.module.css
+Error evaluating Node.js code
+Error: Cannot find module 'jiti'
+Require stack:
+- E:\Eureka\node_modules\@tailwindcss\node\dist\index.js
+- E:\Eureka\node_modules\@tailwindcss\postcss\dist\index.js
+- E:\Eureka\.next\dev\build\chunks\[root-of-the-server]__0oj80bi._.js
+- E:\Eureka\.next\dev\build\chunks\[turbopack]_runtime.js
+- E:\Eureka\.next\dev\build\56416d4ae4ce586f.js
+    [at Module._resolveFilename (node:internal/modules/cjs/loader:1421:15)]
+    [at defaultResolveImpl (node:internal/modules/cjs/loader:1059:19)]
+    [at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1064:22)]
+    [at Module._load (node:internal/modules/cjs/loader:1227:37)]
+    [at TracingChannel.traceSync (node:diagnostics_channel:328:14)]
+    [at wrapModuleLoad (node:internal/modules/cjs/loader:245:24)]
+    [at Module.require (node:internal/modules/cjs/loader:1504:12)]
+    [at require (node:internal/modules/helpers:152:16)]
+    [at Object.<anonymous> (E:\Eureka\node_modules\@tailwindcss\node\dist\index.js:1:1269)]
+    [at Module._compile (node:internal/modules/cjs/loader:1761:14)]
+
+Import traces:
+  Client Component Browser:
+    ./components/DesktopMenus.module.css [Client Component Browser]
+    ./components/DesktopMenus.tsx [Client Component Browser]
+    ./components/DesktopMenus.tsx [Server Component]
+    ./app/layout.tsx [Server Component]
+
+  Client Component SSR:
+    ./components/DesktopMenus.module.css [Client Component SSR]
+    ./components/DesktopMenus.tsx [Client Component SSR]
+    ./components/DesktopMenus.tsx [Server Component]
+    ./app/layout.tsx [Server Component]
+
+
+
+./components/GitPanel.module.css
+Error evaluating Node.js code
+Error: Cannot find module 'jiti'
+Require stack:
+- E:\Eureka\node_modules\@tailwindcss\node\dist\index.js
+- E:\Eureka\node_modules\@tailwindcss\postcss\dist\index.js
+- E:\Eureka\.next\dev\build\chunks\[root-of-the-server]__0oj80bi._.js
+- E:\Eureka\.next\dev\build\chunks\[turbopack]_runtime.js
+- E:\Eureka\.next\dev\build\56416d4ae4ce586f.js
+    [at Module._resolveFilename (node:internal/modules/cjs/loader:1421:15)]
+    [at defaultResolveImpl (node:internal/modules/cjs/loader:1059:19)]
+    [at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1064:22)]
+    [at Module._load (node:internal/modules/cjs/loader:1227:37)]
+    [at TracingChannel.traceSync (node:diagnostics_channel:328:14)]
+    [at wrapModuleLoad (node:internal/modules/cjs/loader:245:24)]
+    [at Module.require (node:internal/modules/cjs/loader:1504:12)]
+    [at require (node:internal/modules/helpers:152:16)]
+    [at Object.<anonymous> (E:\Eureka\node_modules\@tailwindcss\node\dist\index.js:1:1269)]
+    [at Module._compile (node:internal/modules/cjs/loader:1761:14)]
+
+Import traces:
+  Client Component Browser:
+    ./components/GitPanel.module.css [Client Component Browser]
+    ./components/GitPanel.tsx [Client Component Browser]
+    ./components/SessionSidebar.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./components/GitPanel.module.css [Client Component SSR]
+    ./components/GitPanel.tsx [Client Component SSR]
+    ./components/SessionSidebar.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component]
+
+
+
+./components/InstalledCapabilitiesSidebar.module.css
+Error evaluating Node.js code
+Error: Cannot find module 'jiti'
+Require stack:
+- E:\Eureka\node_modules\@tailwindcss\node\dist\index.js
+- E:\Eureka\node_modules\@tailwindcss\postcss\dist\index.js
+- E:\Eureka\.next\dev\build\chunks\[root-of-the-server]__0oj80bi._.js
+- E:\Eureka\.next\dev\build\chunks\[turbopack]_runtime.js
+- E:\Eureka\.next\dev\build\56416d4ae4ce586f.js
+    [at Module._resolveFilename (node:internal/modules/cjs/loader:1421:15)]
+    [at defaultResolveImpl (node:internal/modules/cjs/loader:1059:19)]
+    [at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1064:22)]
+    [at Module._load (node:internal/modules/cjs/loader:1227:37)]
+    [at TracingChannel.traceSync (node:diagnostics_channel:328:14)]
+    [at wrapModuleLoad (node:internal/modules/cjs/loader:245:24)]
+    [at Module.require (node:internal/modules/cjs/loader:1504:12)]
+    [at require (node:internal/modules/helpers:152:16)]
+    [at Object.<anonymous> (E:\Eureka\node_modules\@tailwindcss\node\dist\index.js:1:1269)]
+    [at Module._compile (node:internal/modules/cjs/loader:1761:14)]
+
+Import traces:
+  Client Component Browser:
+    ./components/InstalledCapabilitiesSidebar.module.css [Client Component Browser]
+    ./components/ExtensionsCenter.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./components/InstalledCapabilitiesSidebar.module.css [Client Component SSR]
+    ./components/ExtensionsCenter.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component]
+
+
+
+./components/Sidebar.module.css
+Error evaluating Node.js code
+Error: Cannot find module 'jiti'
+Require stack:
+- E:\Eureka\node_modules\@tailwindcss\node\dist\index.js
+- E:\Eureka\node_modules\@tailwindcss\postcss\dist\index.js
+- E:\Eureka\.next\dev\build\chunks\[root-of-the-server]__0oj80bi._.js
+- E:\Eureka\.next\dev\build\chunks\[turbopack]_runtime.js
+- E:\Eureka\.next\dev\build\56416d4ae4ce586f.js
+    [at Module._resolveFilename (node:internal/modules/cjs/loader:1421:15)]
+    [at defaultResolveImpl (node:internal/modules/cjs/loader:1059:19)]
+    [at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1064:22)]
+    [at Module._load (node:internal/modules/cjs/loader:1227:37)]
+    [at TracingChannel.traceSync (node:diagnostics_channel:328:14)]
+    [at wrapModuleLoad (node:internal/modules/cjs/loader:245:24)]
+    [at Module.require (node:internal/modules/cjs/loader:1504:12)]
+    [at require (node:internal/modules/helpers:152:16)]
+    [at Object.<anonymous> (E:\Eureka\node_modules\@tailwindcss\node\dist\index.js:1:1269)]
+    [at Module._compile (node:internal/modules/cjs/loader:1761:14)]
+
+Import traces:
+  Client Component Browser:
+    ./components/Sidebar.module.css [Client Component Browser]
+    ./components/SidebarUserMenu.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./components/Sidebar.module.css [Client Component SSR]
+    ./components/SidebarUserMenu.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component]
+
+
+
+./node_modules/katex/dist/katex.min.css
+Error evaluating Node.js code
+Error: Cannot find module 'jiti'
+Require stack:
+- E:\Eureka\node_modules\@tailwindcss\node\dist\index.js
+- E:\Eureka\node_modules\@tailwindcss\postcss\dist\index.js
+- E:\Eureka\.next\dev\build\chunks\[root-of-the-server]__0oj80bi._.js
+- E:\Eureka\.next\dev\build\chunks\[turbopack]_runtime.js
+- E:\Eureka\.next\dev\build\56416d4ae4ce586f.js
+    [at Module._resolveFilename (node:internal/modules/cjs/loader:1421:15)]
+    [at defaultResolveImpl (node:internal/modules/cjs/loader:1059:19)]
+    [at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1064:22)]
+    [at Module._load (node:internal/modules/cjs/loader:1227:37)]
+    [at TracingChannel.traceSync (node:diagnostics_channel:328:14)]
+    [at wrapModuleLoad (node:internal/modules/cjs/loader:245:24)]
+    [at Module.require (node:internal/modules/cjs/loader:1504:12)]
+    [at require (node:internal/modules/helpers:152:16)]
+    [at Object.<anonymous> (E:\Eureka\node_modules\@tailwindcss\node\dist\index.js:1:1269)]
+    [at Module._compile (node:internal/modules/cjs/loader:1761:14)]
+
+Import trace:
+  Client Component Browser:
+    ./node_modules/katex/dist/katex.min.css [Client Component Browser]
+    ./app/layout.tsx [Server Component]
+
+
+[browser] Uncaught Error: ./app/globals.css
+Error evaluating Node.js code
+Error: Cannot find module 'jiti'
+Require stack:
+- E:\Eureka\node_modules\@tailwindcss\node\dist\index.js
+- E:\Eureka\node_modules\@tailwindcss\postcss\dist\index.js
+- E:\Eureka\.next\dev\build\chunks\[root-of-the-server]__0oj80bi._.js
+- E:\Eureka\.next\dev\build\chunks\[turbopack]_runtime.js
+- E:\Eureka\.next\dev\build\56416d4ae4ce586f.js
+    [at Module._resolveFilename (node:internal/modules/cjs/loader:1421:15)]
+    [at defaultResolveImpl (node:internal/modules/cjs/loader:1059:19)]
+    [at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1064:22)]
+    [at Module._load (node:internal/modules/cjs/loader:1227:37)]
+    [at TracingChannel.traceSync (node:diagnostics_channel:328:14)]
+    [at wrapModuleLoad (node:internal/modules/cjs/loader:245:24)]
+    [at Module.require (node:internal/modules/cjs/loader:1504:12)]
+    [at require (node:internal/modules/helpers:152:16)]
+    [at Object.<anonymous> (E:\Eureka\node_modules\@tailwindcss\node\dist\index.js:1:1269)]
+    [at Module._compile (node:internal/modules/cjs/loader:1761:14)]
+
+Import trace:
+  Client Component Browser:
+    ./app/globals.css [Client Component Browser]
+    ./app/layout.tsx [Server Component]
+
+
+[browser] ./app/globals.css
+Error evaluating Node.js code
+Error: Cannot find module 'jiti'
+Require stack:
+- E:\Eureka\node_modules\@tailwindcss\node\dist\index.js
+- E:\Eureka\node_modules\@tailwindcss\postcss\dist\index.js
+- E:\Eureka\.next\dev\build\chunks\[root-of-the-server]__0oj80bi._.js
+- E:\Eureka\.next\dev\build\chunks\[turbopack]_runtime.js
+- E:\Eureka\.next\dev\build\56416d4ae4ce586f.js
+    [at Module._resolveFilename (node:internal/modules/cjs/loader:1421:15)]
+    [at defaultResolveImpl (node:internal/modules/cjs/loader:1059:19)]
+    [at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1064:22)]
+    [at Module._load (node:internal/modules/cjs/loader:1227:37)]
+    [at TracingChannel.traceSync (node:diagnostics_channel:328:14)]
+    [at wrapModuleLoad (node:internal/modules/cjs/loader:245:24)]
+    [at Module.require (node:internal/modules/cjs/loader:1504:12)]
+    [at require (node:internal/modules/helpers:152:16)]
+    [at Object.<anonymous> (E:\Eureka\node_modules\@tailwindcss\node\dist\index.js:1:1269)]
+    [at Module._compile (node:internal/modules/cjs/loader:1761:14)]
+
+Import trace:
+  Client Component Browser:
+    ./app/globals.css [Client Component Browser]
+    ./app/layout.tsx [Server Component] 
+[browser] ./components/AppNavigation.module.css
+Error evaluating Node.js code
+Error: Cannot find module 'jiti'
+Require stack:
+- E:\Eureka\node_modules\@tailwindcss\node\dist\index.js
+- E:\Eureka\node_modules\@tailwindcss\postcss\dist\index.js
+- E:\Eureka\.next\dev\build\chunks\[root-of-the-server]__0oj80bi._.js
+- E:\Eureka\.next\dev\build\chunks\[turbopack]_runtime.js
+- E:\Eureka\.next\dev\build\56416d4ae4ce586f.js
+    [at Module._resolveFilename (node:internal/modules/cjs/loader:1421:15)]
+    [at defaultResolveImpl (node:internal/modules/cjs/loader:1059:19)]
+    [at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1064:22)]
+    [at Module._load (node:internal/modules/cjs/loader:1227:37)]
+    [at TracingChannel.traceSync (node:diagnostics_channel:328:14)]
+    [at wrapModuleLoad (node:internal/modules/cjs/loader:245:24)]
+    [at Module.require (node:internal/modules/cjs/loader:1504:12)]
+    [at require (node:internal/modules/helpers:152:16)]
+    [at Object.<anonymous> (E:\Eureka\node_modules\@tailwindcss\node\dist\index.js:1:1269)]
+    [at Module._compile (node:internal/modules/cjs/loader:1761:14)]
+
+Import traces:
+  Client Component Browser:
+    ./components/AppNavigation.module.css [Client Component Browser]
+    ./components/AppNavigation.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./components/AppNavigation.module.css [Client Component SSR]
+    ./components/AppNavigation.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component] 
+[browser] ./components/ChatMinimap.module.css
+Error evaluating Node.js code
+Error: Cannot find module 'jiti'
+Require stack:
+- E:\Eureka\node_modules\@tailwindcss\node\dist\index.js
+- E:\Eureka\node_modules\@tailwindcss\postcss\dist\index.js
+- E:\Eureka\.next\dev\build\chunks\[root-of-the-server]__0oj80bi._.js
+- E:\Eureka\.next\dev\build\chunks\[turbopack]_runtime.js
+- E:\Eureka\.next\dev\build\56416d4ae4ce586f.js
+    [at Module._resolveFilename (node:internal/modules/cjs/loader:1421:15)]
+    [at defaultResolveImpl (node:internal/modules/cjs/loader:1059:19)]
+    [at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1064:22)]
+    [at Module._load (node:internal/modules/cjs/loader:1227:37)]
+    [at TracingChannel.traceSync (node:diagnostics_channel:328:14)]
+    [at wrapModuleLoad (node:internal/modules/cjs/loader:245:24)]
+    [at Module.require (node:internal/modules/cjs/loader:1504:12)]
+    [at require (node:internal/modules/helpers:152:16)]
+    [at Object.<anonymous> (E:\Eureka\node_modules\@tailwindcss\node\dist\index.js:1:1269)]
+    [at Module._compile (node:internal/modules/cjs/loader:1761:14)]
+
+Import traces:
+  Client Component Browser:
+    ./components/ChatMinimap.module.css [Client Component Browser]
+    ./components/ChatMinimap.tsx [Client Component Browser]
+    ./components/ChatWindow.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./components/ChatMinimap.module.css [Client Component SSR]
+    ./components/ChatMinimap.tsx [Client Component SSR]
+    ./components/ChatWindow.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component] 
+[browser] ./components/CommandPalette.module.css
+Error evaluating Node.js code
+Error: Cannot find module 'jiti'
+Require stack:
+- E:\Eureka\node_modules\@tailwindcss\node\dist\index.js
+- E:\Eureka\node_modules\@tailwindcss\postcss\dist\index.js
+- E:\Eureka\.next\dev\build\chunks\[root-of-the-server]__0oj80bi._.js
+- E:\Eureka\.next\dev\build\chunks\[turbopack]_runtime.js
+- E:\Eureka\.next\dev\build\56416d4ae4ce586f.js
+    [at Module._resolveFilename (node:internal/modules/cjs/loader:1421:15)]
+    [at defaultResolveImpl (node:internal/modules/cjs/loader:1059:19)]
+    [at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1064:22)]
+    [at Module._load (node:internal/modules/cjs/loader:1227:37)]
+    [at TracingChannel.traceSync (node:diagnostics_channel:328:14)]
+    [at wrapModuleLoad (node:internal/modules/cjs/loader:245:24)]
+    [at Module.require (node:internal/modules/cjs/loader:1504:12)]
+    [at require (node:internal/modules/helpers:152:16)]
+    [at Object.<anonymous> (E:\Eureka\node_modules\@tailwindcss\node\dist\index.js:1:1269)]
+    [at Module._compile (node:internal/modules/cjs/loader:1761:14)]
+
+Import traces:
+  Client Component Browser:
+    ./components/CommandPalette.module.css [Client Component Browser]
+    ./components/ChatInput.tsx [Client Component Browser]
+    ./components/ChatWindow.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./components/CommandPalette.module.css [Client Component SSR]
+    ./components/ChatInput.tsx [Client Component SSR]
+    ./components/ChatWindow.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component] 
+[browser] ./components/ComposerSelectors.module.css
+Error evaluating Node.js code
+Error: Cannot find module 'jiti'
+Require stack:
+- E:\Eureka\node_modules\@tailwindcss\node\dist\index.js
+- E:\Eureka\node_modules\@tailwindcss\postcss\dist\index.js
+- E:\Eureka\.next\dev\build\chunks\[root-of-the-server]__0oj80bi._.js
+- E:\Eureka\.next\dev\build\chunks\[turbopack]_runtime.js
+- E:\Eureka\.next\dev\build\56416d4ae4ce586f.js
+    [at Module._resolveFilename (node:internal/modules/cjs/loader:1421:15)]
+    [at defaultResolveImpl (node:internal/modules/cjs/loader:1059:19)]
+    [at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1064:22)]
+    [at Module._load (node:internal/modules/cjs/loader:1227:37)]
+    [at TracingChannel.traceSync (node:diagnostics_channel:328:14)]
+    [at wrapModuleLoad (node:internal/modules/cjs/loader:245:24)]
+    [at Module.require (node:internal/modules/cjs/loader:1504:12)]
+    [at require (node:internal/modules/helpers:152:16)]
+    [at Object.<anonymous> (E:\Eureka\node_modules\@tailwindcss\node\dist\index.js:1:1269)]
+    [at Module._compile (node:internal/modules/cjs/loader:1761:14)]
+
+Import traces:
+  Client Component Browser:
+    ./components/ComposerSelectors.module.css [Client Component Browser]
+    ./components/ChatInput.tsx [Client Component Browser]
+    ./components/ChatWindow.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./components/ComposerSelectors.module.css [Client Component SSR]
+    ./components/ChatInput.tsx [Client Component SSR]
+    ./components/ChatWindow.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component] 
+[browser] ./components/ContextPopover.module.css
+Error evaluating Node.js code
+Error: Cannot find module 'jiti'
+Require stack:
+- E:\Eureka\node_modules\@tailwindcss\node\dist\index.js
+- E:\Eureka\node_modules\@tailwindcss\postcss\dist\index.js
+- E:\Eureka\.next\dev\build\chunks\[root-of-the-server]__0oj80bi._.js
+- E:\Eureka\.next\dev\build\chunks\[turbopack]_runtime.js
+- E:\Eureka\.next\dev\build\56416d4ae4ce586f.js
+    [at Module._resolveFilename (node:internal/modules/cjs/loader:1421:15)]
+    [at defaultResolveImpl (node:internal/modules/cjs/loader:1059:19)]
+    [at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1064:22)]
+    [at Module._load (node:internal/modules/cjs/loader:1227:37)]
+    [at TracingChannel.traceSync (node:diagnostics_channel:328:14)]
+    [at wrapModuleLoad (node:internal/modules/cjs/loader:245:24)]
+    [at Module.require (node:internal/modules/cjs/loader:1504:12)]
+    [at require (node:internal/modules/helpers:152:16)]
+    [at Object.<anonymous> (E:\Eureka\node_modules\@tailwindcss\node\dist\index.js:1:1269)]
+    [at Module._compile (node:internal/modules/cjs/loader:1761:14)]
+
+Import traces:
+  Client Component Browser:
+    ./components/ContextPopover.module.css [Client Component Browser]
+    ./components/ContextPopover.tsx [Client Component Browser]
+    ./components/ChatWindow.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./components/ContextPopover.module.css [Client Component SSR]
+    ./components/ContextPopover.tsx [Client Component SSR]
+    ./components/ChatWindow.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component] 
+[browser] ./components/DesktopMenus.module.css
+Error evaluating Node.js code
+Error: Cannot find module 'jiti'
+Require stack:
+- E:\Eureka\node_modules\@tailwindcss\node\dist\index.js
+- E:\Eureka\node_modules\@tailwindcss\postcss\dist\index.js
+- E:\Eureka\.next\dev\build\chunks\[root-of-the-server]__0oj80bi._.js
+- E:\Eureka\.next\dev\build\chunks\[turbopack]_runtime.js
+- E:\Eureka\.next\dev\build\56416d4ae4ce586f.js
+    [at Module._resolveFilename (node:internal/modules/cjs/loader:1421:15)]
+    [at defaultResolveImpl (node:internal/modules/cjs/loader:1059:19)]
+    [at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1064:22)]
+    [at Module._load (node:internal/modules/cjs/loader:1227:37)]
+    [at TracingChannel.traceSync (node:diagnostics_channel:328:14)]
+    [at wrapModuleLoad (node:internal/modules/cjs/loader:245:24)]
+    [at Module.require (node:internal/modules/cjs/loader:1504:12)]
+    [at require (node:internal/modules/helpers:152:16)]
+    [at Object.<anonymous> (E:\Eureka\node_modules\@tailwindcss\node\dist\index.js:1:1269)]
+    [at Module._compile (node:internal/modules/cjs/loader:1761:14)]
+
+Import traces:
+  Client Component Browser:
+    ./components/DesktopMenus.module.css [Client Component Browser]
+    ./components/DesktopMenus.tsx [Client Component Browser]
+    ./components/DesktopMenus.tsx [Server Component]
+    ./app/layout.tsx [Server Component]
+
+  Client Component SSR:
+    ./components/DesktopMenus.module.css [Client Component SSR]
+    ./components/DesktopMenus.tsx [Client Component SSR]
+    ./components/DesktopMenus.tsx [Server Component]
+    ./app/layout.tsx [Server Component] 
+[browser] ./components/GitPanel.module.css
+Error evaluating Node.js code
+Error: Cannot find module 'jiti'
+Require stack:
+- E:\Eureka\node_modules\@tailwindcss\node\dist\index.js
+- E:\Eureka\node_modules\@tailwindcss\postcss\dist\index.js
+- E:\Eureka\.next\dev\build\chunks\[root-of-the-server]__0oj80bi._.js
+- E:\Eureka\.next\dev\build\chunks\[turbopack]_runtime.js
+- E:\Eureka\.next\dev\build\56416d4ae4ce586f.js
+    [at Module._resolveFilename (node:internal/modules/cjs/loader:1421:15)]
+    [at defaultResolveImpl (node:internal/modules/cjs/loader:1059:19)]
+    [at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1064:22)]
+    [at Module._load (node:internal/modules/cjs/loader:1227:37)]
+    [at TracingChannel.traceSync (node:diagnostics_channel:328:14)]
+    [at wrapModuleLoad (node:internal/modules/cjs/loader:245:24)]
+    [at Module.require (node:internal/modules/cjs/loader:1504:12)]
+    [at require (node:internal/modules/helpers:152:16)]
+    [at Object.<anonymous> (E:\Eureka\node_modules\@tailwindcss\node\dist\index.js:1:1269)]
+    [at Module._compile (node:internal/modules/cjs/loader:1761:14)]
+
+Import traces:
+  Client Component Browser:
+    ./components/GitPanel.module.css [Client Component Browser]
+    ./components/GitPanel.tsx [Client Component Browser]
+    ./components/SessionSidebar.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./components/GitPanel.module.css [Client Component SSR]
+    ./components/GitPanel.tsx [Client Component SSR]
+    ./components/SessionSidebar.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component] 
+[browser] ./components/InstalledCapabilitiesSidebar.module.css
+Error evaluating Node.js code
+Error: Cannot find module 'jiti'
+Require stack:
+- E:\Eureka\node_modules\@tailwindcss\node\dist\index.js
+- E:\Eureka\node_modules\@tailwindcss\postcss\dist\index.js
+- E:\Eureka\.next\dev\build\chunks\[root-of-the-server]__0oj80bi._.js
+- E:\Eureka\.next\dev\build\chunks\[turbopack]_runtime.js
+- E:\Eureka\.next\dev\build\56416d4ae4ce586f.js
+    [at Module._resolveFilename (node:internal/modules/cjs/loader:1421:15)]
+    [at defaultResolveImpl (node:internal/modules/cjs/loader:1059:19)]
+    [at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1064:22)]
+    [at Module._load (node:internal/modules/cjs/loader:1227:37)]
+    [at TracingChannel.traceSync (node:diagnostics_channel:328:14)]
+    [at wrapModuleLoad (node:internal/modules/cjs/loader:245:24)]
+    [at Module.require (node:internal/modules/cjs/loader:1504:12)]
+    [at require (node:internal/modules/helpers:152:16)]
+    [at Object.<anonymous> (E:\Eureka\node_modules\@tailwindcss\node\dist\index.js:1:1269)]
+    [at Module._compile (node:internal/modules/cjs/loader:1761:14)]
+
+Import traces:
+  Client Component Browser:
+    ./components/InstalledCapabilitiesSidebar.module.css [Client Component Browser]
+    ./components/ExtensionsCenter.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./components/InstalledCapabilitiesSidebar.module.css [Client Component SSR]
+    ./components/ExtensionsCenter.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component] 
+[browser] ./components/Sidebar.module.css
+Error evaluating Node.js code
+Error: Cannot find module 'jiti'
+Require stack:
+- E:\Eureka\node_modules\@tailwindcss\node\dist\index.js
+- E:\Eureka\node_modules\@tailwindcss\postcss\dist\index.js
+- E:\Eureka\.next\dev\build\chunks\[root-of-the-server]__0oj80bi._.js
+- E:\Eureka\.next\dev\build\chunks\[turbopack]_runtime.js
+- E:\Eureka\.next\dev\build\56416d4ae4ce586f.js
+    [at Module._resolveFilename (node:internal/modules/cjs/loader:1421:15)]
+    [at defaultResolveImpl (node:internal/modules/cjs/loader:1059:19)]
+    [at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1064:22)]
+    [at Module._load (node:internal/modules/cjs/loader:1227:37)]
+    [at TracingChannel.traceSync (node:diagnostics_channel:328:14)]
+    [at wrapModuleLoad (node:internal/modules/cjs/loader:245:24)]
+    [at Module.require (node:internal/modules/cjs/loader:1504:12)]
+    [at require (node:internal/modules/helpers:152:16)]
+    [at Object.<anonymous> (E:\Eureka\node_modules\@tailwindcss\node\dist\index.js:1:1269)]
+    [at Module._compile (node:internal/modules/cjs/loader:1761:14)]
+
+Import traces:
+  Client Component Browser:
+    ./components/Sidebar.module.css [Client Component Browser]
+    ./components/SidebarUserMenu.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./components/Sidebar.module.css [Client Component SSR]
+    ./components/SidebarUserMenu.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component] 
+[browser] ./node_modules/katex/dist/katex.min.css
+Error evaluating Node.js code
+Error: Cannot find module 'jiti'
+Require stack:
+- E:\Eureka\node_modules\@tailwindcss\node\dist\index.js
+- E:\Eureka\node_modules\@tailwindcss\postcss\dist\index.js
+- E:\Eureka\.next\dev\build\chunks\[root-of-the-server]__0oj80bi._.js
+- E:\Eureka\.next\dev\build\chunks\[turbopack]_runtime.js
+- E:\Eureka\.next\dev\build\56416d4ae4ce586f.js
+    [at Module._resolveFilename (node:internal/modules/cjs/loader:1421:15)]
+    [at defaultResolveImpl (node:internal/modules/cjs/loader:1059:19)]
+    [at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1064:22)]
+    [at Module._load (node:internal/modules/cjs/loader:1227:37)]
+    [at TracingChannel.traceSync (node:diagnostics_channel:328:14)]
+    [at wrapModuleLoad (node:internal/modules/cjs/loader:245:24)]
+    [at Module.require (node:internal/modules/cjs/loader:1504:12)]
+    [at require (node:internal/modules/helpers:152:16)]
+    [at Object.<anonymous> (E:\Eureka\node_modules\@tailwindcss\node\dist\index.js:1:1269)]
+    [at Module._compile (node:internal/modules/cjs/loader:1761:14)]
+
+Import trace:
+  Client Component Browser:
+    ./node_modules/katex/dist/katex.min.css [Client Component Browser]
+    ./app/layout.tsx [Server Component] 
+[browser] ./app/globals.css
+Error evaluating Node.js code
+Error: Cannot find module 'jiti'
+Require stack:
+- E:\Eureka\node_modules\@tailwindcss\node\dist\index.js
+- E:\Eureka\node_modules\@tailwindcss\postcss\dist\index.js
+- E:\Eureka\.next\dev\build\chunks\[root-of-the-server]__0oj80bi._.js
+- E:\Eureka\.next\dev\build\chunks\[turbopack]_runtime.js
+- E:\Eureka\.next\dev\build\56416d4ae4ce586f.js
+    [at Module._resolveFilename (node:internal/modules/cjs/loader:1421:15)]
+    [at defaultResolveImpl (node:internal/modules/cjs/loader:1059:19)]
+    [at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1064:22)]
+    [at Module._load (node:internal/modules/cjs/loader:1227:37)]
+    [at TracingChannel.traceSync (node:diagnostics_channel:328:14)]
+    [at wrapModuleLoad (node:internal/modules/cjs/loader:245:24)]
+    [at Module.require (node:internal/modules/cjs/loader:1504:12)]
+    [at require (node:internal/modules/helpers:152:16)]
+    [at Object.<anonymous> (E:\Eureka\node_modules\@tailwindcss\node\dist\index.js:1:1269)]
+    [at Module._compile (node:internal/modules/cjs/loader:1761:14)]
+
+Import trace:
+  Client Component Browser:
+    ./app/globals.css [Client Component Browser]
+    ./app/layout.tsx [Server Component] 
+[browser] ./components/AppNavigation.module.css
+Error evaluating Node.js code
+Error: Cannot find module 'jiti'
+Require stack:
+- E:\Eureka\node_modules\@tailwindcss\node\dist\index.js
+- E:\Eureka\node_modules\@tailwindcss\postcss\dist\index.js
+- E:\Eureka\.next\dev\build\chunks\[root-of-the-server]__0oj80bi._.js
+- E:\Eureka\.next\dev\build\chunks\[turbopack]_runtime.js
+- E:\Eureka\.next\dev\build\56416d4ae4ce586f.js
+    [at Module._resolveFilename (node:internal/modules/cjs/loader:1421:15)]
+    [at defaultResolveImpl (node:internal/modules/cjs/loader:1059:19)]
+    [at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1064:22)]
+    [at Module._load (node:internal/modules/cjs/loader:1227:37)]
+    [at TracingChannel.traceSync (node:diagnostics_channel:328:14)]
+    [at wrapModuleLoad (node:internal/modules/cjs/loader:245:24)]
+    [at Module.require (node:internal/modules/cjs/loader:1504:12)]
+    [at require (node:internal/modules/helpers:152:16)]
+    [at Object.<anonymous> (E:\Eureka\node_modules\@tailwindcss\node\dist\index.js:1:1269)]
+    [at Module._compile (node:internal/modules/cjs/loader:1761:14)]
+
+Import traces:
+  Client Component Browser:
+    ./components/AppNavigation.module.css [Client Component Browser]
+    ./components/AppNavigation.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./components/AppNavigation.module.css [Client Component SSR]
+    ./components/AppNavigation.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component] 
+[browser] ./components/ChatMinimap.module.css
+Error evaluating Node.js code
+Error: Cannot find module 'jiti'
+Require stack:
+- E:\Eureka\node_modules\@tailwindcss\node\dist\index.js
+- E:\Eureka\node_modules\@tailwindcss\postcss\dist\index.js
+- E:\Eureka\.next\dev\build\chunks\[root-of-the-server]__0oj80bi._.js
+- E:\Eureka\.next\dev\build\chunks\[turbopack]_runtime.js
+- E:\Eureka\.next\dev\build\56416d4ae4ce586f.js
+    [at Module._resolveFilename (node:internal/modules/cjs/loader:1421:15)]
+    [at defaultResolveImpl (node:internal/modules/cjs/loader:1059:19)]
+    [at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1064:22)]
+    [at Module._load (node:internal/modules/cjs/loader:1227:37)]
+    [at TracingChannel.traceSync (node:diagnostics_channel:328:14)]
+    [at wrapModuleLoad (node:internal/modules/cjs/loader:245:24)]
+    [at Module.require (node:internal/modules/cjs/loader:1504:12)]
+    [at require (node:internal/modules/helpers:152:16)]
+    [at Object.<anonymous> (E:\Eureka\node_modules\@tailwindcss\node\dist\index.js:1:1269)]
+    [at Module._compile (node:internal/modules/cjs/loader:1761:14)]
+
+Import traces:
+  Client Component Browser:
+    ./components/ChatMinimap.module.css [Client Component Browser]
+    ./components/ChatMinimap.tsx [Client Component Browser]
+    ./components/ChatWindow.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./components/ChatMinimap.module.css [Client Component SSR]
+    ./components/ChatMinimap.tsx [Client Component SSR]
+    ./components/ChatWindow.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component] 
+[browser] ./components/CommandPalette.module.css
+Error evaluating Node.js code
+Error: Cannot find module 'jiti'
+Require stack:
+- E:\Eureka\node_modules\@tailwindcss\node\dist\index.js
+- E:\Eureka\node_modules\@tailwindcss\postcss\dist\index.js
+- E:\Eureka\.next\dev\build\chunks\[root-of-the-server]__0oj80bi._.js
+- E:\Eureka\.next\dev\build\chunks\[turbopack]_runtime.js
+- E:\Eureka\.next\dev\build\56416d4ae4ce586f.js
+    [at Module._resolveFilename (node:internal/modules/cjs/loader:1421:15)]
+    [at defaultResolveImpl (node:internal/modules/cjs/loader:1059:19)]
+    [at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1064:22)]
+    [at Module._load (node:internal/modules/cjs/loader:1227:37)]
+    [at TracingChannel.traceSync (node:diagnostics_channel:328:14)]
+    [at wrapModuleLoad (node:internal/modules/cjs/loader:245:24)]
+    [at Module.require (node:internal/modules/cjs/loader:1504:12)]
+    [at require (node:internal/modules/helpers:152:16)]
+    [at Object.<anonymous> (E:\Eureka\node_modules\@tailwindcss\node\dist\index.js:1:1269)]
+    [at Module._compile (node:internal/modules/cjs/loader:1761:14)]
+
+Import traces:
+  Client Component Browser:
+    ./components/CommandPalette.module.css [Client Component Browser]
+    ./components/ChatInput.tsx [Client Component Browser]
+    ./components/ChatWindow.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./components/CommandPalette.module.css [Client Component SSR]
+    ./components/ChatInput.tsx [Client Component SSR]
+    ./components/ChatWindow.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component] 
+[browser] ./components/ComposerSelectors.module.css
+Error evaluating Node.js code
+Error: Cannot find module 'jiti'
+Require stack:
+- E:\Eureka\node_modules\@tailwindcss\node\dist\index.js
+- E:\Eureka\node_modules\@tailwindcss\postcss\dist\index.js
+- E:\Eureka\.next\dev\build\chunks\[root-of-the-server]__0oj80bi._.js
+- E:\Eureka\.next\dev\build\chunks\[turbopack]_runtime.js
+- E:\Eureka\.next\dev\build\56416d4ae4ce586f.js
+    [at Module._resolveFilename (node:internal/modules/cjs/loader:1421:15)]
+    [at defaultResolveImpl (node:internal/modules/cjs/loader:1059:19)]
+    [at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1064:22)]
+    [at Module._load (node:internal/modules/cjs/loader:1227:37)]
+    [at TracingChannel.traceSync (node:diagnostics_channel:328:14)]
+    [at wrapModuleLoad (node:internal/modules/cjs/loader:245:24)]
+    [at Module.require (node:internal/modules/cjs/loader:1504:12)]
+    [at require (node:internal/modules/helpers:152:16)]
+    [at Object.<anonymous> (E:\Eureka\node_modules\@tailwindcss\node\dist\index.js:1:1269)]
+    [at Module._compile (node:internal/modules/cjs/loader:1761:14)]
+
+Import traces:
+  Client Component Browser:
+    ./components/ComposerSelectors.module.css [Client Component Browser]
+    ./components/ChatInput.tsx [Client Component Browser]
+    ./components/ChatWindow.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./components/ComposerSelectors.module.css [Client Component SSR]
+    ./components/ChatInput.tsx [Client Component SSR]
+    ./components/ChatWindow.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component] 
+[browser] ./components/ContextPopover.module.css
+Error evaluating Node.js code
+Error: Cannot find module 'jiti'
+Require stack:
+- E:\Eureka\node_modules\@tailwindcss\node\dist\index.js
+- E:\Eureka\node_modules\@tailwindcss\postcss\dist\index.js
+- E:\Eureka\.next\dev\build\chunks\[root-of-the-server]__0oj80bi._.js
+- E:\Eureka\.next\dev\build\chunks\[turbopack]_runtime.js
+- E:\Eureka\.next\dev\build\56416d4ae4ce586f.js
+    [at Module._resolveFilename (node:internal/modules/cjs/loader:1421:15)]
+    [at defaultResolveImpl (node:internal/modules/cjs/loader:1059:19)]
+    [at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1064:22)]
+    [at Module._load (node:internal/modules/cjs/loader:1227:37)]
+    [at TracingChannel.traceSync (node:diagnostics_channel:328:14)]
+    [at wrapModuleLoad (node:internal/modules/cjs/loader:245:24)]
+    [at Module.require (node:internal/modules/cjs/loader:1504:12)]
+    [at require (node:internal/modules/helpers:152:16)]
+    [at Object.<anonymous> (E:\Eureka\node_modules\@tailwindcss\node\dist\index.js:1:1269)]
+    [at Module._compile (node:internal/modules/cjs/loader:1761:14)]
+
+Import traces:
+  Client Component Browser:
+    ./components/ContextPopover.module.css [Client Component Browser]
+    ./components/ContextPopover.tsx [Client Component Browser]
+    ./components/ChatWindow.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./components/ContextPopover.module.css [Client Component SSR]
+    ./components/ContextPopover.tsx [Client Component SSR]
+    ./components/ChatWindow.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component] 
+[browser] ./components/DesktopMenus.module.css
+Error evaluating Node.js code
+Error: Cannot find module 'jiti'
+Require stack:
+- E:\Eureka\node_modules\@tailwindcss\node\dist\index.js
+- E:\Eureka\node_modules\@tailwindcss\postcss\dist\index.js
+- E:\Eureka\.next\dev\build\chunks\[root-of-the-server]__0oj80bi._.js
+- E:\Eureka\.next\dev\build\chunks\[turbopack]_runtime.js
+- E:\Eureka\.next\dev\build\56416d4ae4ce586f.js
+    [at Module._resolveFilename (node:internal/modules/cjs/loader:1421:15)]
+    [at defaultResolveImpl (node:internal/modules/cjs/loader:1059:19)]
+    [at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1064:22)]
+    [at Module._load (node:internal/modules/cjs/loader:1227:37)]
+    [at TracingChannel.traceSync (node:diagnostics_channel:328:14)]
+    [at wrapModuleLoad (node:internal/modules/cjs/loader:245:24)]
+    [at Module.require (node:internal/modules/cjs/loader:1504:12)]
+    [at require (node:internal/modules/helpers:152:16)]
+    [at Object.<anonymous> (E:\Eureka\node_modules\@tailwindcss\node\dist\index.js:1:1269)]
+    [at Module._compile (node:internal/modules/cjs/loader:1761:14)]
+
+Import traces:
+  Client Component Browser:
+    ./components/DesktopMenus.module.css [Client Component Browser]
+    ./components/DesktopMenus.tsx [Client Component Browser]
+    ./components/DesktopMenus.tsx [Server Component]
+    ./app/layout.tsx [Server Component]
+
+  Client Component SSR:
+    ./components/DesktopMenus.module.css [Client Component SSR]
+    ./components/DesktopMenus.tsx [Client Component SSR]
+    ./components/DesktopMenus.tsx [Server Component]
+    ./app/layout.tsx [Server Component] 
+[browser] ./components/GitPanel.module.css
+Error evaluating Node.js code
+Error: Cannot find module 'jiti'
+Require stack:
+- E:\Eureka\node_modules\@tailwindcss\node\dist\index.js
+- E:\Eureka\node_modules\@tailwindcss\postcss\dist\index.js
+- E:\Eureka\.next\dev\build\chunks\[root-of-the-server]__0oj80bi._.js
+- E:\Eureka\.next\dev\build\chunks\[turbopack]_runtime.js
+- E:\Eureka\.next\dev\build\56416d4ae4ce586f.js
+    [at Module._resolveFilename (node:internal/modules/cjs/loader:1421:15)]
+    [at defaultResolveImpl (node:internal/modules/cjs/loader:1059:19)]
+    [at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1064:22)]
+    [at Module._load (node:internal/modules/cjs/loader:1227:37)]
+    [at TracingChannel.traceSync (node:diagnostics_channel:328:14)]
+    [at wrapModuleLoad (node:internal/modules/cjs/loader:245:24)]
+    [at Module.require (node:internal/modules/cjs/loader:1504:12)]
+    [at require (node:internal/modules/helpers:152:16)]
+    [at Object.<anonymous> (E:\Eureka\node_modules\@tailwindcss\node\dist\index.js:1:1269)]
+    [at Module._compile (node:internal/modules/cjs/loader:1761:14)]
+
+Import traces:
+  Client Component Browser:
+    ./components/GitPanel.module.css [Client Component Browser]
+    ./components/GitPanel.tsx [Client Component Browser]
+    ./components/SessionSidebar.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./components/GitPanel.module.css [Client Component SSR]
+    ./components/GitPanel.tsx [Client Component SSR]
+    ./components/SessionSidebar.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component] 
+[browser] ./components/InstalledCapabilitiesSidebar.module.css
+Error evaluating Node.js code
+Error: Cannot find module 'jiti'
+Require stack:
+- E:\Eureka\node_modules\@tailwindcss\node\dist\index.js
+- E:\Eureka\node_modules\@tailwindcss\postcss\dist\index.js
+- E:\Eureka\.next\dev\build\chunks\[root-of-the-server]__0oj80bi._.js
+- E:\Eureka\.next\dev\build\chunks\[turbopack]_runtime.js
+- E:\Eureka\.next\dev\build\56416d4ae4ce586f.js
+    [at Module._resolveFilename (node:internal/modules/cjs/loader:1421:15)]
+    [at defaultResolveImpl (node:internal/modules/cjs/loader:1059:19)]
+    [at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1064:22)]
+    [at Module._load (node:internal/modules/cjs/loader:1227:37)]
+    [at TracingChannel.traceSync (node:diagnostics_channel:328:14)]
+    [at wrapModuleLoad (node:internal/modules/cjs/loader:245:24)]
+    [at Module.require (node:internal/modules/cjs/loader:1504:12)]
+    [at require (node:internal/modules/helpers:152:16)]
+    [at Object.<anonymous> (E:\Eureka\node_modules\@tailwindcss\node\dist\index.js:1:1269)]
+    [at Module._compile (node:internal/modules/cjs/loader:1761:14)]
+
+Import traces:
+  Client Component Browser:
+    ./components/InstalledCapabilitiesSidebar.module.css [Client Component Browser]
+    ./components/ExtensionsCenter.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./components/InstalledCapabilitiesSidebar.module.css [Client Component SSR]
+    ./components/ExtensionsCenter.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component] 
+[browser] ./components/Sidebar.module.css
+Error evaluating Node.js code
+Error: Cannot find module 'jiti'
+Require stack:
+- E:\Eureka\node_modules\@tailwindcss\node\dist\index.js
+- E:\Eureka\node_modules\@tailwindcss\postcss\dist\index.js
+- E:\Eureka\.next\dev\build\chunks\[root-of-the-server]__0oj80bi._.js
+- E:\Eureka\.next\dev\build\chunks\[turbopack]_runtime.js
+- E:\Eureka\.next\dev\build\56416d4ae4ce586f.js
+    [at Module._resolveFilename (node:internal/modules/cjs/loader:1421:15)]
+    [at defaultResolveImpl (node:internal/modules/cjs/loader:1059:19)]
+    [at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1064:22)]
+    [at Module._load (node:internal/modules/cjs/loader:1227:37)]
+    [at TracingChannel.traceSync (node:diagnostics_channel:328:14)]
+    [at wrapModuleLoad (node:internal/modules/cjs/loader:245:24)]
+    [at Module.require (node:internal/modules/cjs/loader:1504:12)]
+    [at require (node:internal/modules/helpers:152:16)]
+    [at Object.<anonymous> (E:\Eureka\node_modules\@tailwindcss\node\dist\index.js:1:1269)]
+    [at Module._compile (node:internal/modules/cjs/loader:1761:14)]
+
+Import traces:
+  Client Component Browser:
+    ./components/Sidebar.module.css [Client Component Browser]
+    ./components/SidebarUserMenu.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./components/Sidebar.module.css [Client Component SSR]
+    ./components/SidebarUserMenu.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component] 
+[browser] ./node_modules/katex/dist/katex.min.css
+Error evaluating Node.js code
+Error: Cannot find module 'jiti'
+Require stack:
+- E:\Eureka\node_modules\@tailwindcss\node\dist\index.js
+- E:\Eureka\node_modules\@tailwindcss\postcss\dist\index.js
+- E:\Eureka\.next\dev\build\chunks\[root-of-the-server]__0oj80bi._.js
+- E:\Eureka\.next\dev\build\chunks\[turbopack]_runtime.js
+- E:\Eureka\.next\dev\build\56416d4ae4ce586f.js
+    [at Module._resolveFilename (node:internal/modules/cjs/loader:1421:15)]
+    [at defaultResolveImpl (node:internal/modules/cjs/loader:1059:19)]
+    [at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1064:22)]
+    [at Module._load (node:internal/modules/cjs/loader:1227:37)]
+    [at TracingChannel.traceSync (node:diagnostics_channel:328:14)]
+    [at wrapModuleLoad (node:internal/modules/cjs/loader:245:24)]
+    [at Module.require (node:internal/modules/cjs/loader:1504:12)]
+    [at require (node:internal/modules/helpers:152:16)]
+    [at Object.<anonymous> (E:\Eureka\node_modules\@tailwindcss\node\dist\index.js:1:1269)]
+    [at Module._compile (node:internal/modules/cjs/loader:1761:14)]
+
+Import trace:
+  Client Component Browser:
+    ./node_modules/katex/dist/katex.min.css [Client Component Browser]
+    ./app/layout.tsx [Server Component] 
+[browser] Uncaught Error: ./app/globals.css
+Error evaluating Node.js code
+Error: Cannot find module 'jiti'
+Require stack:
+- E:\Eureka\node_modules\@tailwindcss\node\dist\index.js
+- E:\Eureka\node_modules\@tailwindcss\postcss\dist\index.js
+- E:\Eureka\.next\dev\build\chunks\[root-of-the-server]__0oj80bi._.js
+- E:\Eureka\.next\dev\build\chunks\[turbopack]_runtime.js
+- E:\Eureka\.next\dev\build\56416d4ae4ce586f.js
+    [at Module._resolveFilename (node:internal/modules/cjs/loader:1421:15)]
+    [at defaultResolveImpl (node:internal/modules/cjs/loader:1059:19)]
+    [at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1064:22)]
+    [at Module._load (node:internal/modules/cjs/loader:1227:37)]
+    [at TracingChannel.traceSync (node:diagnostics_channel:328:14)]
+    [at wrapModuleLoad (node:internal/modules/cjs/loader:245:24)]
+    [at Module.require (node:internal/modules/cjs/loader:1504:12)]
+    [at require (node:internal/modules/helpers:152:16)]
+    [at Object.<anonymous> (E:\Eureka\node_modules\@tailwindcss\node\dist\index.js:1:1269)]
+    [at Module._compile (node:internal/modules/cjs/loader:1761:14)]
+
+Import trace:
+  Client Component Browser:
+    ./app/globals.css [Client Component Browser]
+    ./app/layout.tsx [Server Component]
+
+
+[browser] ./app/globals.css
+Error evaluating Node.js code
+Error: Cannot find module 'jiti'
+Require stack:
+- E:\Eureka\node_modules\@tailwindcss\node\dist\index.js
+- E:\Eureka\node_modules\@tailwindcss\postcss\dist\index.js
+- E:\Eureka\.next\dev\build\chunks\[root-of-the-server]__0oj80bi._.js
+- E:\Eureka\.next\dev\build\chunks\[turbopack]_runtime.js
+- E:\Eureka\.next\dev\build\56416d4ae4ce586f.js
+    [at Module._resolveFilename (node:internal/modules/cjs/loader:1421:15)]
+    [at defaultResolveImpl (node:internal/modules/cjs/loader:1059:19)]
+    [at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1064:22)]
+    [at Module._load (node:internal/modules/cjs/loader:1227:37)]
+    [at TracingChannel.traceSync (node:diagnostics_channel:328:14)]
+    [at wrapModuleLoad (node:internal/modules/cjs/loader:245:24)]
+    [at Module.require (node:internal/modules/cjs/loader:1504:12)]
+    [at require (node:internal/modules/helpers:152:16)]
+    [at Object.<anonymous> (E:\Eureka\node_modules\@tailwindcss\node\dist\index.js:1:1269)]
+    [at Module._compile (node:internal/modules/cjs/loader:1761:14)]
+
+Import trace:
+  Client Component Browser:
+    ./app/globals.css [Client Component Browser]
+    ./app/layout.tsx [Server Component] 
+[browser] ./components/AppNavigation.module.css
+Error evaluating Node.js code
+Error: Cannot find module 'jiti'
+Require stack:
+- E:\Eureka\node_modules\@tailwindcss\node\dist\index.js
+- E:\Eureka\node_modules\@tailwindcss\postcss\dist\index.js
+- E:\Eureka\.next\dev\build\chunks\[root-of-the-server]__0oj80bi._.js
+- E:\Eureka\.next\dev\build\chunks\[turbopack]_runtime.js
+- E:\Eureka\.next\dev\build\56416d4ae4ce586f.js
+    [at Module._resolveFilename (node:internal/modules/cjs/loader:1421:15)]
+    [at defaultResolveImpl (node:internal/modules/cjs/loader:1059:19)]
+    [at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1064:22)]
+    [at Module._load (node:internal/modules/cjs/loader:1227:37)]
+    [at TracingChannel.traceSync (node:diagnostics_channel:328:14)]
+    [at wrapModuleLoad (node:internal/modules/cjs/loader:245:24)]
+    [at Module.require (node:internal/modules/cjs/loader:1504:12)]
+    [at require (node:internal/modules/helpers:152:16)]
+    [at Object.<anonymous> (E:\Eureka\node_modules\@tailwindcss\node\dist\index.js:1:1269)]
+    [at Module._compile (node:internal/modules/cjs/loader:1761:14)]
+
+Import traces:
+  Client Component Browser:
+    ./components/AppNavigation.module.css [Client Component Browser]
+    ./components/AppNavigation.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./components/AppNavigation.module.css [Client Component SSR]
+    ./components/AppNavigation.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component] 
+[browser] ./components/ChatMinimap.module.css
+Error evaluating Node.js code
+Error: Cannot find module 'jiti'
+Require stack:
+- E:\Eureka\node_modules\@tailwindcss\node\dist\index.js
+- E:\Eureka\node_modules\@tailwindcss\postcss\dist\index.js
+- E:\Eureka\.next\dev\build\chunks\[root-of-the-server]__0oj80bi._.js
+- E:\Eureka\.next\dev\build\chunks\[turbopack]_runtime.js
+- E:\Eureka\.next\dev\build\56416d4ae4ce586f.js
+    [at Module._resolveFilename (node:internal/modules/cjs/loader:1421:15)]
+    [at defaultResolveImpl (node:internal/modules/cjs/loader:1059:19)]
+    [at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1064:22)]
+    [at Module._load (node:internal/modules/cjs/loader:1227:37)]
+    [at TracingChannel.traceSync (node:diagnostics_channel:328:14)]
+    [at wrapModuleLoad (node:internal/modules/cjs/loader:245:24)]
+    [at Module.require (node:internal/modules/cjs/loader:1504:12)]
+    [at require (node:internal/modules/helpers:152:16)]
+    [at Object.<anonymous> (E:\Eureka\node_modules\@tailwindcss\node\dist\index.js:1:1269)]
+    [at Module._compile (node:internal/modules/cjs/loader:1761:14)]
+
+Import traces:
+  Client Component Browser:
+    ./components/ChatMinimap.module.css [Client Component Browser]
+    ./components/ChatMinimap.tsx [Client Component Browser]
+    ./components/ChatWindow.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./components/ChatMinimap.module.css [Client Component SSR]
+    ./components/ChatMinimap.tsx [Client Component SSR]
+    ./components/ChatWindow.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component] 
+[browser] ./components/CommandPalette.module.css
+Error evaluating Node.js code
+Error: Cannot find module 'jiti'
+Require stack:
+- E:\Eureka\node_modules\@tailwindcss\node\dist\index.js
+- E:\Eureka\node_modules\@tailwindcss\postcss\dist\index.js
+- E:\Eureka\.next\dev\build\chunks\[root-of-the-server]__0oj80bi._.js
+- E:\Eureka\.next\dev\build\chunks\[turbopack]_runtime.js
+- E:\Eureka\.next\dev\build\56416d4ae4ce586f.js
+    [at Module._resolveFilename (node:internal/modules/cjs/loader:1421:15)]
+    [at defaultResolveImpl (node:internal/modules/cjs/loader:1059:19)]
+    [at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1064:22)]
+    [at Module._load (node:internal/modules/cjs/loader:1227:37)]
+    [at TracingChannel.traceSync (node:diagnostics_channel:328:14)]
+    [at wrapModuleLoad (node:internal/modules/cjs/loader:245:24)]
+    [at Module.require (node:internal/modules/cjs/loader:1504:12)]
+    [at require (node:internal/modules/helpers:152:16)]
+    [at Object.<anonymous> (E:\Eureka\node_modules\@tailwindcss\node\dist\index.js:1:1269)]
+    [at Module._compile (node:internal/modules/cjs/loader:1761:14)]
+
+Import traces:
+  Client Component Browser:
+    ./components/CommandPalette.module.css [Client Component Browser]
+    ./components/ChatInput.tsx [Client Component Browser]
+    ./components/ChatWindow.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./components/CommandPalette.module.css [Client Component SSR]
+    ./components/ChatInput.tsx [Client Component SSR]
+    ./components/ChatWindow.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component] 
+[browser] ./components/ComposerSelectors.module.css
+Error evaluating Node.js code
+Error: Cannot find module 'jiti'
+Require stack:
+- E:\Eureka\node_modules\@tailwindcss\node\dist\index.js
+- E:\Eureka\node_modules\@tailwindcss\postcss\dist\index.js
+- E:\Eureka\.next\dev\build\chunks\[root-of-the-server]__0oj80bi._.js
+- E:\Eureka\.next\dev\build\chunks\[turbopack]_runtime.js
+- E:\Eureka\.next\dev\build\56416d4ae4ce586f.js
+    [at Module._resolveFilename (node:internal/modules/cjs/loader:1421:15)]
+    [at defaultResolveImpl (node:internal/modules/cjs/loader:1059:19)]
+    [at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1064:22)]
+    [at Module._load (node:internal/modules/cjs/loader:1227:37)]
+    [at TracingChannel.traceSync (node:diagnostics_channel:328:14)]
+    [at wrapModuleLoad (node:internal/modules/cjs/loader:245:24)]
+    [at Module.require (node:internal/modules/cjs/loader:1504:12)]
+    [at require (node:internal/modules/helpers:152:16)]
+    [at Object.<anonymous> (E:\Eureka\node_modules\@tailwindcss\node\dist\index.js:1:1269)]
+    [at Module._compile (node:internal/modules/cjs/loader:1761:14)]
+
+Import traces:
+  Client Component Browser:
+    ./components/ComposerSelectors.module.css [Client Component Browser]
+    ./components/ChatInput.tsx [Client Component Browser]
+    ./components/ChatWindow.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./components/ComposerSelectors.module.css [Client Component SSR]
+    ./components/ChatInput.tsx [Client Component SSR]
+    ./components/ChatWindow.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component] 
+[browser] ./components/ContextPopover.module.css
+Error evaluating Node.js code
+Error: Cannot find module 'jiti'
+Require stack:
+- E:\Eureka\node_modules\@tailwindcss\node\dist\index.js
+- E:\Eureka\node_modules\@tailwindcss\postcss\dist\index.js
+- E:\Eureka\.next\dev\build\chunks\[root-of-the-server]__0oj80bi._.js
+- E:\Eureka\.next\dev\build\chunks\[turbopack]_runtime.js
+- E:\Eureka\.next\dev\build\56416d4ae4ce586f.js
+    [at Module._resolveFilename (node:internal/modules/cjs/loader:1421:15)]
+    [at defaultResolveImpl (node:internal/modules/cjs/loader:1059:19)]
+    [at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1064:22)]
+    [at Module._load (node:internal/modules/cjs/loader:1227:37)]
+    [at TracingChannel.traceSync (node:diagnostics_channel:328:14)]
+    [at wrapModuleLoad (node:internal/modules/cjs/loader:245:24)]
+    [at Module.require (node:internal/modules/cjs/loader:1504:12)]
+    [at require (node:internal/modules/helpers:152:16)]
+    [at Object.<anonymous> (E:\Eureka\node_modules\@tailwindcss\node\dist\index.js:1:1269)]
+    [at Module._compile (node:internal/modules/cjs/loader:1761:14)]
+
+Import traces:
+  Client Component Browser:
+    ./components/ContextPopover.module.css [Client Component Browser]
+    ./components/ContextPopover.tsx [Client Component Browser]
+    ./components/ChatWindow.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./components/ContextPopover.module.css [Client Component SSR]
+    ./components/ContextPopover.tsx [Client Component SSR]
+    ./components/ChatWindow.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component] 
+[browser] ./components/DesktopMenus.module.css
+Error evaluating Node.js code
+Error: Cannot find module 'jiti'
+Require stack:
+- E:\Eureka\node_modules\@tailwindcss\node\dist\index.js
+- E:\Eureka\node_modules\@tailwindcss\postcss\dist\index.js
+- E:\Eureka\.next\dev\build\chunks\[root-of-the-server]__0oj80bi._.js
+- E:\Eureka\.next\dev\build\chunks\[turbopack]_runtime.js
+- E:\Eureka\.next\dev\build\56416d4ae4ce586f.js
+    [at Module._resolveFilename (node:internal/modules/cjs/loader:1421:15)]
+    [at defaultResolveImpl (node:internal/modules/cjs/loader:1059:19)]
+    [at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1064:22)]
+    [at Module._load (node:internal/modules/cjs/loader:1227:37)]
+    [at TracingChannel.traceSync (node:diagnostics_channel:328:14)]
+    [at wrapModuleLoad (node:internal/modules/cjs/loader:245:24)]
+    [at Module.require (node:internal/modules/cjs/loader:1504:12)]
+    [at require (node:internal/modules/helpers:152:16)]
+    [at Object.<anonymous> (E:\Eureka\node_modules\@tailwindcss\node\dist\index.js:1:1269)]
+    [at Module._compile (node:internal/modules/cjs/loader:1761:14)]
+
+Import traces:
+  Client Component Browser:
+    ./components/DesktopMenus.module.css [Client Component Browser]
+    ./components/DesktopMenus.tsx [Client Component Browser]
+    ./components/DesktopMenus.tsx [Server Component]
+    ./app/layout.tsx [Server Component]
+
+  Client Component SSR:
+    ./components/DesktopMenus.module.css [Client Component SSR]
+    ./components/DesktopMenus.tsx [Client Component SSR]
+    ./components/DesktopMenus.tsx [Server Component]
+    ./app/layout.tsx [Server Component] 
+[browser] ./components/GitPanel.module.css
+Error evaluating Node.js code
+Error: Cannot find module 'jiti'
+Require stack:
+- E:\Eureka\node_modules\@tailwindcss\node\dist\index.js
+- E:\Eureka\node_modules\@tailwindcss\postcss\dist\index.js
+- E:\Eureka\.next\dev\build\chunks\[root-of-the-server]__0oj80bi._.js
+- E:\Eureka\.next\dev\build\chunks\[turbopack]_runtime.js
+- E:\Eureka\.next\dev\build\56416d4ae4ce586f.js
+    [at Module._resolveFilename (node:internal/modules/cjs/loader:1421:15)]
+    [at defaultResolveImpl (node:internal/modules/cjs/loader:1059:19)]
+    [at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1064:22)]
+    [at Module._load (node:internal/modules/cjs/loader:1227:37)]
+    [at TracingChannel.traceSync (node:diagnostics_channel:328:14)]
+    [at wrapModuleLoad (node:internal/modules/cjs/loader:245:24)]
+    [at Module.require (node:internal/modules/cjs/loader:1504:12)]
+    [at require (node:internal/modules/helpers:152:16)]
+    [at Object.<anonymous> (E:\Eureka\node_modules\@tailwindcss\node\dist\index.js:1:1269)]
+    [at Module._compile (node:internal/modules/cjs/loader:1761:14)]
+
+Import traces:
+  Client Component Browser:
+    ./components/GitPanel.module.css [Client Component Browser]
+    ./components/GitPanel.tsx [Client Component Browser]
+    ./components/SessionSidebar.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./components/GitPanel.module.css [Client Component SSR]
+    ./components/GitPanel.tsx [Client Component SSR]
+    ./components/SessionSidebar.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component] 
+[browser] ./components/InstalledCapabilitiesSidebar.module.css
+Error evaluating Node.js code
+Error: Cannot find module 'jiti'
+Require stack:
+- E:\Eureka\node_modules\@tailwindcss\node\dist\index.js
+- E:\Eureka\node_modules\@tailwindcss\postcss\dist\index.js
+- E:\Eureka\.next\dev\build\chunks\[root-of-the-server]__0oj80bi._.js
+- E:\Eureka\.next\dev\build\chunks\[turbopack]_runtime.js
+- E:\Eureka\.next\dev\build\56416d4ae4ce586f.js
+    [at Module._resolveFilename (node:internal/modules/cjs/loader:1421:15)]
+    [at defaultResolveImpl (node:internal/modules/cjs/loader:1059:19)]
+    [at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1064:22)]
+    [at Module._load (node:internal/modules/cjs/loader:1227:37)]
+    [at TracingChannel.traceSync (node:diagnostics_channel:328:14)]
+    [at wrapModuleLoad (node:internal/modules/cjs/loader:245:24)]
+    [at Module.require (node:internal/modules/cjs/loader:1504:12)]
+    [at require (node:internal/modules/helpers:152:16)]
+    [at Object.<anonymous> (E:\Eureka\node_modules\@tailwindcss\node\dist\index.js:1:1269)]
+    [at Module._compile (node:internal/modules/cjs/loader:1761:14)]
+
+Import traces:
+  Client Component Browser:
+    ./components/InstalledCapabilitiesSidebar.module.css [Client Component Browser]
+    ./components/ExtensionsCenter.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./components/InstalledCapabilitiesSidebar.module.css [Client Component SSR]
+    ./components/ExtensionsCenter.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component] 
+[browser] ./components/Sidebar.module.css
+Error evaluating Node.js code
+Error: Cannot find module 'jiti'
+Require stack:
+- E:\Eureka\node_modules\@tailwindcss\node\dist\index.js
+- E:\Eureka\node_modules\@tailwindcss\postcss\dist\index.js
+- E:\Eureka\.next\dev\build\chunks\[root-of-the-server]__0oj80bi._.js
+- E:\Eureka\.next\dev\build\chunks\[turbopack]_runtime.js
+- E:\Eureka\.next\dev\build\56416d4ae4ce586f.js
+    [at Module._resolveFilename (node:internal/modules/cjs/loader:1421:15)]
+    [at defaultResolveImpl (node:internal/modules/cjs/loader:1059:19)]
+    [at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1064:22)]
+    [at Module._load (node:internal/modules/cjs/loader:1227:37)]
+    [at TracingChannel.traceSync (node:diagnostics_channel:328:14)]
+    [at wrapModuleLoad (node:internal/modules/cjs/loader:245:24)]
+    [at Module.require (node:internal/modules/cjs/loader:1504:12)]
+    [at require (node:internal/modules/helpers:152:16)]
+    [at Object.<anonymous> (E:\Eureka\node_modules\@tailwindcss\node\dist\index.js:1:1269)]
+    [at Module._compile (node:internal/modules/cjs/loader:1761:14)]
+
+Import traces:
+  Client Component Browser:
+    ./components/Sidebar.module.css [Client Component Browser]
+    ./components/SidebarUserMenu.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./components/Sidebar.module.css [Client Component SSR]
+    ./components/SidebarUserMenu.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component] 
+[browser] ./node_modules/katex/dist/katex.min.css
+Error evaluating Node.js code
+Error: Cannot find module 'jiti'
+Require stack:
+- E:\Eureka\node_modules\@tailwindcss\node\dist\index.js
+- E:\Eureka\node_modules\@tailwindcss\postcss\dist\index.js
+- E:\Eureka\.next\dev\build\chunks\[root-of-the-server]__0oj80bi._.js
+- E:\Eureka\.next\dev\build\chunks\[turbopack]_runtime.js
+- E:\Eureka\.next\dev\build\56416d4ae4ce586f.js
+    [at Module._resolveFilename (node:internal/modules/cjs/loader:1421:15)]
+    [at defaultResolveImpl (node:internal/modules/cjs/loader:1059:19)]
+    [at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1064:22)]
+    [at Module._load (node:internal/modules/cjs/loader:1227:37)]
+    [at TracingChannel.traceSync (node:diagnostics_channel:328:14)]
+    [at wrapModuleLoad (node:internal/modules/cjs/loader:245:24)]
+    [at Module.require (node:internal/modules/cjs/loader:1504:12)]
+    [at require (node:internal/modules/helpers:152:16)]
+    [at Object.<anonymous> (E:\Eureka\node_modules\@tailwindcss\node\dist\index.js:1:1269)]
+    [at Module._compile (node:internal/modules/cjs/loader:1761:14)]
+
+Import trace:
+  Client Component Browser:
+    ./node_modules/katex/dist/katex.min.css [Client Component Browser]
+    ./app/layout.tsx [Server Component] 
+[browser] ./app/globals.css
+Error evaluating Node.js code
+Error: Cannot find module 'jiti'
+Require stack:
+- E:\Eureka\node_modules\@tailwindcss\node\dist\index.js
+- E:\Eureka\node_modules\@tailwindcss\postcss\dist\index.js
+- E:\Eureka\.next\dev\build\chunks\[root-of-the-server]__0oj80bi._.js
+- E:\Eureka\.next\dev\build\chunks\[turbopack]_runtime.js
+- E:\Eureka\.next\dev\build\56416d4ae4ce586f.js
+    [at Module._resolveFilename (node:internal/modules/cjs/loader:1421:15)]
+    [at defaultResolveImpl (node:internal/modules/cjs/loader:1059:19)]
+    [at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1064:22)]
+    [at Module._load (node:internal/modules/cjs/loader:1227:37)]
+    [at TracingChannel.traceSync (node:diagnostics_channel:328:14)]
+    [at wrapModuleLoad (node:internal/modules/cjs/loader:245:24)]
+    [at Module.require (node:internal/modules/cjs/loader:1504:12)]
+    [at require (node:internal/modules/helpers:152:16)]
+    [at Object.<anonymous> (E:\Eureka\node_modules\@tailwindcss\node\dist\index.js:1:1269)]
+    [at Module._compile (node:internal/modules/cjs/loader:1761:14)]
+
+Import trace:
+  Client Component Browser:
+    ./app/globals.css [Client Component Browser]
+    ./app/layout.tsx [Server Component] 
+[browser] ./components/AppNavigation.module.css
+Error evaluating Node.js code
+Error: Cannot find module 'jiti'
+Require stack:
+- E:\Eureka\node_modules\@tailwindcss\node\dist\index.js
+- E:\Eureka\node_modules\@tailwindcss\postcss\dist\index.js
+- E:\Eureka\.next\dev\build\chunks\[root-of-the-server]__0oj80bi._.js
+- E:\Eureka\.next\dev\build\chunks\[turbopack]_runtime.js
+- E:\Eureka\.next\dev\build\56416d4ae4ce586f.js
+    [at Module._resolveFilename (node:internal/modules/cjs/loader:1421:15)]
+    [at defaultResolveImpl (node:internal/modules/cjs/loader:1059:19)]
+    [at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1064:22)]
+    [at Module._load (node:internal/modules/cjs/loader:1227:37)]
+    [at TracingChannel.traceSync (node:diagnostics_channel:328:14)]
+    [at wrapModuleLoad (node:internal/modules/cjs/loader:245:24)]
+    [at Module.require (node:internal/modules/cjs/loader:1504:12)]
+    [at require (node:internal/modules/helpers:152:16)]
+    [at Object.<anonymous> (E:\Eureka\node_modules\@tailwindcss\node\dist\index.js:1:1269)]
+    [at Module._compile (node:internal/modules/cjs/loader:1761:14)]
+
+Import traces:
+  Client Component Browser:
+    ./components/AppNavigation.module.css [Client Component Browser]
+    ./components/AppNavigation.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./components/AppNavigation.module.css [Client Component SSR]
+    ./components/AppNavigation.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component] 
+[browser] ./components/ChatMinimap.module.css
+Error evaluating Node.js code
+Error: Cannot find module 'jiti'
+Require stack:
+- E:\Eureka\node_modules\@tailwindcss\node\dist\index.js
+- E:\Eureka\node_modules\@tailwindcss\postcss\dist\index.js
+- E:\Eureka\.next\dev\build\chunks\[root-of-the-server]__0oj80bi._.js
+- E:\Eureka\.next\dev\build\chunks\[turbopack]_runtime.js
+- E:\Eureka\.next\dev\build\56416d4ae4ce586f.js
+    [at Module._resolveFilename (node:internal/modules/cjs/loader:1421:15)]
+    [at defaultResolveImpl (node:internal/modules/cjs/loader:1059:19)]
+    [at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1064:22)]
+    [at Module._load (node:internal/modules/cjs/loader:1227:37)]
+    [at TracingChannel.traceSync (node:diagnostics_channel:328:14)]
+    [at wrapModuleLoad (node:internal/modules/cjs/loader:245:24)]
+    [at Module.require (node:internal/modules/cjs/loader:1504:12)]
+    [at require (node:internal/modules/helpers:152:16)]
+    [at Object.<anonymous> (E:\Eureka\node_modules\@tailwindcss\node\dist\index.js:1:1269)]
+    [at Module._compile (node:internal/modules/cjs/loader:1761:14)]
+
+Import traces:
+  Client Component Browser:
+    ./components/ChatMinimap.module.css [Client Component Browser]
+    ./components/ChatMinimap.tsx [Client Component Browser]
+    ./components/ChatWindow.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./components/ChatMinimap.module.css [Client Component SSR]
+    ./components/ChatMinimap.tsx [Client Component SSR]
+    ./components/ChatWindow.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component] 
+[browser] ./components/CommandPalette.module.css
+Error evaluating Node.js code
+Error: Cannot find module 'jiti'
+Require stack:
+- E:\Eureka\node_modules\@tailwindcss\node\dist\index.js
+- E:\Eureka\node_modules\@tailwindcss\postcss\dist\index.js
+- E:\Eureka\.next\dev\build\chunks\[root-of-the-server]__0oj80bi._.js
+- E:\Eureka\.next\dev\build\chunks\[turbopack]_runtime.js
+- E:\Eureka\.next\dev\build\56416d4ae4ce586f.js
+    [at Module._resolveFilename (node:internal/modules/cjs/loader:1421:15)]
+    [at defaultResolveImpl (node:internal/modules/cjs/loader:1059:19)]
+    [at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1064:22)]
+    [at Module._load (node:internal/modules/cjs/loader:1227:37)]
+    [at TracingChannel.traceSync (node:diagnostics_channel:328:14)]
+    [at wrapModuleLoad (node:internal/modules/cjs/loader:245:24)]
+    [at Module.require (node:internal/modules/cjs/loader:1504:12)]
+    [at require (node:internal/modules/helpers:152:16)]
+    [at Object.<anonymous> (E:\Eureka\node_modules\@tailwindcss\node\dist\index.js:1:1269)]
+    [at Module._compile (node:internal/modules/cjs/loader:1761:14)]
+
+Import traces:
+  Client Component Browser:
+    ./components/CommandPalette.module.css [Client Component Browser]
+    ./components/ChatInput.tsx [Client Component Browser]
+    ./components/ChatWindow.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./components/CommandPalette.module.css [Client Component SSR]
+    ./components/ChatInput.tsx [Client Component SSR]
+    ./components/ChatWindow.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component] 
+[browser] ./components/ComposerSelectors.module.css
+Error evaluating Node.js code
+Error: Cannot find module 'jiti'
+Require stack:
+- E:\Eureka\node_modules\@tailwindcss\node\dist\index.js
+- E:\Eureka\node_modules\@tailwindcss\postcss\dist\index.js
+- E:\Eureka\.next\dev\build\chunks\[root-of-the-server]__0oj80bi._.js
+- E:\Eureka\.next\dev\build\chunks\[turbopack]_runtime.js
+- E:\Eureka\.next\dev\build\56416d4ae4ce586f.js
+    [at Module._resolveFilename (node:internal/modules/cjs/loader:1421:15)]
+    [at defaultResolveImpl (node:internal/modules/cjs/loader:1059:19)]
+    [at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1064:22)]
+    [at Module._load (node:internal/modules/cjs/loader:1227:37)]
+    [at TracingChannel.traceSync (node:diagnostics_channel:328:14)]
+    [at wrapModuleLoad (node:internal/modules/cjs/loader:245:24)]
+    [at Module.require (node:internal/modules/cjs/loader:1504:12)]
+    [at require (node:internal/modules/helpers:152:16)]
+    [at Object.<anonymous> (E:\Eureka\node_modules\@tailwindcss\node\dist\index.js:1:1269)]
+    [at Module._compile (node:internal/modules/cjs/loader:1761:14)]
+
+Import traces:
+  Client Component Browser:
+    ./components/ComposerSelectors.module.css [Client Component Browser]
+    ./components/ChatInput.tsx [Client Component Browser]
+    ./components/ChatWindow.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./components/ComposerSelectors.module.css [Client Component SSR]
+    ./components/ChatInput.tsx [Client Component SSR]
+    ./components/ChatWindow.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component] 
+[browser] ./components/ContextPopover.module.css
+Error evaluating Node.js code
+Error: Cannot find module 'jiti'
+Require stack:
+- E:\Eureka\node_modules\@tailwindcss\node\dist\index.js
+- E:\Eureka\node_modules\@tailwindcss\postcss\dist\index.js
+- E:\Eureka\.next\dev\build\chunks\[root-of-the-server]__0oj80bi._.js
+- E:\Eureka\.next\dev\build\chunks\[turbopack]_runtime.js
+- E:\Eureka\.next\dev\build\56416d4ae4ce586f.js
+    [at Module._resolveFilename (node:internal/modules/cjs/loader:1421:15)]
+    [at defaultResolveImpl (node:internal/modules/cjs/loader:1059:19)]
+    [at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1064:22)]
+    [at Module._load (node:internal/modules/cjs/loader:1227:37)]
+    [at TracingChannel.traceSync (node:diagnostics_channel:328:14)]
+    [at wrapModuleLoad (node:internal/modules/cjs/loader:245:24)]
+    [at Module.require (node:internal/modules/cjs/loader:1504:12)]
+    [at require (node:internal/modules/helpers:152:16)]
+    [at Object.<anonymous> (E:\Eureka\node_modules\@tailwindcss\node\dist\index.js:1:1269)]
+    [at Module._compile (node:internal/modules/cjs/loader:1761:14)]
+
+Import traces:
+  Client Component Browser:
+    ./components/ContextPopover.module.css [Client Component Browser]
+    ./components/ContextPopover.tsx [Client Component Browser]
+    ./components/ChatWindow.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./components/ContextPopover.module.css [Client Component SSR]
+    ./components/ContextPopover.tsx [Client Component SSR]
+    ./components/ChatWindow.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component] 
+[browser] ./components/DesktopMenus.module.css
+Error evaluating Node.js code
+Error: Cannot find module 'jiti'
+Require stack:
+- E:\Eureka\node_modules\@tailwindcss\node\dist\index.js
+- E:\Eureka\node_modules\@tailwindcss\postcss\dist\index.js
+- E:\Eureka\.next\dev\build\chunks\[root-of-the-server]__0oj80bi._.js
+- E:\Eureka\.next\dev\build\chunks\[turbopack]_runtime.js
+- E:\Eureka\.next\dev\build\56416d4ae4ce586f.js
+    [at Module._resolveFilename (node:internal/modules/cjs/loader:1421:15)]
+    [at defaultResolveImpl (node:internal/modules/cjs/loader:1059:19)]
+    [at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1064:22)]
+    [at Module._load (node:internal/modules/cjs/loader:1227:37)]
+    [at TracingChannel.traceSync (node:diagnostics_channel:328:14)]
+    [at wrapModuleLoad (node:internal/modules/cjs/loader:245:24)]
+    [at Module.require (node:internal/modules/cjs/loader:1504:12)]
+    [at require (node:internal/modules/helpers:152:16)]
+    [at Object.<anonymous> (E:\Eureka\node_modules\@tailwindcss\node\dist\index.js:1:1269)]
+    [at Module._compile (node:internal/modules/cjs/loader:1761:14)]
+
+Import traces:
+  Client Component Browser:
+    ./components/DesktopMenus.module.css [Client Component Browser]
+    ./components/DesktopMenus.tsx [Client Component Browser]
+    ./components/DesktopMenus.tsx [Server Component]
+    ./app/layout.tsx [Server Component]
+
+  Client Component SSR:
+    ./components/DesktopMenus.module.css [Client Component SSR]
+    ./components/DesktopMenus.tsx [Client Component SSR]
+    ./components/DesktopMenus.tsx [Server Component]
+    ./app/layout.tsx [Server Component] 
+[browser] ./components/GitPanel.module.css
+Error evaluating Node.js code
+Error: Cannot find module 'jiti'
+Require stack:
+- E:\Eureka\node_modules\@tailwindcss\node\dist\index.js
+- E:\Eureka\node_modules\@tailwindcss\postcss\dist\index.js
+- E:\Eureka\.next\dev\build\chunks\[root-of-the-server]__0oj80bi._.js
+- E:\Eureka\.next\dev\build\chunks\[turbopack]_runtime.js
+- E:\Eureka\.next\dev\build\56416d4ae4ce586f.js
+    [at Module._resolveFilename (node:internal/modules/cjs/loader:1421:15)]
+    [at defaultResolveImpl (node:internal/modules/cjs/loader:1059:19)]
+    [at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1064:22)]
+    [at Module._load (node:internal/modules/cjs/loader:1227:37)]
+    [at TracingChannel.traceSync (node:diagnostics_channel:328:14)]
+    [at wrapModuleLoad (node:internal/modules/cjs/loader:245:24)]
+    [at Module.require (node:internal/modules/cjs/loader:1504:12)]
+    [at require (node:internal/modules/helpers:152:16)]
+    [at Object.<anonymous> (E:\Eureka\node_modules\@tailwindcss\node\dist\index.js:1:1269)]
+    [at Module._compile (node:internal/modules/cjs/loader:1761:14)]
+
+Import traces:
+  Client Component Browser:
+    ./components/GitPanel.module.css [Client Component Browser]
+    ./components/GitPanel.tsx [Client Component Browser]
+    ./components/SessionSidebar.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./components/GitPanel.module.css [Client Component SSR]
+    ./components/GitPanel.tsx [Client Component SSR]
+    ./components/SessionSidebar.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component] 
+[browser] ./components/InstalledCapabilitiesSidebar.module.css
+Error evaluating Node.js code
+Error: Cannot find module 'jiti'
+Require stack:
+- E:\Eureka\node_modules\@tailwindcss\node\dist\index.js
+- E:\Eureka\node_modules\@tailwindcss\postcss\dist\index.js
+- E:\Eureka\.next\dev\build\chunks\[root-of-the-server]__0oj80bi._.js
+- E:\Eureka\.next\dev\build\chunks\[turbopack]_runtime.js
+- E:\Eureka\.next\dev\build\56416d4ae4ce586f.js
+    [at Module._resolveFilename (node:internal/modules/cjs/loader:1421:15)]
+    [at defaultResolveImpl (node:internal/modules/cjs/loader:1059:19)]
+    [at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1064:22)]
+    [at Module._load (node:internal/modules/cjs/loader:1227:37)]
+    [at TracingChannel.traceSync (node:diagnostics_channel:328:14)]
+    [at wrapModuleLoad (node:internal/modules/cjs/loader:245:24)]
+    [at Module.require (node:internal/modules/cjs/loader:1504:12)]
+    [at require (node:internal/modules/helpers:152:16)]
+    [at Object.<anonymous> (E:\Eureka\node_modules\@tailwindcss\node\dist\index.js:1:1269)]
+    [at Module._compile (node:internal/modules/cjs/loader:1761:14)]
+
+Import traces:
+  Client Component Browser:
+    ./components/InstalledCapabilitiesSidebar.module.css [Client Component Browser]
+    ./components/ExtensionsCenter.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./components/InstalledCapabilitiesSidebar.module.css [Client Component SSR]
+    ./components/ExtensionsCenter.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component] 
+[browser] ./components/Sidebar.module.css
+Error evaluating Node.js code
+Error: Cannot find module 'jiti'
+Require stack:
+- E:\Eureka\node_modules\@tailwindcss\node\dist\index.js
+- E:\Eureka\node_modules\@tailwindcss\postcss\dist\index.js
+- E:\Eureka\.next\dev\build\chunks\[root-of-the-server]__0oj80bi._.js
+- E:\Eureka\.next\dev\build\chunks\[turbopack]_runtime.js
+- E:\Eureka\.next\dev\build\56416d4ae4ce586f.js
+    [at Module._resolveFilename (node:internal/modules/cjs/loader:1421:15)]
+    [at defaultResolveImpl (node:internal/modules/cjs/loader:1059:19)]
+    [at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1064:22)]
+    [at Module._load (node:internal/modules/cjs/loader:1227:37)]
+    [at TracingChannel.traceSync (node:diagnostics_channel:328:14)]
+    [at wrapModuleLoad (node:internal/modules/cjs/loader:245:24)]
+    [at Module.require (node:internal/modules/cjs/loader:1504:12)]
+    [at require (node:internal/modules/helpers:152:16)]
+    [at Object.<anonymous> (E:\Eureka\node_modules\@tailwindcss\node\dist\index.js:1:1269)]
+    [at Module._compile (node:internal/modules/cjs/loader:1761:14)]
+
+Import traces:
+  Client Component Browser:
+    ./components/Sidebar.module.css [Client Component Browser]
+    ./components/SidebarUserMenu.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./components/Sidebar.module.css [Client Component SSR]
+    ./components/SidebarUserMenu.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component] 
+[browser] ./node_modules/katex/dist/katex.min.css
+Error evaluating Node.js code
+Error: Cannot find module 'jiti'
+Require stack:
+- E:\Eureka\node_modules\@tailwindcss\node\dist\index.js
+- E:\Eureka\node_modules\@tailwindcss\postcss\dist\index.js
+- E:\Eureka\.next\dev\build\chunks\[root-of-the-server]__0oj80bi._.js
+- E:\Eureka\.next\dev\build\chunks\[turbopack]_runtime.js
+- E:\Eureka\.next\dev\build\56416d4ae4ce586f.js
+    [at Module._resolveFilename (node:internal/modules/cjs/loader:1421:15)]
+    [at defaultResolveImpl (node:internal/modules/cjs/loader:1059:19)]
+    [at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1064:22)]
+    [at Module._load (node:internal/modules/cjs/loader:1227:37)]
+    [at TracingChannel.traceSync (node:diagnostics_channel:328:14)]
+    [at wrapModuleLoad (node:internal/modules/cjs/loader:245:24)]
+    [at Module.require (node:internal/modules/cjs/loader:1504:12)]
+    [at require (node:internal/modules/helpers:152:16)]
+    [at Object.<anonymous> (E:\Eureka\node_modules\@tailwindcss\node\dist\index.js:1:1269)]
+    [at Module._compile (node:internal/modules/cjs/loader:1761:14)]
+
+Import trace:
+  Client Component Browser:
+    ./node_modules/katex/dist/katex.min.css [Client Component Browser]
+    ./app/layout.tsx [Server Component] 
+[browser] ./app/globals.css
+Error evaluating Node.js code
+Error: Cannot find module 'jiti'
+Require stack:
+- E:\Eureka\node_modules\@tailwindcss\node\dist\index.js
+- E:\Eureka\node_modules\@tailwindcss\postcss\dist\index.js
+- E:\Eureka\.next\dev\build\chunks\[root-of-the-server]__0oj80bi._.js
+- E:\Eureka\.next\dev\build\chunks\[turbopack]_runtime.js
+- E:\Eureka\.next\dev\build\56416d4ae4ce586f.js
+    [at Module._resolveFilename (node:internal/modules/cjs/loader:1421:15)]
+    [at defaultResolveImpl (node:internal/modules/cjs/loader:1059:19)]
+    [at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1064:22)]
+    [at Module._load (node:internal/modules/cjs/loader:1227:37)]
+    [at TracingChannel.traceSync (node:diagnostics_channel:328:14)]
+    [at wrapModuleLoad (node:internal/modules/cjs/loader:245:24)]
+    [at Module.require (node:internal/modules/cjs/loader:1504:12)]
+    [at require (node:internal/modules/helpers:152:16)]
+    [at Object.<anonymous> (E:\Eureka\node_modules\@tailwindcss\node\dist\index.js:1:1269)]
+    [at Module._compile (node:internal/modules/cjs/loader:1761:14)]
+
+Import trace:
+  Client Component Browser:
+    ./app/globals.css [Client Component Browser]
+    ./app/layout.tsx [Server Component] 
+[browser] ./components/AppNavigation.module.css
+Error evaluating Node.js code
+Error: Cannot find module 'jiti'
+Require stack:
+- E:\Eureka\node_modules\@tailwindcss\node\dist\index.js
+- E:\Eureka\node_modules\@tailwindcss\postcss\dist\index.js
+- E:\Eureka\.next\dev\build\chunks\[root-of-the-server]__0oj80bi._.js
+- E:\Eureka\.next\dev\build\chunks\[turbopack]_runtime.js
+- E:\Eureka\.next\dev\build\56416d4ae4ce586f.js
+    [at Module._resolveFilename (node:internal/modules/cjs/loader:1421:15)]
+    [at defaultResolveImpl (node:internal/modules/cjs/loader:1059:19)]
+    [at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1064:22)]
+    [at Module._load (node:internal/modules/cjs/loader:1227:37)]
+    [at TracingChannel.traceSync (node:diagnostics_channel:328:14)]
+    [at wrapModuleLoad (node:internal/modules/cjs/loader:245:24)]
+    [at Module.require (node:internal/modules/cjs/loader:1504:12)]
+    [at require (node:internal/modules/helpers:152:16)]
+    [at Object.<anonymous> (E:\Eureka\node_modules\@tailwindcss\node\dist\index.js:1:1269)]
+    [at Module._compile (node:internal/modules/cjs/loader:1761:14)]
+
+Import traces:
+  Client Component Browser:
+    ./components/AppNavigation.module.css [Client Component Browser]
+    ./components/AppNavigation.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./components/AppNavigation.module.css [Client Component SSR]
+    ./components/AppNavigation.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component] 
+[browser] ./components/ChatMinimap.module.css
+Error evaluating Node.js code
+Error: Cannot find module 'jiti'
+Require stack:
+- E:\Eureka\node_modules\@tailwindcss\node\dist\index.js
+- E:\Eureka\node_modules\@tailwindcss\postcss\dist\index.js
+- E:\Eureka\.next\dev\build\chunks\[root-of-the-server]__0oj80bi._.js
+- E:\Eureka\.next\dev\build\chunks\[turbopack]_runtime.js
+- E:\Eureka\.next\dev\build\56416d4ae4ce586f.js
+    [at Module._resolveFilename (node:internal/modules/cjs/loader:1421:15)]
+    [at defaultResolveImpl (node:internal/modules/cjs/loader:1059:19)]
+    [at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1064:22)]
+    [at Module._load (node:internal/modules/cjs/loader:1227:37)]
+    [at TracingChannel.traceSync (node:diagnostics_channel:328:14)]
+    [at wrapModuleLoad (node:internal/modules/cjs/loader:245:24)]
+    [at Module.require (node:internal/modules/cjs/loader:1504:12)]
+    [at require (node:internal/modules/helpers:152:16)]
+    [at Object.<anonymous> (E:\Eureka\node_modules\@tailwindcss\node\dist\index.js:1:1269)]
+    [at Module._compile (node:internal/modules/cjs/loader:1761:14)]
+
+Import traces:
+  Client Component Browser:
+    ./components/ChatMinimap.module.css [Client Component Browser]
+    ./components/ChatMinimap.tsx [Client Component Browser]
+    ./components/ChatWindow.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./components/ChatMinimap.module.css [Client Component SSR]
+    ./components/ChatMinimap.tsx [Client Component SSR]
+    ./components/ChatWindow.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component] 
+[browser] ./components/CommandPalette.module.css
+Error evaluating Node.js code
+Error: Cannot find module 'jiti'
+Require stack:
+- E:\Eureka\node_modules\@tailwindcss\node\dist\index.js
+- E:\Eureka\node_modules\@tailwindcss\postcss\dist\index.js
+- E:\Eureka\.next\dev\build\chunks\[root-of-the-server]__0oj80bi._.js
+- E:\Eureka\.next\dev\build\chunks\[turbopack]_runtime.js
+- E:\Eureka\.next\dev\build\56416d4ae4ce586f.js
+    [at Module._resolveFilename (node:internal/modules/cjs/loader:1421:15)]
+    [at defaultResolveImpl (node:internal/modules/cjs/loader:1059:19)]
+    [at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1064:22)]
+    [at Module._load (node:internal/modules/cjs/loader:1227:37)]
+    [at TracingChannel.traceSync (node:diagnostics_channel:328:14)]
+    [at wrapModuleLoad (node:internal/modules/cjs/loader:245:24)]
+    [at Module.require (node:internal/modules/cjs/loader:1504:12)]
+    [at require (node:internal/modules/helpers:152:16)]
+    [at Object.<anonymous> (E:\Eureka\node_modules\@tailwindcss\node\dist\index.js:1:1269)]
+    [at Module._compile (node:internal/modules/cjs/loader:1761:14)]
+
+Import traces:
+  Client Component Browser:
+    ./components/CommandPalette.module.css [Client Component Browser]
+    ./components/ChatInput.tsx [Client Component Browser]
+    ./components/ChatWindow.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./components/CommandPalette.module.css [Client Component SSR]
+    ./components/ChatInput.tsx [Client Component SSR]
+    ./components/ChatWindow.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component] 
+[browser] ./components/ComposerSelectors.module.css
+Error evaluating Node.js code
+Error: Cannot find module 'jiti'
+Require stack:
+- E:\Eureka\node_modules\@tailwindcss\node\dist\index.js
+- E:\Eureka\node_modules\@tailwindcss\postcss\dist\index.js
+- E:\Eureka\.next\dev\build\chunks\[root-of-the-server]__0oj80bi._.js
+- E:\Eureka\.next\dev\build\chunks\[turbopack]_runtime.js
+- E:\Eureka\.next\dev\build\56416d4ae4ce586f.js
+    [at Module._resolveFilename (node:internal/modules/cjs/loader:1421:15)]
+    [at defaultResolveImpl (node:internal/modules/cjs/loader:1059:19)]
+    [at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1064:22)]
+    [at Module._load (node:internal/modules/cjs/loader:1227:37)]
+    [at TracingChannel.traceSync (node:diagnostics_channel:328:14)]
+    [at wrapModuleLoad (node:internal/modules/cjs/loader:245:24)]
+    [at Module.require (node:internal/modules/cjs/loader:1504:12)]
+    [at require (node:internal/modules/helpers:152:16)]
+    [at Object.<anonymous> (E:\Eureka\node_modules\@tailwindcss\node\dist\index.js:1:1269)]
+    [at Module._compile (node:internal/modules/cjs/loader:1761:14)]
+
+Import traces:
+  Client Component Browser:
+    ./components/ComposerSelectors.module.css [Client Component Browser]
+    ./components/ChatInput.tsx [Client Component Browser]
+    ./components/ChatWindow.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./components/ComposerSelectors.module.css [Client Component SSR]
+    ./components/ChatInput.tsx [Client Component SSR]
+    ./components/ChatWindow.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component] 
+[browser] ./components/ContextPopover.module.css
+Error evaluating Node.js code
+Error: Cannot find module 'jiti'
+Require stack:
+- E:\Eureka\node_modules\@tailwindcss\node\dist\index.js
+- E:\Eureka\node_modules\@tailwindcss\postcss\dist\index.js
+- E:\Eureka\.next\dev\build\chunks\[root-of-the-server]__0oj80bi._.js
+- E:\Eureka\.next\dev\build\chunks\[turbopack]_runtime.js
+- E:\Eureka\.next\dev\build\56416d4ae4ce586f.js
+    [at Module._resolveFilename (node:internal/modules/cjs/loader:1421:15)]
+    [at defaultResolveImpl (node:internal/modules/cjs/loader:1059:19)]
+    [at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1064:22)]
+    [at Module._load (node:internal/modules/cjs/loader:1227:37)]
+    [at TracingChannel.traceSync (node:diagnostics_channel:328:14)]
+    [at wrapModuleLoad (node:internal/modules/cjs/loader:245:24)]
+    [at Module.require (node:internal/modules/cjs/loader:1504:12)]
+    [at require (node:internal/modules/helpers:152:16)]
+    [at Object.<anonymous> (E:\Eureka\node_modules\@tailwindcss\node\dist\index.js:1:1269)]
+    [at Module._compile (node:internal/modules/cjs/loader:1761:14)]
+
+Import traces:
+  Client Component Browser:
+    ./components/ContextPopover.module.css [Client Component Browser]
+    ./components/ContextPopover.tsx [Client Component Browser]
+    ./components/ChatWindow.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./components/ContextPopover.module.css [Client Component SSR]
+    ./components/ContextPopover.tsx [Client Component SSR]
+    ./components/ChatWindow.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component] 
+[browser] ./components/DesktopMenus.module.css
+Error evaluating Node.js code
+Error: Cannot find module 'jiti'
+Require stack:
+- E:\Eureka\node_modules\@tailwindcss\node\dist\index.js
+- E:\Eureka\node_modules\@tailwindcss\postcss\dist\index.js
+- E:\Eureka\.next\dev\build\chunks\[root-of-the-server]__0oj80bi._.js
+- E:\Eureka\.next\dev\build\chunks\[turbopack]_runtime.js
+- E:\Eureka\.next\dev\build\56416d4ae4ce586f.js
+    [at Module._resolveFilename (node:internal/modules/cjs/loader:1421:15)]
+    [at defaultResolveImpl (node:internal/modules/cjs/loader:1059:19)]
+    [at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1064:22)]
+    [at Module._load (node:internal/modules/cjs/loader:1227:37)]
+    [at TracingChannel.traceSync (node:diagnostics_channel:328:14)]
+    [at wrapModuleLoad (node:internal/modules/cjs/loader:245:24)]
+    [at Module.require (node:internal/modules/cjs/loader:1504:12)]
+    [at require (node:internal/modules/helpers:152:16)]
+    [at Object.<anonymous> (E:\Eureka\node_modules\@tailwindcss\node\dist\index.js:1:1269)]
+    [at Module._compile (node:internal/modules/cjs/loader:1761:14)]
+
+Import traces:
+  Client Component Browser:
+    ./components/DesktopMenus.module.css [Client Component Browser]
+    ./components/DesktopMenus.tsx [Client Component Browser]
+    ./components/DesktopMenus.tsx [Server Component]
+    ./app/layout.tsx [Server Component]
+
+  Client Component SSR:
+    ./components/DesktopMenus.module.css [Client Component SSR]
+    ./components/DesktopMenus.tsx [Client Component SSR]
+    ./components/DesktopMenus.tsx [Server Component]
+    ./app/layout.tsx [Server Component] 
+[browser] ./components/GitPanel.module.css
+Error evaluating Node.js code
+Error: Cannot find module 'jiti'
+Require stack:
+- E:\Eureka\node_modules\@tailwindcss\node\dist\index.js
+- E:\Eureka\node_modules\@tailwindcss\postcss\dist\index.js
+- E:\Eureka\.next\dev\build\chunks\[root-of-the-server]__0oj80bi._.js
+- E:\Eureka\.next\dev\build\chunks\[turbopack]_runtime.js
+- E:\Eureka\.next\dev\build\56416d4ae4ce586f.js
+    [at Module._resolveFilename (node:internal/modules/cjs/loader:1421:15)]
+    [at defaultResolveImpl (node:internal/modules/cjs/loader:1059:19)]
+    [at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1064:22)]
+    [at Module._load (node:internal/modules/cjs/loader:1227:37)]
+    [at TracingChannel.traceSync (node:diagnostics_channel:328:14)]
+    [at wrapModuleLoad (node:internal/modules/cjs/loader:245:24)]
+    [at Module.require (node:internal/modules/cjs/loader:1504:12)]
+    [at require (node:internal/modules/helpers:152:16)]
+    [at Object.<anonymous> (E:\Eureka\node_modules\@tailwindcss\node\dist\index.js:1:1269)]
+    [at Module._compile (node:internal/modules/cjs/loader:1761:14)]
+
+Import traces:
+  Client Component Browser:
+    ./components/GitPanel.module.css [Client Component Browser]
+    ./components/GitPanel.tsx [Client Component Browser]
+    ./components/SessionSidebar.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./components/GitPanel.module.css [Client Component SSR]
+    ./components/GitPanel.tsx [Client Component SSR]
+    ./components/SessionSidebar.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component] 
+[browser] ./components/InstalledCapabilitiesSidebar.module.css
+Error evaluating Node.js code
+Error: Cannot find module 'jiti'
+Require stack:
+- E:\Eureka\node_modules\@tailwindcss\node\dist\index.js
+- E:\Eureka\node_modules\@tailwindcss\postcss\dist\index.js
+- E:\Eureka\.next\dev\build\chunks\[root-of-the-server]__0oj80bi._.js
+- E:\Eureka\.next\dev\build\chunks\[turbopack]_runtime.js
+- E:\Eureka\.next\dev\build\56416d4ae4ce586f.js
+    [at Module._resolveFilename (node:internal/modules/cjs/loader:1421:15)]
+    [at defaultResolveImpl (node:internal/modules/cjs/loader:1059:19)]
+    [at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1064:22)]
+    [at Module._load (node:internal/modules/cjs/loader:1227:37)]
+    [at TracingChannel.traceSync (node:diagnostics_channel:328:14)]
+    [at wrapModuleLoad (node:internal/modules/cjs/loader:245:24)]
+    [at Module.require (node:internal/modules/cjs/loader:1504:12)]
+    [at require (node:internal/modules/helpers:152:16)]
+    [at Object.<anonymous> (E:\Eureka\node_modules\@tailwindcss\node\dist\index.js:1:1269)]
+    [at Module._compile (node:internal/modules/cjs/loader:1761:14)]
+
+Import traces:
+  Client Component Browser:
+    ./components/InstalledCapabilitiesSidebar.module.css [Client Component Browser]
+    ./components/ExtensionsCenter.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./components/InstalledCapabilitiesSidebar.module.css [Client Component SSR]
+    ./components/ExtensionsCenter.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component] 
+[browser] ./components/Sidebar.module.css
+Error evaluating Node.js code
+Error: Cannot find module 'jiti'
+Require stack:
+- E:\Eureka\node_modules\@tailwindcss\node\dist\index.js
+- E:\Eureka\node_modules\@tailwindcss\postcss\dist\index.js
+- E:\Eureka\.next\dev\build\chunks\[root-of-the-server]__0oj80bi._.js
+- E:\Eureka\.next\dev\build\chunks\[turbopack]_runtime.js
+- E:\Eureka\.next\dev\build\56416d4ae4ce586f.js
+    [at Module._resolveFilename (node:internal/modules/cjs/loader:1421:15)]
+    [at defaultResolveImpl (node:internal/modules/cjs/loader:1059:19)]
+    [at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1064:22)]
+    [at Module._load (node:internal/modules/cjs/loader:1227:37)]
+    [at TracingChannel.traceSync (node:diagnostics_channel:328:14)]
+    [at wrapModuleLoad (node:internal/modules/cjs/loader:245:24)]
+    [at Module.require (node:internal/modules/cjs/loader:1504:12)]
+    [at require (node:internal/modules/helpers:152:16)]
+    [at Object.<anonymous> (E:\Eureka\node_modules\@tailwindcss\node\dist\index.js:1:1269)]
+    [at Module._compile (node:internal/modules/cjs/loader:1761:14)]
+
+Import traces:
+  Client Component Browser:
+    ./components/Sidebar.module.css [Client Component Browser]
+    ./components/SidebarUserMenu.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Client Component Browser]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./components/Sidebar.module.css [Client Component SSR]
+    ./components/SidebarUserMenu.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Client Component SSR]
+    ./components/AppShell.tsx [Server Component]
+    ./app/page.tsx [Server Component] 
+[browser] ./node_modules/katex/dist/katex.min.css
+Error evaluating Node.js code
+Error: Cannot find module 'jiti'
+Require stack:
+- E:\Eureka\node_modules\@tailwindcss\node\dist\index.js
+- E:\Eureka\node_modules\@tailwindcss\postcss\dist\index.js
+- E:\Eureka\.next\dev\build\chunks\[root-of-the-server]__0oj80bi._.js
+- E:\Eureka\.next\dev\build\chunks\[turbopack]_runtime.js
+- E:\Eureka\.next\dev\build\56416d4ae4ce586f.js
+    [at Module._resolveFilename (node:internal/modules/cjs/loader:1421:15)]
+    [at defaultResolveImpl (node:internal/modules/cjs/loader:1059:19)]
+    [at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1064:22)]
+    [at Module._load (node:internal/modules/cjs/loader:1227:37)]
+    [at TracingChannel.traceSync (node:diagnostics_channel:328:14)]
+    [at wrapModuleLoad (node:internal/modules/cjs/loader:245:24)]
+    [at Module.require (node:internal/modules/cjs/loader:1504:12)]
+    [at require (node:internal/modules/helpers:152:16)]
+    [at Object.<anonymous> (E:\Eureka\node_modules\@tailwindcss\node\dist\index.js:1:1269)]
+    [at Module._compile (node:internal/modules/cjs/loader:1761:14)]
+
+Import trace:
+  Client Component Browser:
+    ./node_modules/katex/dist/katex.min.css [Client Component Browser]
+    ./app/layout.tsx [Server Component] 

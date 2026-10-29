@@ -29,6 +29,14 @@ const openA = {
   tabId: "file:/repo/a.ts",
 };
 
+test("switching between staged and unstaged diff resets the viewer and preserves its selected comparison", () => {
+  const staged = openFileTab([tabA], { ...openA, modeHint: "diff", gitDiffMode: "staged" });
+  assert.equal(staged[0].gitDiffMode, "staged");
+  const unstaged = openFileTab(staged, { ...openA, modeHint: "diff", gitDiffMode: "unstaged" });
+  assert.equal(unstaged[0].gitDiffMode, "unstaged");
+  assert.equal(unstaged[0].viewerRevision, 2);
+});
+
 test("saving viewer state updates only the matching revision", () => {
   const tabs = [tabA, tabB];
   const nextState = { ...tabA.viewerState, scrollTop: 480 };

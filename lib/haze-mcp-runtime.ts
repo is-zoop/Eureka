@@ -4,7 +4,8 @@ import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { getAgentDir, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { effectivePlugins, pluginStorageRoot, withHazeRegistryLock } from "./haze-registry";
-import { cleanupPluginDirectories, clearPluginSnapshot, pluginMcpName, setPluginSnapshot, validatedPluginRoot, type PluginSnapshot } from "./haze-plugin-resources";
+import { cleanupPluginDirectories, clearPluginSnapshot, pluginMcpName, setPluginSnapshot, validatedPluginRoot, installedPluginComposer, type PluginSnapshot } from "./haze-plugin-resources";
+import { installPluginSelectionRuntime } from "./plugin-selection-runtime";
 import { getProjectTrustStatus } from "./project-trust";
 
 type McpAdapter = { registerMcpServer: (options: { pi: unknown; name: string; definition: Record<string, unknown> }) => unknown };
@@ -37,6 +38,7 @@ async function listEffectiveManagedMcps(cwd: string) {
 
 /** Registers Haze MCPs for one AgentSession without ever persisting their key. */
 export async function installHazeManagedMcpRuntime(pi: ExtensionAPI) {
+  installPluginSelectionRuntime(pi);
   let registrations: Array<{ dispose: () => unknown }> = [];
   let activeSessionId: string | undefined;
   let activeCwd: string | undefined;
@@ -82,6 +84,7 @@ export async function installHazeManagedMcpRuntime(pi: ExtensionAPI) {
       try {
         if (install.scope === "project" && !getProjectTrustStatus(context.cwd, getAgentDir()).trusted) throw new Error("项目资源尚未受信任，组织插件未加载");
         validatedPluginRoot(context.cwd, install);
+        snapshot.composer = installedPluginComposer(context.cwd, install);
         for (const server of plugin.manifest.servers) {
           if (server.auth && !plugin.approvedUrls.includes(server.url)) throw new Error("MCP 服务地址尚未授权");
           const name = pluginMcpName(install, server.name);

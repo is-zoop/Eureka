@@ -1,10 +1,12 @@
 import type { Metadata, Viewport } from "next";
-import { Inter, JetBrains_Mono, Noto_Sans_Mono, Noto_Sans_SC } from "next/font/google";
+import { JetBrains_Mono, Noto_Sans_Mono } from "next/font/google";
 import { PwaRegistration } from "@/components/PwaRegistration";
 import { DesktopNativeBridge } from "@/components/DesktopNativeBridge";
+import { DesktopMenus } from "@/components/DesktopMenus";
 import { ThemeAwareFavicon } from "@/components/ThemeAwareFavicon";
 import "katex/dist/katex.min.css";
 import "./globals.css";
+import { I18nProvider } from "@/hooks/useI18n";
 import { NotificationProvider } from "@/components/Notifications";
 import { FontSizePreference } from "@/components/FontSizePreference";
 import { FONT_SIZE_BOOTSTRAP_SCRIPT } from "@/lib/font-size-preference";
@@ -19,19 +21,6 @@ const jetBrainsMono = JetBrains_Mono({
   subsets: ["latin"],
   variable: "--font-jetbrains-mono",
   display: "swap",
-});
-
-const inter = Inter({
-  subsets: ["latin"],
-  variable: "--font-inter",
-  display: "swap",
-});
-
-const notoSansSC = Noto_Sans_SC({
-  weight: "variable",
-  variable: "--font-noto-sans-sc",
-  display: "swap",
-  preload: false,
 });
 
 export const metadata: Metadata = {
@@ -81,7 +70,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" translate="no" className={`${inter.variable} ${notoSansSC.variable} ${notoSansMono.variable} ${jetBrainsMono.variable} notranslate`} suppressHydrationWarning>
+    <html lang="en" translate="no" className={`${notoSansMono.variable} ${jetBrainsMono.variable} notranslate`} suppressHydrationWarning>
       <head>
         <meta name="google" content="notranslate" />
         <script dangerouslySetInnerHTML={{ __html: FONT_SIZE_BOOTSTRAP_SCRIPT }} />
@@ -100,7 +89,7 @@ export default function RootLayout({
         <FontSizePreference />
         <ThemeAwareFavicon />
         <DesktopNativeBridge />
-        <NotificationProvider><div className="eureka-desktop-content">{children}</div></NotificationProvider>
+        <I18nProvider><NotificationProvider><DesktopMenus /><div className="eureka-desktop-content">{children}</div></NotificationProvider></I18nProvider>
         <PwaRegistration />
       </body>
     </html>

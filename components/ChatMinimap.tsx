@@ -9,6 +9,7 @@ import {
 } from "@/lib/markdown";
 import { splitFinalAssistantBlocks } from "@/lib/message-display";
 import type { AgentMessage, AssistantMessage, TextContent, UserMessage } from "@/lib/types";
+import { useI18n } from "@/hooks/useI18n";
 import styles from "./ChatMinimap.module.css";
 
 interface Props {
@@ -96,9 +97,10 @@ interface PreviewAstNode {
   };
 }
 
-function remarkPreviewOutline() {
+function remarkPreviewOutline({ expanded = true }: { expanded?: boolean } = {}) {
   return (tree: { children?: PreviewAstNode[] }) => {
     if (!Array.isArray(tree.children)) return;
+    const firstParagraph = tree.children.find((node) => node.type === "paragraph");
     const headings = tree.children.filter((node) => (
       node.type === "heading" && typeof node.depth === "number" && node.depth <= 3
     ));
@@ -112,18 +114,15 @@ function remarkPreviewOutline() {
           },
         };
       });
-      tree.children = headings;
+      tree.children = expanded
+        ? [...(firstParagraph ? [firstParagraph] : []), ...headings]
+        : firstParagraph ? [firstParagraph] : headings.slice(0, 1);
       return;
     }
-    const firstParagraph = tree.children.find((node) => node.type === "paragraph");
     tree.children = firstParagraph ? [firstParagraph] : [];
   };
 }
 
-const previewRemarkPlugins = [
-  ...(markdownPreviewRemarkPlugins ?? []),
-  remarkPreviewOutline,
-];
 const previewRehypePlugins: ReactMarkdownOptions["rehypePlugins"] = [
   [rehypeKatex, { throwOnError: false, strict: false }],
 ];
@@ -140,12 +139,18 @@ export const AssistantOutline = memo(function AssistantOutline({
   markdown,
   onHeadingClick,
   onAnswerClick,
+  expanded = true,
 }: {
   markdown: string;
   onHeadingClick?: (headingIndex: number) => void;
   onAnswerClick?: () => void;
+  expanded?: boolean;
 }) {
   const normalizedMarkdown = useMemo(() => normalizeDisplayMath(markdown), [markdown]);
+  const previewRemarkPlugins = useMemo<ReactMarkdownOptions["remarkPlugins"]>(() => [
+    ...(markdownPreviewRemarkPlugins ?? []),
+    [remarkPreviewOutline, { expanded }],
+  ], [expanded]);
   if (!markdown) return null;
   return (
     <div className={styles.outline}>
@@ -232,6 +237,7 @@ export function ChatMinimap({
   messageRefs,
   onRevealHistory,
 }: Props) {
+  const { t } = useI18n();
   const [visible, setVisible] = useState(false);
   const [allNodes, setAllNodes] = useState<NodeInfo[]>([]);
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
@@ -256,6 +262,29 @@ export function ChatMinimap({
     headingIndex?: number;
   } | null>(null);
 
+  useEffect(() => {
+    if (!minimapHovered) return;
+    const dismissOutside = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node) || previewBoxRef.current?.contains(target)) return;
+      // Node buttons remain usable for switching the open preview.
+      if (target instanceof Element && target.closest("[data-minimap-trigger]") && containerRef.current?.contains(target)) return;
+      setMinimapHovered(false);
+    };
+    const dismissOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopPropagation();
+      setMinimapHovered(false);
+    };
+    document.addEventListener("pointerdown", dismissOutside, true);
+    document.addEventListener("keydown", dismissOnEscape, true);
+    return () => {
+      document.removeEventListener("pointerdown", dismissOutside, true);
+      document.removeEventListener("keydown", dismissOnEscape, true);
+    };
+  }, [minimapHovered]);
+
   const allMessages = useMemo(
     () => (streamingMessage ? [...messages, streamingMessage] : messages) as (AgentMessage | Partial<AgentMessage>)[],
     [messages, streamingMessage],
@@ -276,6 +305,8 @@ export function ChatMinimap({
       until: Date.now() + NAVIGATION_ACTIVE_LOCK_MS,
     };
     setActiveIndex(index);
+    const node = nodeLayoutRef.current.nodes[index];
+    if (node) setMouseYRatio(node.topRatio);
   }, []);
 
   const syncActiveNode = useCallback((scrollEl: HTMLDivElement, nextNodes: NodeInfo[]) => {
@@ -555,16 +586,17 @@ export function ChatMinimap({
 
   const nearestNode = mouseYRatio === null ? null : findNearestNode(mouseYRatio);
   const nearestNodeIndex = nearestNode?.index ?? null;
+  const previewNodeIndex = nearestNodeIndex ?? activeIndex;
 
   useEffect(() => {
-    if (!minimapHovered || nearestNodeIndex === null) return;
+    if (!minimapHovered || previewNodeIndex === null) return;
     const previewBox = previewBoxRef.current;
-    const previewItem = previewItemRefs.current.get(nearestNodeIndex);
+    const previewItem = previewItemRefs.current.get(previewNodeIndex);
     if (!previewBox || !previewItem) return;
     const targetTop = previewItem.offsetTop
       - (previewBox.clientHeight - previewItem.offsetHeight) / 2;
     previewBox.scrollTop = Math.max(0, targetTop);
-  }, [allNodes, minimapHovered, nearestNodeIndex]);
+  }, [allNodes, minimapHovered, previewNodeIndex]);
 
   if (!visible) return null;
 
@@ -641,7 +673,8 @@ export function ChatMinimap({
                 cursor: "pointer",
                 pointerEvents: "auto",
               }}
-              aria-label="Open history preview"
+              data-minimap-trigger=""
+              aria-label={t("chat.openHistoryPreview")}
               aria-expanded={minimapHovered}
               onMouseDown={(event) => event.stopPropagation()}
               onClick={() => {
@@ -672,11 +705,13 @@ export function ChatMinimap({
           ref={previewBoxRef}
           className={styles.preview}
           data-minimap-preview-box=""
+          role="navigation"
+          aria-label={t("chat.historyPreview")}
           onMouseDown={(event) => event.stopPropagation()}
           onMouseMove={(event) => event.stopPropagation()}
         >
           {allNodes.map((node) => {
-            const isLocated = nearestNodeIndex === node.index;
+            const isLocated = activeIndex === node.index;
             return (
               <div
                 key={node.index}
@@ -696,6 +731,7 @@ export function ChatMinimap({
                     type="button"
                     className={styles.user}
                     data-minimap-preview-user={node.index}
+                    aria-current={isLocated ? "location" : undefined}
                     onClick={() => {
                       scrollToNode(node, "smooth");
                     }}
@@ -715,13 +751,15 @@ export function ChatMinimap({
                         className={styles.assistantJump}
                         data-minimap-preview-assistant={`${node.index}-${assistantIndex}`}
                         onClick={() => scrollToAssistant(node, assistantIndex)}
-                        aria-label="Locate assistant message"
-                        title="Locate assistant message"
+                        aria-label={t("chat.locateAssistant")}
                       >
-                        A
+                        <svg width="12" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                          <path d="M15 10l5 5-5 5M4 4v7a4 4 0 0 0 4 4h12" />
+                        </svg>
                       </button>
                       <AssistantOutline
                         markdown={assistant.markdown}
+                        expanded={isLocated}
                         onAnswerClick={() => scrollToAssistant(node, assistantIndex)}
                         onHeadingClick={(headingIndex) => (
                           scrollToHeading(node, assistantIndex, headingIndex)

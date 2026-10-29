@@ -15,6 +15,7 @@ export interface StreamingState {
 }
 
 export type StreamAction =
+  | { type: "batch"; actions: Exclude<StreamAction, { type: "batch" }>[] }
   | { type: "start" }
   | { type: "snapshot"; message: AgentMessage }
   | { type: "delta"; event: ClientAssistantMessageEvent }
@@ -97,6 +98,8 @@ export function streamReducer(
   action: StreamAction,
 ): StreamingState {
   switch (action.type) {
+    case "batch":
+      return action.actions.reduce(streamReducer, state);
     case "start":
       return { isStreaming: true, streamingMessage: null };
     case "snapshot": {

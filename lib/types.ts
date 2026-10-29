@@ -324,3 +324,24 @@ export interface SessionContext {
   thinkingLevel: string;
   model: { provider: string; modelId: string } | null;
 }
+
+/** Browsable records, independent of the compacted messages sent to the model. */
+export interface SessionHistoryItem {
+  entryId: string;
+  message: AgentMessage;
+  readOnly: boolean;
+  /** Preserve compaction when editing the first user message after its marker. */
+  editAnchorEntryId?: string;
+}
+
+export interface SessionHistoryPage {
+  leafId: string | null;
+  items: SessionHistoryItem[];
+  before: string | null;
+  hasMore: boolean;
+  latestCompactionId: string | null;
+  /** Small ancestry index used to discard records from a previously selected branch. */
+  pathIds: string[];
+  /** Inclusive ranges of persisted entries covered by loaded pages (including metadata). */
+  ranges: [string, string][];
+}

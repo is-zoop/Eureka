@@ -1,0 +1,73 @@
+✔ live context uses the existing session and sends counts rather than prompt/tool bodies (59.7395ms)
+✔ trailing tool results and unknown usage are labelled as estimates (1.1386ms)
+✔ history respects branch selection and discards pre-compaction usage (368.6428ms)
+✔ closed heavy details remain lazy and are excluded from focus and accessibility (7.0845ms)
+✔ initially open details retain their content and are accessible (1.2337ms)
+✔ lightweight task descriptions can stay mounted while remaining inert (0.3769ms)
+✔ current stages show commentary, counts, compact thinking and tool rows (86.1046ms)
+✔ long process lists retain every record inside a bounded scroll region (62.7043ms)
+✔ unfinished history is scrollable without being treated as a live list (6.6894ms)
+✔ success folds all commentary and steps beneath processing details (1.4024ms)
+✔ unfinished runs keep their last stage available (5.5598ms)
+✔ manual overrides apply within a state and reset on stage completion (0.2057ms)
+✔ initial and between-tool model waits keep the original pixel animation visible (7.6948ms)
+✔ live thinking uses its spiral only in the thinking row while the heading stays generic (4.5526ms)
+✔ parallel tools animate their individual rows with generic status and separate counts in the heading (7.7917ms)
+✔ a streaming reply completes and collapses the previous process stage without settling the logical run (2.8115ms)
+✔ settled history does not replay model or tool activity (1.001ms)
+✔ restores persisted plan snapshots when opening a closed session (98.1541ms)
+✔ submits a normalized plan so live sessions also receive verification checklists (0.4184ms)
+✔ syncs plan progress from the live streaming assistant message (0.5437ms)
+✔ keeps the session event stream open through the idle grace window (1.4118ms)
+✔ a rejected submission preserves a different run reported by the server (0.5832ms)
+✔ opening System lazily starts a dormant session without sending a prompt (1.3758ms)
+✔ new-session promotion rekeys drafts before publishing the real session (0.9671ms)
+✔ fresh sessions restore the preferred tool preset without overriding existing sessions (0.7678ms)
+✔ planning's temporary read-only tools never replace the normal preset (0.7961ms)
+✔ submission recovery updates live refs before a possible session rekey (0.7441ms)
+✔ stale fresh-session completion cannot replace the active composer (0.329ms)
+✔ abandoned fresh-session drafts are cleared and cannot be recreated by late rejection (0.2158ms)
+✔ streaming submissions cannot be stranded in an idle direct queue (0.1989ms)
+✔ post-accept prompt errors do not duplicate the user submission (0.1689ms)
+✔ delegates event stream readiness and hides an empty agent phase (0.2251ms)
+✔ uses one absolute agent-readiness deadline instead of a five-second transport deadline (0.1218ms)
+✔ connects a selected session when another browser reports it running (0.2134ms)
+✔ keeps one reducer-owned assistant partial and consumes Pi JSON deltas (0.2994ms)
+✔ plays the enabled sound once for each extension dialog (0.105ms)
+✔ routes blocking extension requests through deduplicated browser attention notifications (0.2162ms)
+✔ keeps live following cancellable when the user scrolls away from the tail (0.4243ms)
+✔ new submissions attach to the latest output instead of pinning the user message (0.5381ms)
+✔ content and viewport resizing follow the tail without React state updates (0.2181ms)
+✔ the real message tail has no artificial trailing spacer (0.2385ms)
+✔ new messages and completion follow only when the viewport is attached (0.2522ms)
+(node:26532) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///E:/Eureka/lib/context-details.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to E:\Eureka\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ live categories share the current usage total and separate the skill catalog (3.9422ms)
+✔ post-compaction missing usage is estimated from the new messages (0.3486ms)
+✔ history leaves unavailable runtime categories unknown instead of inventing exact counts (0.3824ms)
+✔ estimated history messages cannot overflow a reported context total (0.2751ms)
+✔ capacity handles over-limit contexts and an unknown model window (0.3604ms)
+✔ text estimates handle CJK and do not count image base64 as text tokens (1.5854ms)
+✔ invalid numeric usage is estimated and never leaks NaN into the response (0.3641ms)
+(node:19380) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///E:/Eureka/lib/i18n/format.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to E:\Eureka\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+[i18n] Missing translation: missing.key
+✔ interpolates string and numeric parameters (1.2315ms)
+✔ falls back to English and returns the key when both are missing (0.3487ms)
+✔ formats relative time using the selected locale (5566.8292ms)
+✔ uses the first supported browser language and falls back to English (0.7823ms)
+✔ returns only registered locales (38.3569ms)
+✔ context inspector has matching localized labels and parameters (0.6282ms)
+✔ allows a new locale plugin and rejects duplicate ids (0.2648ms)
+ℹ tests 56
+ℹ suites 0
+ℹ pass 56
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 45830.8826

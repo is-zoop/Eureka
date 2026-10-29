@@ -23,46 +23,69 @@ export function useSessionToolPermissions(options: Options): SessionToolPermissi
   current.current = options;
   const mounted = useRef(true);
   const pending = useRef<ToolPreset | null>(null);
-  const applying = useRef<string | null>(null);
-  const reading = useRef<string | null>(null);
+  const applying = useRef<object | null>(null);
+  const reading = useRef<object | null>(null);
+  const loadedSession = useRef<string | null>(null);
+  const revision = useRef(0);
 
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   useEffect(() => {
     pending.current = null; setPendingPreset(null); setReady(false);
     setLoading(false); setSaving(false);
+    revision.current++;
+    loadedSession.current = null;
+    reading.current = null;
+    applying.current = null;
   }, [options.sessionId]);
 
   const load = useCallback(async () => {
     const context = current.current;
-    if (!mounted.current || !context.sessionId || reading.current === context.sessionId) return;
-    reading.current = context.sessionId;
+    if (!mounted.current || !context.sessionId || reading.current || loadedSession.current === context.sessionId) return;
+    const request = {};
+    const version = revision.current;
+    reading.current = request;
     setLoading(true);
     try {
       const ok = await context.load();
-      if (mounted.current && current.current.sessionId === context.sessionId) setReady(ok);
+      if (mounted.current && current.current.sessionId === context.sessionId && revision.current === version) {
+        loadedSession.current = ok ? context.sessionId : null;
+        setReady(ok);
+      }
     } finally {
-      if (reading.current === context.sessionId) reading.current = null;
-      if (mounted.current && current.current.sessionId === context.sessionId) setLoading(false);
+      if (reading.current === request) {
+        reading.current = null;
+        if (mounted.current && current.current.sessionId === context.sessionId) setLoading(false);
+      }
     }
   }, []);
 
   const change = useCallback(async (preset: ToolPreset) => {
     const context = current.current;
-    if (!mounted.current || !context.sessionId || context.locked || applying.current === context.sessionId) return;
+    if (!mounted.current || !context.sessionId || context.locked || applying.current) return;
     if (context.busy) {
-      pending.current = preset === context.preset ? null : preset;
+      pending.current = preset === context.preset && loadedSession.current === context.sessionId ? null : preset;
       setPendingPreset(pending.current);
       return;
     }
     pending.current = null;
-    setPendingPreset(null);
-    if (preset === context.preset) return;
-    applying.current = context.sessionId;
+    if (preset === context.preset && loadedSession.current === context.sessionId) { setPendingPreset(null); return; }
+    const request = {};
+    revision.current++;
+    applying.current = request;
+    setPendingPreset(preset);
     setSaving(true);
-    try { await context.apply(preset); }
+    try {
+      const ok = await context.apply(preset);
+      if (mounted.current && current.current.sessionId === context.sessionId && applying.current === request && ok) {
+        loadedSession.current = context.sessionId;
+        setReady(true);
+      }
+    }
     finally {
-      if (applying.current === context.sessionId) applying.current = null;
-      if (mounted.current && current.current.sessionId === context.sessionId) setSaving(false);
+      if (applying.current === request) {
+        applying.current = null;
+        if (mounted.current && current.current.sessionId === context.sessionId) { setSaving(false); setPendingPreset(null); }
+      }
     }
   }, []);
 

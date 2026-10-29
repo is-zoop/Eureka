@@ -1,6 +1,15 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import test, { after } from "node:test";
+import { registerHooks } from "node:module";
 import { createJiti } from "jiti";
+
+const cssHook = registerHooks({
+  load(url, context, nextLoad) {
+    if (url.endsWith(".module.css")) return { format: "module", source: "export default new Proxy({}, { get: (_, name) => String(name) });", shortCircuit: true };
+    return nextLoad(url, context);
+  },
+});
+after(() => cssHook.deregister());
 
 const jiti = createJiti(import.meta.url, {
   jsx: { runtime: "automatic" },

@@ -21,6 +21,8 @@ export function registerAbortHandler(handler: (() => void) | null): void {
 // ---------------------------------------------------------------------------
 
 interface UseGlobalKeyboardShortcutsOptions {
+  /** A hidden, mounted chat must not handle another page's Escape key. */
+  abortEnabled?: boolean;
   /** Called when Ctrl+Alt+N is pressed. Receives current cwd. */
   onNewSession?: (cwd: string) => void;
   /** The currently selected project directory (sidebar cwd). */
@@ -42,13 +44,14 @@ interface UseGlobalKeyboardShortcutsOptions {
 export function useGlobalKeyboardShortcuts(
   options: UseGlobalKeyboardShortcutsOptions,
 ): void {
-  const { onNewSession, activeCwd } = options;
+  const { onNewSession, activeCwd, abortEnabled = true } = options;
 
   useEffect(() => {
     const handler = (e: KeyboardEvent): void => {
+      if (e.defaultPrevented) return;
       // ---- Esc: stop agent ----
       if (e.key === "Escape") {
-        if (!globalAbortHandler) return;
+        if (!abortEnabled || !globalAbortHandler) return;
 
         const tag = (e.target as HTMLElement)?.tagName;
         // Let textarea/input handle Esc internally (ChatInput menus / stop).
@@ -69,5 +72,5 @@ export function useGlobalKeyboardShortcuts(
 
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [activeCwd, onNewSession]);
+  }, [abortEnabled, activeCwd, onNewSession]);
 }

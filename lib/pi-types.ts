@@ -12,6 +12,7 @@ export interface ContextUsage {
   percent: number | null;
   contextWindow: number;
   tokens: number | null;
+  estimated?: boolean;
 }
 
 export interface ModelLike {
@@ -136,6 +137,8 @@ export interface AgentSessionLike {
       systemPrompt?: string;
       thinkingLevel?: string;
       streamingMessage?: PiAgentMessage;
+      messages?: PiAgentMessage[];
+      tools?: Array<{ name: string; description?: string; parameters?: unknown }>;
     };
   };
   readonly extensionRunner: ExtensionRunnerLike;

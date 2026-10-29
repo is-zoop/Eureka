@@ -28,7 +28,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "package and scope must be provided together" }, { status: 400 });
     }
 
-    const { skills } = await loadSkillsWithInstallInfo(cwd);
+    const inventory = await loadSkillsWithInstallInfo(cwd);
+    const skills = inventory.installedSkills ?? inventory.skills;
     const installs = skills
       .map((skill) => skill.install)
       .filter((install): install is NonNullable<typeof install> => Boolean(install))

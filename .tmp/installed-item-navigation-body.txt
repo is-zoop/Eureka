@@ -1,0 +1,52 @@
+ const workspace=page.locator('[data-app-page="extensions"]');
+ const sidebar=workspace.locator('[data-installed-capabilities]');
+ const panel=()=>workspace.getByRole('region').filter({visible:true});
+ const category=async(name)=>sidebar.getByRole('navigation').getByRole('button',{name,exact:true}).click();
+ const source=async(name)=>{await sidebar.getByRole('button',{name:'扩展来源',exact:true}).click();await page.getByRole('menuitem',{name,exact:true}).click();};
+ await sidebar.getByRole('button',{name:'组织技能',exact:true}).first().waitFor();
+ assert.equal(await workspace.getByRole('tab',{name:/^(已安装|市场)$/}).count(),0);
+ for (const row of await sidebar.locator('li').all()) {
+   const name=await row.getByRole('button').getAttribute('aria-label');assert.equal((await row.innerText()).trim(),name);
+   assert.equal(await row.locator('svg').count(),1);
+ }
+ const catalogSearch=panel().getByRole('textbox');await catalogSearch.fill('组织');
+ // Identical names in different scopes stay separate internally even with single-line labels.
+ const sameName=sidebar.getByRole('button',{name:'组织技能',exact:true});
+ await sameName.nth(0).focus();await page.keyboard.press('Enter');
+ await panel().getByRole('button',{name:'管理',exact:true}).waitFor();
+ assert.equal(await panel().locator('.organization-extension-card').count(),1);
+ assert.equal(await panel().getByRole('heading',{name:'组织技能',exact:true}).count(),1);
+ assert.equal(await page.locator('#extension-panel').isVisible(),false);
+ assert.equal(await sidebar.getByRole('navigation').getByRole('button',{name:'技能',exact:true}).getAttribute('aria-pressed'),'false');
+ await panel().getByRole('button',{name:'管理',exact:true}).click();await page.getByRole('menuitem',{name:'卸载',exact:true}).click();
+ await page.waitForFunction(()=>document.querySelectorAll('[data-installed-capabilities] button[aria-label="组织技能"]').length===1);
+ assert.ok(mutations.some(m=>m.action==='uninstall'&&m.scope==='global'));
+ assert.ok(!mutations.some(m=>m.action==='uninstall'&&m.scope==='project'));
+ await sidebar.getByRole('button',{name:'组织技能',exact:true}).click();await panel().getByRole('button',{name:'管理',exact:true}).waitFor();
+ // Details remain an explicit action; returning to management closes that separate panel with keyboard activation too.
+ await panel().getByRole('button',{name:'查看详情',exact:true}).click();await page.locator('#extension-panel').getByRole('button',{name:'管理',exact:true}).waitFor();
+ await sidebar.getByRole('button',{name:'组织技能',exact:true}).focus();await page.keyboard.press('Enter');assert.equal(await page.locator('#extension-panel').isVisible(),false);
+ await category('技能');assert.equal(await catalogSearch.inputValue(),'组织');assert.equal(await sidebar.getByRole('navigation').getByRole('button',{name:'技能',exact:true}).getAttribute('aria-pressed'),'true');
+ await category('插件');await sidebar.getByRole('button',{name:'组织插件',exact:true}).click();await panel().getByRole('button',{name:'管理',exact:true}).waitFor();await page.screenshot({path:'.tmp/installed-management-organization.png'});
+ await source('市场扩展');await category('技能');
+ const marketSearch=panel().getByRole('textbox').first();await marketSearch.fill('retained-search');
+ await sidebar.getByRole('button',{name:'市场技能',exact:true}).click();await panel().getByText('市场技能的说明',{exact:true}).waitFor();
+ await panel().getByRole('button',{name:'在模型提示词中可见，点击以禁用',exact:true}).click();
+ await sidebar.getByRole('button',{name:'刷新已安装能力',exact:true}).waitFor({state:'visible'});
+ assert.equal((await sidebar.getByRole('button',{name:'市场技能',exact:true}).innerText()).trim(),'市场技能');
+ await category('技能');assert.equal(await marketSearch.inputValue(),'retained-search');
+ await category('插件');await sidebar.getByRole('button',{name:'市场插件',exact:true}).click();await panel().getByRole('button',{name:'移除',exact:true}).click();await sidebar.getByRole('button',{name:'市场插件',exact:true}).waitFor({state:'detached'});
+ assert.ok(mutations.some(m=>m.action==='remove'&&m.scope==='project'));
+ await category('MCP');const addName=panel().getByRole('textbox',{name:'名称',exact:true});await addName.fill('retained-mcp-draft');
+ delayGlobal=true;await sidebar.getByRole('button',{name:'Global MCP',exact:true}).click();await sidebar.getByRole('button',{name:'Project MCP',exact:true}).click();
+ await page.waitForFunction(()=>Array.from(document.querySelectorAll('.mcp-config-form label input')).some(el=>el.checkVisibility()&&el.value==='Project MCP'));
+ await page.waitForTimeout(450);assert.equal(await panel().getByRole('textbox',{name:'名称',exact:true}).inputValue(),'Project MCP');delayGlobal=false;
+ await category('MCP');assert.equal(await addName.inputValue(),'retained-mcp-draft');
+ await sidebar.getByRole('button',{name:'Project MCP',exact:true}).click();await page.screenshot({path:'.tmp/installed-management-mcp.png'});
+ await page.getByRole('button',{name:'主页',exact:true}).click();await page.getByRole('button',{name:'扩展中心',exact:true}).click();assert.equal(await sidebar.getByRole('button',{name:'Project MCP',exact:true}).getAttribute('aria-pressed'),'true');
+ await page.setViewportSize({width:390,height:844});await sidebar.getByRole('button',{name:'展开扩展导航',exact:true}).click();await sidebar.getByRole('button',{name:'Global MCP',exact:true}).click();
+ assert.equal(await sidebar.getByRole('button',{name:'展开扩展导航',exact:true}).getAttribute('aria-expanded'),'false');
+ await panel().getByRole('textbox',{name:'名称',exact:true}).waitFor();assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+ await page.emulateMedia({colorScheme:'dark'});await page.waitForFunction(()=>document.documentElement.classList.contains('dark'));await page.screenshot({path:'.tmp/installed-management-mobile-dark.png',animations:'disabled'});
+ guestMode=true;await page.setViewportSize({width:1440,height:960});await page.reload({waitUntil:'domcontentloaded'});await page.getByRole('button',{name:'扩展中心',exact:true}).click();await sidebar.getByRole('button',{name:'扩展来源',exact:true}).click();assert.ok(await page.getByRole('menuitem',{name:'组织扩展',exact:true}).isDisabled());
+ assert.deepEqual(errors,[]);console.log(JSON.stringify({topTabsRemoved:true,singleLineIconsAndNames:true,installedSelectionManagesInline:true,organizationScopeRetained:true,keyboardSelectionClosesDetails:true,categoriesReturnToCatalog:true,marketSkillToggle:true,pluginRemoval:true,searchAndMcpDraftPreserved:true,mcpScopeRaceSafe:true,mobileDarkAndGuest:true,pageErrors:errors}));

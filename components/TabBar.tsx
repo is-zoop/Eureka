@@ -5,6 +5,7 @@ import { getFileIcon } from "./FileIcons";
 import { useI18n } from "@/hooks/useI18n";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 import type { FileViewerDisplayMode, FileViewerState } from "@/lib/file-viewer-state";
+import type { GitDiffMode } from "@/lib/git-types";
 
 export interface Tab {
   id: string;
@@ -12,6 +13,7 @@ export interface Tab {
   filePath: string;
   sourceSessionId?: string | null;
   initialDisplayMode?: FileViewerDisplayMode;
+  gitDiffMode?: GitDiffMode;
   viewerState?: FileViewerState;
   viewerRevision?: number;
 }

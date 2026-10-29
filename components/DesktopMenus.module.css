@@ -1,0 +1,40 @@
+.positioner { z-index: 1450; }
+.popup {
+  width: 245px;
+  max-width: calc(100vw - 16px);
+  padding: 5px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--desktop-menu-bg);
+  color: var(--text);
+  box-shadow: 0 4px 9px rgb(0 0 0 / 10%), 0 12px 30px rgb(0 0 0 / 8%);
+  font: 12px "Segoe UI", var(--font-ui), sans-serif;
+  outline: none;
+}
+.item {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 6px;
+  min-height: 31px;
+  padding: 5px 12px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  white-space: nowrap;
+  cursor: default;
+  outline: none;
+}
+.item[data-highlighted], .item[data-open] { background: var(--bg-hover); }
+.item[data-disabled] { opacity: .4; }
+.item kbd { margin-left: auto; padding-left: 18px; color: var(--text-muted); font: 11px "Segoe UI", sans-serif; white-space: nowrap; }
+.separator { margin: 5px -5px; border-top: 1px solid var(--border); }
+.arrow { margin-left: auto; }
+.projects { width: 280px; }
+.projectName { flex: 0 0 auto; max-width: 96px; overflow: hidden; text-overflow: ellipsis; }
+.projectPath { flex: 1; min-width: 0; margin-left: 6px; overflow: hidden; color: var(--text-muted); font-size: 11px; text-overflow: ellipsis; }
+.aboutLogo { width: 40px; height: 40px; background: var(--text); mask: url('/icons/logo-black-transparent.png') center / contain no-repeat; }
+.version { margin-top: 6px; color: var(--text-muted); font-size: 12px; }

@@ -9,7 +9,7 @@ export function SettingsSelect({ label, value, options, onValueChange }: {
   onValueChange: (value: string) => void;
 }) {
   return <DropdownMenu>
-    <DropdownMenuTrigger aria-label={label} style={{ display: "inline-flex", alignItems: "center", justifyContent: "space-between", gap: 8, width: 140, maxWidth: "100%", minHeight: 32, flexShrink: 0, padding: "4px 10px", border: "1px solid var(--border)", borderRadius: 8, background: "var(--bg-panel)", color: "var(--text)", fontSize: 12, cursor: "pointer" }}>
+    <DropdownMenuTrigger aria-label={label} style={{ display: "inline-flex", alignItems: "center", justifyContent: "space-between", gap: 8, width: 140, maxWidth: "100%", minHeight: 32, flexShrink: 0, padding: "4px 10px", border: "1px solid var(--border)", borderRadius: "var(--radius-control)", background: "var(--bg-panel)", color: "var(--text)", fontSize: 12, cursor: "pointer" }}>
       <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{options.find((option) => option.value === value)?.label ?? value}</span>
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0, color: "var(--text-muted)" }}><path d="m6 9 6 6 6-6" /></svg>
     </DropdownMenuTrigger>

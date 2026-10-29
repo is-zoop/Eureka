@@ -6,7 +6,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { closeSync, openSync, readSync } from "fs";
 import { normalize as normalizePath } from "path";
-import type { AgentMessage, SessionEntry, SessionHeader, SessionInfo, SessionContext } from "./types";
+import type { AgentMessage, SessionEntry, SessionHeader, SessionInfo, SessionContext, SessionHistoryPage } from "./types";
 import type { SessionEntry as PiSessionEntry, SessionInfo as PiSessionInfo } from "@earendil-works/pi-coding-agent";
 import { normalizeToolCalls } from "./normalize";
 import { sessionPathKey } from "./session-path";
@@ -265,6 +265,59 @@ export function buildSessionContext(
 function parseEntryTimestamp(timestamp: string): number | undefined {
   const parsed = Date.parse(timestamp);
   return Number.isNaN(parsed) ? undefined : parsed;
+}
+
+export class SessionHistoryCursorError extends Error {}
+
+/** Read a chronological page of complete user turns, without applying compaction. */
+export function buildSessionHistory(
+  entries: SessionEntry[],
+  leafId: string | null | undefined = entries.at(-1)?.id ?? null,
+  options: { before?: string; deferThinking?: boolean; deferToolResultImages?: boolean } = {},
+): SessionHistoryPage {
+  const byId = new Map(entries.map(entry => [entry.id, entry]));
+  const branch: SessionEntry[] = [];
+  const seen = new Set<string>();
+  let id = leafId;
+  while (id) {
+    const entry = byId.get(id);
+    if (!entry || seen.has(id)) throw new SessionHistoryCursorError("Invalid session history branch.");
+    seen.add(id);
+    branch.push(entry);
+    id = entry.parentId;
+  }
+  branch.reverse();
+  const end = options.before ? branch.findIndex(entry => entry.id === options.before) : branch.length;
+  if (end < 0) throw new SessionHistoryCursorError("History cursor does not belong to the selected branch.");
+  let start = 0;
+  let turns = 0;
+  for (let index = end - 1; index >= 0; index--) {
+    const entry = branch[index];
+    if ((entry.type === "message" && entry.message.role === "user") || entry.type === "branch_summary") {
+      if (++turns === 10) { start = index; break; }
+    }
+  }
+  const boundary = branch.findLastIndex(entry => entry.type === "compaction");
+  const displayable = (entry: SessionEntry) => entry.type === "message" || entry.type === "compaction"
+    || entry.type === "custom_message" || (entry.type === "branch_summary" && Boolean(entry.summary));
+  const items = branch.slice(start, end).flatMap((entry, index) => {
+    const message = entryToUiMessage(entry, options);
+    if (!message) return [];
+    let previous = start + index - 1;
+    while (previous >= 0 && !displayable(branch[previous])) previous--;
+    const prior = branch[previous];
+    return [{ entryId: entry.id, message, readOnly: start + index < boundary,
+      ...(message.role === "user" && (prior?.type === "compaction" || (prior?.type === "message" && prior.message.role === "assistant")) ? { editAnchorEntryId: prior.id } : {}),
+    }];
+  });
+  const hasMore = branch.slice(0, start).some(displayable);
+  return {
+    leafId: leafId ?? null, items, hasMore,
+    before: hasMore ? items[0]?.entryId ?? null : null,
+    latestCompactionId: boundary >= 0 ? branch[boundary].id : null,
+    pathIds: branch.map(entry => entry.id),
+    ranges: end > start ? [[branch[hasMore ? start : 0].id, branch[end - 1].id]] : [],
+  };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

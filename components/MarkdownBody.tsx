@@ -1,11 +1,12 @@
 "use client";
 
-import { useMemo, type MouseEvent } from "react";
-import ReactMarkdown, { type Components } from "react-markdown";
+import { memo, useMemo, useState, type MouseEvent, type ReactNode } from "react";
+import ReactMarkdown, { type Components, type Options } from "react-markdown";
 import { resolveLocalFileHref } from "@/lib/file-links";
 import { encodeFilePathForApi } from "@/lib/file-paths";
 import { markdownRehypePlugins, markdownRemarkPlugins, normalizeDisplayMath } from "@/lib/markdown";
 import { MermaidBlock, CodeBlock } from "./MermaidBlock";
+import { advanceStreamReveal, rehypeStreamReveal } from "@/lib/stream-reveal";
 
 interface MarkdownBodyProps {
   children: string;
@@ -15,11 +16,34 @@ interface MarkdownBodyProps {
   onOpenFile?: (filePath: string) => void;
 }
 
-export function MarkdownBody({ children, className, isStreaming, cwd, onOpenFile }: MarkdownBodyProps) {
+function StreamCharacter({ children, bornAt, delay }: { children: ReactNode; bornAt: number; delay: number }) {
+  // Keep an existing animation's clock stable; remounts catch up instead of replaying.
+  const [initialDelay] = useState(() => delay - Math.max(0, Date.now() - bornAt));
+  return <span className="stream-reveal-character" style={{ animationDelay: `${initialDelay}ms` }}>{children}</span>;
+}
+
+export const MarkdownBody = memo(function MarkdownBody({ children, className, isStreaming, cwd, onOpenFile }: MarkdownBodyProps) {
   const normalizedMarkdown = useMemo(() => normalizeDisplayMath(children), [children]);
+  const [reveal, setReveal] = useState(() => advanceStreamReveal(null, normalizedMarkdown, Boolean(isStreaming)));
+  if (reveal.source !== normalizedMarkdown || reveal.streaming !== Boolean(isStreaming)) {
+    setReveal(advanceStreamReveal(reveal, normalizedMarkdown, Boolean(isStreaming)));
+  }
+  const rehypePlugins = useMemo<NonNullable<Options["rehypePlugins"]>>(() => reveal.characters.length
+    ? [...(markdownRehypePlugins ?? []), [rehypeStreamReveal, reveal]]
+    : markdownRehypePlugins ?? [], [reveal]);
   // Stable renderer identities keep stateful blocks mounted across message hover updates.
   const components = useMemo<Components>(() => ({
+    span({ node, children, ...props }) {
+      const bornAt = node?.properties.dataStreamBornAt;
+      const delay = node?.properties.dataStreamDelay;
+      if (typeof bornAt === "number" && typeof delay === "number") {
+        return <StreamCharacter key={`${bornAt}:${node?.properties.dataStreamOffset}`} bornAt={bornAt} delay={delay}>{children}</StreamCharacter>;
+      }
+      return <span {...props}>{children}</span>;
+    },
     code({ className, children, ...props }) {
+      // Parser metadata belongs to the renderer, not to the DOM element.
+      delete props.node;
       const lang = className?.replace("language-", "").toLowerCase() ?? "";
       const raw = String(children);
       const isBlock = className?.includes("language-") || raw.includes("\n");
@@ -89,14 +113,14 @@ export function MarkdownBody({ children, className, isStreaming, cwd, onOpenFile
   }), [cwd, isStreaming, onOpenFile]);
 
   return (
-    <div className={["markdown-body", className].filter(Boolean).join(" ")}>
+    <div className={["markdown-body", className].filter(Boolean).join(" ")} data-streaming={Boolean(isStreaming)}>
       <ReactMarkdown
         remarkPlugins={markdownRemarkPlugins}
-        rehypePlugins={markdownRehypePlugins}
+        rehypePlugins={rehypePlugins}
         components={components}
       >
         {normalizedMarkdown}
       </ReactMarkdown>
     </div>
   );
-}
+});

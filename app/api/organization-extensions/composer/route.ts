@@ -10,5 +10,6 @@ export async function GET(request: Request) {
   const query = new URL(request.url).searchParams;
   const cwd = query.get("cwd");
   if (!cwd || !isExistingFilePathAllowed(cwd, await getAllowedFileRoots())) return NextResponse.json({ error: "Access denied" }, { status: 403 });
-  return NextResponse.json({ plugins: listComposerPlugins(cwd, getAuthConfig()!.issuer.replace(/\/$/, ""), auth.principal.subject, query.get("sessionId") ?? undefined) });
+  const source = getAuthConfig()!.issuer.replace(/\/$/, "");
+  return NextResponse.json({ source, subject: auth.principal.subject, plugins: listComposerPlugins(cwd, source, auth.principal.subject, query.get("sessionId") ?? undefined) });
 }

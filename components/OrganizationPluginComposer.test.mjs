@@ -1,8 +1,16 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import test, { after } from "node:test";
+import { registerHooks } from "node:module";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { createJiti } from "jiti";
+const cssHook = registerHooks({
+  load(url, context, nextLoad) {
+    if (url.endsWith(".module.css")) return { format: "module", source: "export default new Proxy({}, { get: (_, name) => String(name) });", shortCircuit: true };
+    return nextLoad(url, context);
+  },
+});
+after(() => cssHook.deregister());
 const jiti = createJiti(import.meta.url, { jsx: { runtime: "automatic" }, tsconfigPaths: true });
 const { ChatInput, buildSlashCommandLayout, SlashCommandPaletteIcon } = await jiti.import("./ChatInput.tsx");
 const { BrowserPanel } = await jiti.import("./BrowserPanel.tsx");
@@ -97,6 +105,20 @@ test("enterprise Skill and MCP dialogs use their catalog icon", () => {
   const html = render(React.createElement(HazeMcpConfigDialog, { item: { ...plugin, id: "89", type: "MCP", iconUrl: "/api/organization-extensions/89/icon" }, initial: { lifecycle: "lazy", idleTimeout: 10 }, busy: false, onClose() {}, onConfirm: async () => true }));
   assert.match(html, /<header[^>]*>[\s\S]*?<img[^>]+src="\/api\/organization-extensions\/89\/icon"/);
 });
+test("navigation-fixed installation dialogs never ask for the destination scope", () => {
+  for (const type of ["Skill", "MCP", "Plugin"]) {
+    for (const fixedScope of ["global", "project"]) {
+      const html = render(React.createElement(HazeCapabilityInstallDialog, {
+        item: { ...plugin, id: "88", type, iconUrl: "/api/organization-extensions/88/icon" },
+        cwd: "/project", fixedScope, busy: false, onClose() {}, onConfirm: async () => true,
+      }));
+      assert.doesNotMatch(html, /name="plugin-scope"|aria-label="(?:Installation scope|安装范围)"/);
+      assert.match(html, /(?:Confirm install|确认安装)/);
+      if (type === "MCP") assert.match(html, /type="number"/, "connector runtime configuration stays available");
+    }
+  }
+});
+
 test("browser panel offers navigation and empty-state guidance without an external iframe", () => {
   const html = render(React.createElement(BrowserPanel, { sessionId: "chat", onHide() {} }));
   assert.match(html, /网页地址/); assert.match(html, /新建标签页/); assert.match(html, /关闭浏览器并清理/);

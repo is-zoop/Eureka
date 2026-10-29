@@ -65,7 +65,7 @@ export async function prepareOrganizationPlugin(input: { cwd: string; scope: Haz
     await writeFile(join(stage, "preparation.json"), JSON.stringify(preparation));
   } catch (error) { await rm(stage, { recursive: true, force: true }); throw error; }
   const approved = previous?.plugin?.subject === owner.subject ? previous.plugin.approvedUrls : [];
-  return { preparationToken: token, expiresAt: preparation.expiresAt, version: preparation.version, digest: preparation.digest, name: parsed.manifest.displayName, skills: parsed.manifest.skillDirectories, servers: parsed.manifest.servers, capabilities: parsed.manifest.capabilities, requiresApproval: parsed.manifest.servers.some((server) => server.auth && !approved.includes(server.url)) };
+  return { preparationToken: token, expiresAt: preparation.expiresAt, version: preparation.version, digest: preparation.digest, name: parsed.manifest.displayName, skills: parsed.manifest.skillDirectories, servers: parsed.manifest.servers, capabilities: parsed.manifest.capabilities, composer: parsed.manifest.composer, requiresApproval: parsed.manifest.servers.some((server) => server.auth && !approved.includes(server.url)) };
 }
 export async function commitOrganizationPlugin(input: { cwd: string; scope: HazeInstallScope; capabilityId: string; version: string; operation: "install" | "update"; session: AuthSession; preparationToken: unknown; approveAddresses: unknown }) {
   const owner = identity(input.session), root = await storage(input.cwd, input.scope);

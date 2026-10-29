@@ -12,6 +12,8 @@ const { MessageView, ProcessBlockView, replaceUserMessageText, formatPlanComplet
 const { observeThinkingEvent, rememberThinkingDuration } = await jiti.import("@/lib/thinking-timing");
 const { observeThinkingPreviewEvent, rememberMessageThinkingPreviews } = await jiti.import("@/lib/thinking-preview-cache");
 const { I18nProvider } = await jiti.import("@/hooks/useI18n");
+const { ClarificationGroupCard } = await jiti.import("./ClarificationGroupCard.tsx");
+const { clarificationToolResult } = await jiti.import("@/lib/clarification-display");
 
 function renderMessage(message, props = {}) {
   return renderToStaticMarkup(
@@ -22,6 +24,38 @@ function renderMessage(message, props = {}) {
     ),
   );
 }
+
+test("compaction is a quiet collapsed separator without rendering its Markdown or file details", () => {
+  const html = renderMessage({ role: "custom", customType: "compaction", content: "## PRIVATE_SUMMARY\n\nThis summary is deliberately long.\n\n<read-files>\nsecret-path.txt\n</read-files>",
+    display: true, details: { tokensBefore: 12000 }, timestamp: 1793059200000 });
+  assert.match(html, /compaction-marker/);
+  assert.match(html, /Context compacted/);
+  assert.match(html, /aria-expanded="false"/);
+  assert.match(html, /aria-controls=/);
+  assert.doesNotMatch(html, /PRIVATE_SUMMARY|secret-path|markdown-compaction-message|Conversation compacted/);
+});
+
+test("read-only historical user messages retain copying without edit or fork controls", () => {
+  const html = renderMessage({ role: "user", content: "Archived request", timestamp: 1793059200000 }, { entryId: "archived" });
+  assert.match(html, /Archived request/);
+  assert.match(html, /Copy/);
+  assert.doesNotMatch(html, /Edit from here|New session/);
+});
+
+test("clarification answers appear in the tool row and answered groups render no separate card", () => {
+  const question = { id: "q", toolCallId: "ask", title: "查询月份", question: "8月指哪个年份？", options: [
+    { id: "2026", label: "2026年8月", description: "今年" }, { id: "2025", label: "2025年8月", description: "去年" },
+  ], status: "answered", answer: { text: "2026年8月", optionId: "2026", custom: false } };
+  const group = { id: "ask", status: "answered", continuation: "completed", source: "general", task: { plugins: [] }, questions: [question] };
+  const result = clarificationToolResult(group, { role: "toolResult", toolCallId: "ask", content: [] }, { waiting: "等待回答", skipped: "已跳过", cancelled: "已取消" });
+  const html = renderMessage({ role: "assistant", content: [{ type: "toolCall", toolCallId: "ask", toolName: "request_user_input", input: { questions: [question] } }] }, { toolResults: new Map([["ask", result]]) });
+  assert.match(html, /查询月份：2026年8月/);
+  assert.doesNotMatch(html, /\[object Object\]/);
+  const history = renderToStaticMarkup(React.createElement(I18nProvider, null, React.createElement(ClarificationGroupCard, { group, history: true })));
+  assert.doesNotMatch(history, /8月指哪个年份|2026年8月|plan-question/);
+  const pending = renderToStaticMarkup(React.createElement(I18nProvider, null, React.createElement(ClarificationGroupCard, { group: { ...group, status: "pending", questions: [{ ...question, status: "pending", answer: undefined }] } })));
+  assert.match(pending, /8月指哪个年份/);
+});
 
 function renderThinkingRecord(message, blockIndex, props = {}) {
   return renderToStaticMarkup(React.createElement(I18nProvider, null,

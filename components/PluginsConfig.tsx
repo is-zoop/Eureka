@@ -1,6 +1,10 @@
 "use client";
 
-import { NotificationNotice } from "@/components/Notifications";
+import { describeExtensionError } from "@/lib/extension-errors";
+
+import { ExtensionNotice as NotificationNotice } from "./ExtensionNotice";
+import { ProjectTrustNotice } from "./ProjectTrustNotice";
+import { MarketPluginManagement } from "./MarketInstalledCapability";
 
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -8,6 +12,10 @@ import { sendAgentCommand } from "@/lib/agent-client";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import type { PluginPackageInfo, PluginsResponse } from "@/lib/api-types";
 import { useI18n } from "@/hooks/useI18n";
+import { CircleHelpIcon, CornerUpLeftIcon, DownloadIcon, FolderIcon, GitBranchIcon, GlobeIcon, PackageIcon } from "lucide-react";
+import { Button } from "./ui/button";
+import { Input } from "./ui/input";
+import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
 type PluginScope = PluginPackageInfo["scope"];
 type PluginAction = "install" | "remove" | "update" | "disable" | "enable";
@@ -23,6 +31,10 @@ function normalizePluginSourceInput(value: string): string {
 
 function packageKey(pkg: Pick<PluginPackageInfo, "source" | "scope">): string {
   return `${pkg.scope}\0${pkg.source}`;
+}
+
+function resourceTotalsSummary(totals: PluginsResponse["totals"], t: ReturnType<typeof useI18n>["t"]) {
+  return [[totals.extensions, t("i18n.extensionShort")], [totals.skills, t("extensions.skills")], [totals.prompts, t("i18n.promptShort")], [totals.themes, t("i18n.themeShort")]].map(([count, label]) => t("i18n.resourceCount", { count, label })).join(" · ");
 }
 
 function resourceSummary(pkg: PluginPackageInfo, t: ReturnType<typeof useI18n>["t"]): string {
@@ -288,10 +300,23 @@ function SegmentedScope({
   );
 }
 
+export function PluginDirectoryLink() {
+  const { t } = useI18n();
+  return <a href="https://pi.dev/packages" target="_blank" rel="noopener noreferrer" className="inline-flex h-[30px] shrink-0 items-center gap-1.5 rounded-[var(--radius-control)] border border-[var(--border)] bg-[var(--bg-panel)] px-2 text-[12px] text-[var(--text)] transition-colors hover:bg-[var(--bg-hover)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]">
+    <svg width="24" height="24" viewBox="0 0 800 800" aria-hidden="true" focusable="false" className="shrink-0" data-plugin-directory-icon="">
+      <path fill="currentColor" fillRule="evenodd" d="M165.29 165.29H517.36V400H400V517.36H282.65V634.72H165.29ZM282.65 282.65V400H400V282.65Z" />
+      <path fill="currentColor" d="M517.36 400H634.72V634.72H517.36Z" />
+    </svg>
+    {t("extensions.pluginDirectory")}
+  </a>;
+}
+
 function AddPluginPanel({
   cwd,
   source,
   scope,
+  fixedScope,
+  compact = false,
   projectResourcesLoaded,
   busy,
   actionError,
@@ -302,6 +327,8 @@ function AddPluginPanel({
   cwd: string;
   source: string;
   scope: PluginScope;
+  fixedScope?: boolean;
+  compact?: boolean;
   projectResourcesLoaded: boolean;
   busy: boolean;
   actionError: string | null;
@@ -316,6 +343,57 @@ function AddPluginPanel({
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
+
+  if (compact) return (
+    <div data-plugin-source-install="" className="@container w-full text-[13px] text-[var(--text)]">
+      <div className="mb-6">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 className="text-[17px] font-semibold">{t("extensions.pluginInstallFromSource")}</h2>
+        <PluginDirectoryLink />
+        </div>
+        <p className="mt-1 text-[12px] text-[var(--text-muted)]">{t("extensions.pluginSourceDescription")}</p>
+      </div>
+      <div className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-panel)] p-4 @min-[480px]:p-5">
+        <label htmlFor="plugin-market-source" className="mb-2 block font-medium">{t("extensions.pluginSourceLabel")}</label>
+        <div className="flex flex-col items-start gap-2 @min-[480px]:flex-row @min-[480px]:items-center">
+          <Input id="plugin-market-source" ref={inputRef} value={source} autoComplete="off" spellCheck={false}
+            onChange={(event) => onSourceChange(event.target.value)}
+            onPaste={(event) => {
+              const pasted = event.clipboardData.getData("text");
+              const normalized = normalizePluginSourceInput(pasted);
+              if (normalized === pasted) return;
+              event.preventDefault();
+              onSourceChange(normalized);
+            }}
+            onBlur={(event) => onSourceChange(normalizePluginSourceInput(event.currentTarget.value))}
+            onKeyDown={(event) => { if (event.key === "Enter" && source.trim() && !busy) onInstall(); }}
+            placeholder="npm:@scope/package" className="h-[36px] min-w-0 w-full bg-[var(--bg-panel)] font-mono text-[13px] transition-[border-color,box-shadow] focus-visible:border-[color-mix(in_srgb,var(--text-muted)_55%,var(--border))] focus-visible:ring-2 focus-visible:ring-[color-mix(in_srgb,var(--text)_8%,transparent)] @min-[480px]:flex-1" />
+          <Button type="button" size="sm" disabled={busy || !source.trim()} onClick={onInstall} className="h-[36px] shrink-0 gap-1.5 text-[13px]">
+            <DownloadIcon size={15} aria-hidden="true" />{busy ? t("i18n.installing") : t("i18n.install")}
+          </Button>
+        </div>
+        <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 text-[12px] text-[var(--text-muted)]">
+          <span className="inline-flex min-w-0 items-center gap-1.5">{scope === "global" ? <GlobeIcon size={14} aria-hidden="true" /> : <FolderIcon size={14} aria-hidden="true" />}{t(scope === "global" ? "extensions.pluginDestinationGlobal" : "extensions.pluginDestinationProject")}</span>
+          <Tooltip><TooltipTrigger render={<button type="button" className="inline-flex items-center gap-1 rounded-[var(--radius-control)] focus-visible:outline-2 focus-visible:outline-[var(--accent)] @min-[480px]:ml-auto">{t("extensions.pluginInstallLocation")}<CircleHelpIcon size={13} aria-hidden="true" /></button>} /><TooltipContent className="break-all font-mono">{installLocation(scope, cwd)}</TooltipContent></Tooltip>
+        </div>
+      </div>
+      <section className="mt-6" aria-label={t("extensions.pluginSourceExamples")}>
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2"><h3 className="font-semibold">{t("extensions.pluginSourceExamples")}</h3><span className="text-[12px] text-[var(--text-muted)]">{t("extensions.pluginFillExample")}</span></div>
+        <div className="flex flex-col gap-2">
+          {examples.map((example, index) => {
+            const Icon = [PackageIcon, GitBranchIcon, FolderIcon][index];
+            const label = t(["extensions.pluginSourceNpm", "extensions.pluginSourceGit", "extensions.pluginSourceLocal"][index]);
+            return <button key={example} type="button" onClick={() => { onSourceChange(example); inputRef.current?.focus(); }} className="flex w-full items-center gap-3 rounded-[var(--radius-control)] border border-[var(--border)] bg-[var(--bg-panel)] p-3 text-left transition-colors hover:bg-[var(--bg-hover)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]">
+              <span className="grid h-8 w-8 shrink-0 place-items-center rounded-[var(--radius-control)] bg-[var(--bg-selected)] text-[var(--text-muted)]"><Icon size={17} aria-hidden="true" /></span>
+              <span className="min-w-0 flex-1"><span className="mb-0.5 block text-[12px] font-medium">{label}</span><code className="block break-all text-[12px] text-[var(--text-muted)]">{example}</code></span>
+              <CornerUpLeftIcon size={14} className="shrink-0 text-[var(--text-dim)]" aria-hidden="true" />
+            </button>;
+          })}
+        </div>
+      </section>
+      {actionError ? <NotificationNotice message={actionError} type="error" /> : null}
+    </div>
+  );
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 18, maxWidth: 660, minHeight: "100%" }}>
@@ -391,11 +469,11 @@ function AddPluginPanel({
       </div>
 
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-        <SegmentedScope
+        {!fixedScope && <SegmentedScope
           value={scope}
           projectResourcesLoaded={projectResourcesLoaded}
           onChange={onScopeChange}
-        />
+        />}
         <button
           type="button"
           onClick={onInstall}
@@ -465,6 +543,7 @@ function PackageDetail({
   sessionId,
   onAction,
   onReloadSession,
+  compact = false,
 }: {
   pkg: PluginPackageInfo;
   cwd: string;
@@ -474,12 +553,15 @@ function PackageDetail({
   sessionId: string | null;
   onAction: (action: PluginAction, pkg: PluginPackageInfo) => void;
   onReloadSession: () => void;
+  compact?: boolean;
 }) {
   const { t } = useI18n();
   const key = packageKey(pkg);
   const busy = busyKey?.endsWith(key) ?? false;
   const reloadBusy = busyKey === "reload";
   const enabled = !pkg.disabled;
+
+  if (compact) return <MarketPluginManagement pkg={pkg} cwd={cwd} busy={busyKey !== null} action={busyKey?.split(":")[0] ?? null} onAction={action => onAction(action, pkg)} />;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20, maxWidth: 680 }}>
@@ -611,32 +693,50 @@ function PackageDetail({
 
 export function PluginsConfig({
   cwd,
+  fixedInstallScope,
   sessionId,
   onClose,
   onReloaded,
   embedded = false,
+  selection,
+  onInstalledChange,
+  onTrustProject,
+  view,
+  revision = 0,
 }: {
   cwd: string;
+  fixedInstallScope?: PluginScope;
   sessionId: string | null;
   onClose: () => void;
   onReloaded?: () => void;
   embedded?: boolean;
+  view?: "installed" | "market";
+  revision?: number;
+  selection?: { source: string; scope: PluginScope; requestId: number };
+  onInstalledChange?: () => void;
+  onTrustProject?: () => void;
 }) {
   const isMobile = useIsMobile();
   const { t } = useI18n();
   const [data, setData] = useState<PluginsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selected, setSelected] = useState<string | null>(null);
+  const [selected, setSelected] = useState<string | null>(selection ? packageKey(selection) : null);
   const [addMode, setAddMode] = useState(false);
   const [installSource, setInstallSource] = useState("");
-  const [installScope, setInstallScope] = useState<PluginScope>("global");
+  const [scopeSelection, setInstallScope] = useState<PluginScope>("global");
+  const installScope = fixedInstallScope ?? scopeSelection;
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
+  useEffect(() => {
+    if (!selection) return;
+    setSelected(packageKey(selection));
+    setAddMode(false);
+  }, [selection]);
 
-  const packages = useMemo(() => data?.packages ?? [], [data?.packages]);
-  const selectedPackage = packages.find((pkg) => packageKey(pkg) === selected) ?? null;
+  const packages = useMemo(() => (data?.packages ?? []).filter(pkg => !view || pkg.status !== "missing"), [data?.packages, view]);
+  const selectedPackage = packages.find((pkg) => packageKey(pkg) === (view === "installed" && selection ? packageKey(selection) : selected)) ?? null;
   const projectResourcesLoaded = data?.projectResourcesLoaded ?? true;
 
   const groupedPackages = useMemo(() => {
@@ -655,6 +755,7 @@ export function PluginsConfig({
       setData(next);
       setAddMode((current) => next.packages.length === 0 || current);
       setSelected((current) => {
+        if (view) return current;
         if (current && next.packages.some((pkg) => packageKey(pkg) === current)) return current;
         return next.packages[0] ? packageKey(next.packages[0]) : null;
       });
@@ -663,11 +764,11 @@ export function PluginsConfig({
     } finally {
       setLoading(false);
     }
-  }, [cwd]);
+  }, [cwd, view]);
 
   useEffect(() => {
     void loadPlugins();
-  }, [loadPlugins]);
+  }, [loadPlugins, selection, revision]);
 
   const runAction = useCallback(async (action: PluginAction, pkg: PluginPackageInfo) => {
     const key = packageKey(pkg);
@@ -683,16 +784,17 @@ export function PluginsConfig({
       const next = (await res.json()) as PluginsResponse & { error?: string };
       if (!res.ok || next.error) throw new Error(next.error ?? `HTTP ${res.status}`);
       setData(next);
+      onInstalledChange?.();
       if (action === "remove") {
-        setSelected(next.packages[0] ? packageKey(next.packages[0]) : null);
+        if (!view) setSelected(next.packages[0] ? packageKey(next.packages[0]) : null);
         if (next.packages.length === 0) setAddMode(true);
-        setActionMessage("Package removed.");
+        setActionMessage(t("i18n.packageRemoved"));
       } else {
         const messages: Record<Exclude<PluginAction, "remove">, string> = {
-          install: "Package installed.",
-          update: "Package updated.",
-          disable: "Package disabled.",
-          enable: "Package enabled.",
+          install: t("i18n.packageInstalled"),
+          update: t("i18n.packageUpdated"),
+          disable: t("i18n.packageDisabled"),
+          enable: t("i18n.packageEnabled"),
         };
         setActionMessage(messages[action]);
       }
@@ -701,7 +803,7 @@ export function PluginsConfig({
     } finally {
       setBusyKey(null);
     }
-  }, [cwd]);
+  }, [cwd, onInstalledChange, t, view]);
 
   const installPlugin = useCallback(async () => {
     const source = normalizePluginSourceInput(installSource).trim();
@@ -721,16 +823,17 @@ export function PluginsConfig({
       if (!res.ok || next.error) throw new Error(next.error ?? `HTTP ${res.status}`);
       setData(next);
       const installed = findInstalledPackage(next.packages, source, installScope);
+      onInstalledChange?.();
       setSelected(installed ? packageKey(installed) : key);
       setAddMode(false);
       setInstallSource("");
-      setActionMessage("Package installed.");
+      setActionMessage(t("i18n.packageInstalled"));
     } catch (err) {
       setActionError(err instanceof Error ? err.message : String(err));
     } finally {
       setBusyKey(null);
     }
-  }, [cwd, installScope, installSource]);
+  }, [cwd, installScope, installSource, onInstalledChange, t]);
 
   const reloadSession = useCallback(async () => {
     if (!sessionId) return;
@@ -741,13 +844,13 @@ export function PluginsConfig({
       await sendAgentCommand(sessionId, { type: "reload" });
       onReloaded?.();
       await loadPlugins();
-      setActionMessage("Session reloaded.");
+      setActionMessage(t("i18n.sessionReloaded"));
     } catch (err) {
       setActionError(err instanceof Error ? err.message : String(err));
     } finally {
       setBusyKey(null);
     }
-  }, [loadPlugins, onReloaded, sessionId]);
+  }, [loadPlugins, onReloaded, sessionId, t]);
 
   const addBusy = busyKey?.startsWith("install:") ?? false;
 
@@ -783,7 +886,7 @@ export function PluginsConfig({
           overflow: "hidden",
         }}
       >
-        <div
+        {!view && <div
           style={{
             display: "flex",
             alignItems: "center",
@@ -815,7 +918,7 @@ export function PluginsConfig({
           <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
             {embedded && data && (
               <span style={{ fontSize: 11, color: "var(--text-dim)", whiteSpace: "nowrap" }}>
-                {`${data.totals.extensions} ext · ${data.totals.skills} skills · ${data.totals.prompts} prompts · ${data.totals.themes} themes`}
+                {resourceTotalsSummary(data.totals, t)}
               </span>
             )}
             {embedded && <button onClick={() => void loadPlugins()} disabled={loading || busyKey !== null} style={buttonStyle(loading || busyKey !== null)}>
@@ -836,22 +939,9 @@ export function PluginsConfig({
               ×
             </button>}
           </div>
-        </div>
+        </div>}
 
-        {!projectResourcesLoaded && (
-          <div
-            role="status"
-            style={{
-              padding: "8px 18px",
-              borderBottom: "1px solid var(--border)",
-              background: "var(--bg-panel)",
-              color: "var(--text-muted)",
-              fontSize: 12,
-            }}
-          >
-            {t("trust.pluginsNotLoaded")}
-          </div>
-        )}
+        {!projectResourcesLoaded && <ProjectTrustNotice kind="plugins" onTrustProject={onTrustProject} />}
 
         <div style={{ flex: 1, display: "flex", flexDirection: isMobile ? "column" : "row", overflow: "hidden" }}>
           <div
@@ -860,7 +950,7 @@ export function PluginsConfig({
               maxHeight: isMobile ? "40vh" : undefined,
               borderRight: isMobile ? "none" : "1px solid var(--border)",
               borderBottom: isMobile ? "1px solid var(--border)" : "none",
-              display: "flex",
+              display: view ? "none" : "flex",
               flexDirection: "column",
               flexShrink: 0,
               background: "var(--bg-panel)",
@@ -872,7 +962,7 @@ export function PluginsConfig({
                   Loading...
                 </div>
               ) : error ? (
-                <NotificationNotice message={error} type="error" />
+                !view && <NotificationNotice message={error} type="error" />
               ) : packages.length === 0 ? (
                 <div style={{ padding: "10px 8px", fontSize: 11, color: "var(--text-dim)" }}>
                   No plugins configured
@@ -1022,12 +1112,16 @@ export function PluginsConfig({
             </div>
           </div>
 
-          <div style={{ flex: 1, overflowY: "auto", padding: 20, background: "var(--chat-bg)" }}>
-            {addMode ? (
+          <div style={{ flex: 1, minWidth: 0, overflowY: "auto", padding: embedded && view ? 24 : 20, background: "var(--chat-bg)" }}>
+            {view && error ? <NotificationNotice message={error} type="error" action={embedded && view === "market" ? { label: t("context.retry"), onClick: () => void loadPlugins() } : undefined} /> : null}
+            {embedded && view === "installed" ? <><NotificationNotice message={actionError} type="error" /><NotificationNotice message={actionMessage} type="success" /></> : null}
+            {(view ? view === "market" : addMode) ? (
               <AddPluginPanel
                 cwd={cwd}
                 source={installSource}
                 scope={installScope}
+                fixedScope={Boolean(fixedInstallScope)}
+                compact={embedded && view === "market"}
                 projectResourcesLoaded={projectResourcesLoaded}
                 busy={addBusy}
                 actionError={actionError}
@@ -1035,8 +1129,9 @@ export function PluginsConfig({
                 onScopeChange={setInstallScope}
                 onInstall={installPlugin}
               />
-            ) : loading ? null : selectedPackage ? (
+            ) : loading && !selectedPackage ? null : selectedPackage ? (
               <PackageDetail
+                compact={embedded && view === "installed"}
                 key={packageKey(selectedPackage)}
                 pkg={selectedPackage}
                 cwd={cwd}
@@ -1058,7 +1153,7 @@ export function PluginsConfig({
                   fontSize: 13,
                 }}
               >
-                {t("i18n.selectPackage")}
+                {t(view === "installed" ? "extensions.marketInstallationMissing" : "i18n.selectPackage")}
               </div>
             )}
           </div>
@@ -1077,10 +1172,10 @@ export function PluginsConfig({
         >
           <div style={{ minWidth: 0, flex: 1, fontSize: 11, color: "var(--text-dim)", overflow: "hidden" }}>
             {data?.diagnostics.length ? (
-              <NotificationNotice type={data.diagnostics.some((d) => d.type === "error") ? "error" : "warning"} title="扩展诊断" message={data.diagnostics.map((d) => `${d.source ? `${d.source}: ` : ""}${d.message}`).join("\n")} eventKey={`plugin-diagnostics:${JSON.stringify(data.diagnostics)}`} />
+              <NotificationNotice type={data.diagnostics.some((d) => d.type === "error") ? "error" : "warning"} title={t("extensions.diagnostics")} message={data.diagnostics.map((d) => `${d.source ? `${d.source}: ` : ""}${describeExtensionError(d.message, t).message}`).join("\n")} details={data.diagnostics.map(d => `${d.source ? `${d.source}: ` : ""}${d.message}`).join("\n")} eventKey={`plugin-diagnostics:${JSON.stringify(data.diagnostics)}`} />
             ) : (
               <span>
-                {data ? `${data.totals.extensions} ext · ${data.totals.skills} skills · ${data.totals.prompts} prompts · ${data.totals.themes} themes` : ""}
+                {data ? resourceTotalsSummary(data.totals, t) : ""}
               </span>
             )}
           </div>

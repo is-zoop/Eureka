@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { ArrowLeftIcon } from "lucide-react";
 import { ModelsConfig } from "@/components/ModelsConfig";
 import { UsageStatisticsPage } from "@/components/UsageStatistics";
 import { SettingsSelect } from "./SettingsSelect";
@@ -10,6 +11,8 @@ import { type ThemePreference, useTheme } from "@/hooks/useTheme";
 import { FontSizeSettings } from "./FontSizeSettings";
 import { DefaultToolPermissionsSettings } from "./ToolPermissions";
 import { ClarificationSettings } from "./ClarificationSettings";
+import { CompletionSoundSettings } from "./CompletionSoundSettings";
+import { SettingsLayout, SettingsSection as SettingsGroup, SettingsCard, SettingsRow } from "./SettingsLayout";
 
 export type SettingsSection = "system" | "models" | "usage";
 
@@ -42,11 +45,11 @@ export function SettingsPage({ onBack, initialSection = "system" }: { onBack?: (
       <aside className="eureka-settings-sidebar flex w-60 shrink-0 flex-col border-r border-[var(--border)] bg-[var(--sidebar-bg)] p-3 max-sm:w-48">
         {onBack ? (
           <button type="button" onClick={onBack} className="mb-6 inline-flex h-8 items-center gap-2 rounded-[var(--radius-control)] border-0 bg-transparent px-2 text-sm text-[var(--text-muted)] transition-colors hover:text-[var(--text)]" onMouseEnter={(event) => { event.currentTarget.style.background = "color-mix(in srgb, var(--text) 6%, var(--sidebar-bg))"; }} onMouseLeave={(event) => { event.currentTarget.style.background = "transparent"; }}>
-            <span aria-hidden="true">←</span>{t("settings.backToApp")}
+            <ArrowLeftIcon size={16} strokeWidth={1.6} className="shrink-0" aria-hidden="true" />{t("settings.backToApp")}
           </button>
         ) : (
           <Link href="/" className="mb-6 inline-flex h-8 items-center gap-2 rounded-[var(--radius-control)] px-2 text-sm text-[var(--text-muted)] transition-colors hover:text-[var(--text)]" onMouseEnter={(event) => { event.currentTarget.style.background = "color-mix(in srgb, var(--text) 6%, var(--sidebar-bg))"; }} onMouseLeave={(event) => { event.currentTarget.style.background = "transparent"; }}>
-            <span aria-hidden="true">←</span>{t("settings.backToApp")}
+            <ArrowLeftIcon size={16} strokeWidth={1.6} className="shrink-0" aria-hidden="true" />{t("settings.backToApp")}
           </Link>
         )}
         <p className="mb-2 px-2 text-xs font-medium text-[var(--text-muted)]">{t("settings.personal")}</p>
@@ -57,27 +60,24 @@ export function SettingsPage({ onBack, initialSection = "system" }: { onBack?: (
           })}
         </nav>
       </aside>
-      <section data-notification-boundary="20" className="eureka-settings-main min-w-0 flex-1 overflow-y-auto bg-[var(--chat-bg)]">
+      <section data-notification-boundary="20" className="eureka-settings-main min-h-0 min-w-0 flex-1 overflow-hidden bg-[var(--chat-bg)]">
         {section === "system" ? (
-          <div className="mx-auto w-full max-w-4xl px-8 py-12 max-sm:px-5 max-sm:py-8">
-            <h1 className="text-2xl font-semibold tracking-[-0.02em]">{t("settings.system")}</h1>
-            <p className="mt-2 text-sm text-[var(--text-muted)]">{t("settings.systemDescription")}</p>
-            <div className="mt-9 space-y-7">
-              <section><h2 className="mb-3 text-base font-semibold">{t("settings.appearance")}</h2><div className="overflow-hidden rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-panel)] p-2"><div className="grid grid-cols-3 gap-2">{(["light", "dark", "auto"] as ThemePreference[]).map((item) => <button key={item} type="button" onClick={() => setPreference(item)} className="flex min-h-20 flex-col items-center justify-center gap-2 rounded-[var(--radius-control)] px-3 text-sm transition-colors" style={{ background: preference === item ? "var(--bg-selected)" : "transparent", color: "var(--text)" }} onMouseEnter={(event) => { if (preference !== item) event.currentTarget.style.background = "var(--bg-hover)"; }} onMouseLeave={(event) => { if (preference !== item) event.currentTarget.style.background = "transparent"; }}><ThemeIcon preference={item} /><span>{t(`settings.theme.${item}`)}</span></button>)}</div></div></section>
+          <SettingsLayout title={t("settings.system")} description={t("settings.systemDescription")}>
+              <SettingsGroup title={t("settings.appearance")}>
+                <SettingsCard className="p-2"><div className="grid grid-cols-3 gap-2">{(["light", "dark", "auto"] as ThemePreference[]).map((item) => <button key={item} type="button" onClick={() => setPreference(item)} className="flex min-h-20 flex-col items-center justify-center gap-2 rounded-[var(--radius-control)] px-3 text-sm transition-colors" style={{ background: preference === item ? "var(--bg-selected)" : "transparent", color: "var(--text)" }} onMouseEnter={(event) => { if (preference !== item) event.currentTarget.style.background = "var(--bg-hover)"; }} onMouseLeave={(event) => { if (preference !== item) event.currentTarget.style.background = "transparent"; }}><ThemeIcon preference={item} /><span>{t(`settings.theme.${item}`)}</span></button>)}</div></SettingsCard>
+              </SettingsGroup>
               <FontSizeSettings />
-              <section>
-                <h2 className="mb-3 text-base font-semibold">{t("settings.general")}</h2>
-                <div style={{ border: "1px solid var(--border)", borderRadius: "var(--radius-card)", background: "var(--bg-panel)", padding: "0 16px" }}>
-                  <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: "10px 20px", padding: "14px 0", borderBottom: "1px solid var(--border)" }}>
-                    <div style={{ flex: "1 1 220px", minWidth: 0 }}><span style={{ display: "block", fontSize: 13, fontWeight: 500 }}>{t("settings.displayLanguage")}</span><span style={{ display: "block", marginTop: 4, fontSize: 11, color: "var(--text-muted)", lineHeight: 1.6 }}>{t("settings.languageDescription")}</span></div>
+              <SettingsGroup title={t("settings.general")}>
+                <SettingsCard className="divide-y divide-[var(--border)] px-4">
+                  <SettingsRow label={t("settings.displayLanguage")} description={t("settings.languageDescription")}>
                     <SettingsSelect label={t("settings.displayLanguage")} value={locale} options={supportedLocales.map((plugin) => ({ value: plugin.id, label: plugin.label }))} onValueChange={(value) => { const nextLocale = supportedLocales.find((plugin) => plugin.id === value); if (nextLocale) setLocale(nextLocale.id as typeof locale); }} />
-                  </div>
+                  </SettingsRow>
                   <DefaultToolPermissionsSettings />
                   <ClarificationSettings />
-                </div>
-              </section>
-            </div>
-          </div>
+                  <CompletionSoundSettings />
+                </SettingsCard>
+              </SettingsGroup>
+          </SettingsLayout>
         ) : section === "models" ? <ModelsConfig embedded onClose={() => setSection("system")} /> : <UsageStatisticsPage />}
       </section>
     </main>

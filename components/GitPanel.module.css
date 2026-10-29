@@ -1,0 +1,86 @@
+.panel { display: flex; flex: 1; flex-direction: column; min-height: 0; font-size: 12px; color: var(--text); }
+.branch { display: flex; flex-shrink: 0; align-items: center; gap: 5px; padding: 8px 10px; border-top: 1px solid var(--border); }
+.branch > svg { flex-shrink: 0; }
+.branch > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.muted { color: var(--text-muted); }
+.splitButton { display: flex; flex-shrink: 0; overflow: hidden; border: 1px solid var(--border); border-radius: 5px; background: var(--bg-panel); color: var(--text); }
+.splitButton button { display: inline-flex; align-items: center; justify-content: center; gap: 4px; height: 26px; padding: 0 7px; border: 0; background: transparent; color: inherit; font: inherit; font-size: 11px; white-space: nowrap; cursor: pointer; }
+.splitButton .splitToggle { width: 23px; padding: 0; border-left: 1px solid var(--border); }
+.splitButton button:not(:disabled):hover, .splitToggle[aria-expanded="true"] { background: var(--bg-hover); }
+.historyToggle { flex-shrink: 0; height: 28px; padding: 0 6px; border: 1px solid transparent; border-radius: 5px; background: transparent; color: var(--text-muted); font: inherit; font-size: 11px; cursor: pointer; white-space: nowrap; }
+.historyToggle:hover { background: var(--bg-hover); color: var(--text); }
+.historyToggle[aria-pressed="true"] { background: var(--bg-selected); color: var(--text); border-color: var(--border); }
+.splitButton button:focus-visible { outline: 2px solid currentColor; outline-offset: -3px; }
+.splitButton button:disabled { opacity: .5; cursor: default; }
+.commitMenu { min-width: 180px; width: max-content; max-width: calc(100vw - 24px); background: var(--bg-panel); color: var(--text); }
+.history { flex: 1; min-height: 0; overflow-y: auto; }
+.commitList { list-style: none; margin: 0; padding: 0 12px 8px; }
+.commitRow { position: relative; display: flex; gap: 10px; padding: 9px 0; }
+.commitRow:not(:last-child)::before { content: ""; position: absolute; left: 3px; top: 20px; bottom: -12px; width: 1px; background: var(--border); }
+.commitDot { position: relative; flex-shrink: 0; width: 7px; height: 7px; margin-top: 5px; border: 1px solid var(--text-dim); border-radius: 50%; background: var(--bg-panel); }
+.commitRow:first-child .commitDot { border-color: var(--accent); background: var(--accent); }
+.commitInfo { min-width: 0; flex: 1; }
+.commitSubject { overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-height: 18px; overflow-wrap: anywhere; }
+.commitMeta { display: flex; align-items: center; gap: 6px; margin-top: 4px; color: var(--text-muted); font-size: 10px; white-space: nowrap; }
+.commitMeta code { flex-shrink: 0; font: 10px var(--font-mono); }
+.commitMeta > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.head { flex-shrink: 0; border: 1px solid var(--border); border-radius: 3px; padding: 0 3px; color: var(--accent); font-size: 9px; line-height: 14px; }
+.commitDate { flex-shrink: 0; color: var(--text-dim); font-size: 10px; }
+.group { padding-bottom: 8px; }
+.groupHeader { display: flex; align-items: center; gap: 6px; padding: 2px 8px; }
+.groupToggle { display: flex; flex: 1; min-width: 0; align-items: center; gap: 5px; padding: 4px 2px; border: 0; border-radius: 4px; background: none; color: var(--text); font: inherit; font-weight: 500; text-align: left; cursor: pointer; }
+.groupToggle:hover { background: var(--bg-hover); }
+.groupChevron { flex-shrink: 0; color: var(--text-muted); transform: rotate(-90deg); transition: transform .15s; }
+.groupChevron[data-open="true"] { transform: rotate(0); }
+.groupCount { margin-left: auto; min-width: 19px; padding: 0 5px; border-radius: 9px; background: var(--bg-selected); color: var(--text-muted); font-size: 10px; line-height: 18px; text-align: center; }
+.groupAction { flex-shrink: 0; border: 0; border-radius: 3px; background: none; color: var(--text-muted); font: inherit; font-size: 11px; padding: 3px; cursor: pointer; }
+.groupAction:not(:disabled):hover { background: var(--bg-hover); color: var(--text); }
+.fileRow { display: flex; width: 100%; align-items: center; gap: 6px; min-height: 27px; padding: 3px 12px 3px 24px; border: 0; background: transparent; color: var(--text); text-align: left; font: inherit; cursor: pointer; }
+.fileRow:hover, .fileRow[data-popup-open] { background: var(--bg-hover); }
+.fileRow > svg { flex-shrink: 0; }
+.fileRow:focus-visible, .historyToggle:focus-visible, .groupToggle:focus-visible, .groupAction:focus-visible { outline: 1px solid var(--text-muted); outline-offset: -2px; }
+.fileName { display: flex; flex: 1; align-items: baseline; gap: 7px; min-width: 0; overflow: hidden; line-height: 20px; }
+.fileBaseName, .fileDirectory { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fileBaseName { flex: 0 1 auto; }
+.fileDirectory { flex: 0 3 auto; color: var(--text-dim); font-size: 11px; }
+.code { flex-shrink: 0; font: 11px var(--font-mono); color: #d99c62; }
+.code[data-kind="added"], .code[data-kind="untracked"] { color: #65b889; }
+.code[data-kind="deleted"], .code[data-kind="conflict"] { color: #e57b7b; }
+.composer { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border-top: 1px solid var(--border); flex-shrink: 0; }
+.actions { display: flex; gap: 6px; }
+.actions button { display: flex; flex: 1; min-width: 0; align-items: center; justify-content: center; gap: 4px; border: 1px solid var(--border); border-radius: 6px; padding: 7px 4px; background: var(--bg-panel); color: var(--text); font: inherit; cursor: pointer; }
+.actions button:disabled, .groupHeader button:disabled, .fileRow:disabled { opacity: .45; cursor: default; }
+.actions button:not(:disabled):hover { background: var(--bg-hover); }
+.empty { display: flex; align-items: center; justify-content: center; gap: 6px; padding: 24px 12px; color: var(--text-muted); }
+.error { padding: 8px 12px; overflow-wrap: anywhere; white-space: pre-wrap; max-height: 140px; overflow-y: auto; flex-shrink: 0; }
+.error { color: #e57b7b; }
+.spinner { animation: spin 1s linear infinite; }
+.backdrop { position: fixed; inset: 0; z-index: 1300; background: rgba(0, 0, 0, .4); }
+.dialog { position: fixed; z-index: 1301; left: 50%; top: 50%; transform: translate(-50%, -50%); display: flex; flex-direction: column; width: min(560px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); overflow: hidden; border: 1px solid var(--border); border-radius: 12px; background: var(--bg-panel); color: var(--text); box-shadow: 0 16px 56px rgba(0, 0, 0, .2); font-size: 13px; outline: none; }
+.dialogHeader { display: flex; flex-shrink: 0; justify-content: space-between; align-items: flex-start; padding: 16px 18px; border-bottom: 1px solid var(--border); }
+.dialogTitle { margin: 0; font-size: 16px; font-weight: 600; }
+.close { display: flex; align-items: center; justify-content: center; padding: 4px; border: 0; border-radius: 4px; background: none; color: var(--text-muted); cursor: pointer; }
+.close:hover { background: var(--bg-hover); }
+.dialogForm { display: flex; flex-direction: column; min-height: 0; overflow-y: auto; }
+.dialog .composer { padding: 14px 18px 18px; border-top: 0; }
+.discardDescription { margin: 0 0 8px; line-height: 1.6; overflow-wrap: anywhere; }
+.dialog .dialogActions { justify-content: flex-end; margin-top: 4px; }
+.dialogActions button { flex: 0 0 auto; min-width: 82px; padding: 8px 14px; }
+.dialog .error { padding: 0; }
+.commitDialog { width: min(480px, calc(100vw - 32px)); border-radius: var(--radius-card); box-shadow: var(--shadow-floating); }
+.commitDialog .dialogHeader { align-items: center; padding: 20px 20px 0; border-bottom: 0; }
+.commitDialog .close { width: 28px; height: 28px; }
+.commitDialog .composer { gap: 10px; padding: 16px 20px 20px; }
+.messageInput { min-height: 112px; max-height: min(240px, 35dvh); resize: none; background: color-mix(in srgb, var(--bg) 65%, var(--bg-panel)); }
+.commitActions { display: flex; flex-shrink: 0; justify-content: flex-end; gap: 8px; margin-top: 8px; }
+.commitActions > button { min-width: 80px; gap: 6px; }
+.commitActions > button:focus-visible { outline-color: var(--text-muted); }
+.commitSubmit:not(:disabled) { background: var(--bg-selected); }
+.commitSubmit:not(:disabled):hover { background: color-mix(in srgb, var(--text) 5%, var(--bg-selected)); }
+.contextPositioner { z-index: 1200; outline: none; }
+.contextMenu { min-width: 180px; max-width: calc(100vw - 16px); max-height: var(--available-height); overflow-y: auto; padding: 4px; border: 1px solid var(--border); border-radius: 7px; background: var(--bg-panel); color: var(--text); box-shadow: 0 6px 24px rgb(0 0 0 / .18); font-size: 12px; outline: none; }
+.contextItem { padding: 7px 10px; border-radius: 4px; outline: none; cursor: default; user-select: none; }
+.contextItem[data-highlighted] { background: var(--bg-hover); }
+.contextItem[data-disabled] { opacity: .4; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spinner { animation: none; } .groupChevron { transition: none; } }

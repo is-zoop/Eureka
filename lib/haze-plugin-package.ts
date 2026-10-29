@@ -1,7 +1,8 @@
 import { crc32, inflateRawSync } from "node:zlib";
 
 export type PluginServer = { name: string; url: string; auth?: "haze-personal-credential" };
-export type PluginManifest = { name: string; version: string; displayName: string; skillDirectories: string[]; servers: PluginServer[]; capabilities?: { requestUserInput?: boolean } };
+export type PluginComposer = { selectionMode: "once" | "persistent" };
+export type PluginManifest = { name: string; version: string; displayName: string; skillDirectories: string[]; servers: PluginServer[]; capabilities?: { requestUserInput?: boolean }; composer?: PluginComposer };
 export type PluginArchive = { manifest: PluginManifest; files: Map<string, Buffer> };
 
 const MAX_ARCHIVE = 100 * 1024 * 1024;
@@ -10,6 +11,13 @@ function invalid(message: string): never { throw new Error(`插件包无效：${
 function object(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) invalid("配置必须是 JSON 对象");
   return value as Record<string, unknown>;
+}
+
+export function parsePluginComposer(value: unknown): PluginComposer {
+  if (value === undefined) return { selectionMode: "once" };
+  const composer = object(value);
+  if (Object.keys(composer).some((key) => key !== "selectionMode") || !["once", "persistent"].includes(composer.selectionMode as string)) invalid("composer.selectionMode 必须是 once 或 persistent");
+  return { selectionMode: composer.selectionMode as PluginComposer["selectionMode"] };
 }
 
 export function pluginRelativePath(value: string): string {
@@ -90,6 +98,7 @@ export function parsePluginArchive(buffer: Buffer, expectedVersion: string): Plu
   if (manifest.version !== expectedVersion || pkg.name !== manifest.name || pkg.version !== manifest.version) invalid("Haze、plugin.json 和 package.json 版本或名称不一致，请刷新后重试");
   const extensions = object(manifest.extensions), host = object(extensions["com.eureka"]);
   if (host.schemaVersion !== 1) invalid("需要 schemaVersion=1 的 Eureka 插件");
+  const composer = parsePluginComposer(host.composer);
   const capabilities = host.capabilities === undefined ? {} : object(host.capabilities);
   if (Object.keys(capabilities).some((key) => key !== "requestUserInput") || (capabilities.requestUserInput !== undefined && typeof capabilities.requestUserInput !== "boolean")) invalid("不支持的宿主能力声明，requestUserInput 必须为布尔值");
   const pi = object(pkg.pi);
@@ -111,5 +120,5 @@ export function parsePluginArchive(buffer: Buffer, expectedVersion: string): Plu
   }
   if (Object.keys(auth).some((name) => !servers.some((server) => server.name === name))) invalid("认证声明引用不存在的 MCP");
   if (!skillDirectories.length && !servers.length) invalid("插件没有可加载组件");
-  return { manifest: { name: manifest.name, version: expectedVersion, displayName: typeof host.displayName === "string" ? host.displayName : manifest.name, skillDirectories, servers, ...(host.capabilities !== undefined ? { capabilities: { requestUserInput: capabilities.requestUserInput === true } } : {}) }, files };
+  return { manifest: { name: manifest.name, version: expectedVersion, displayName: typeof host.displayName === "string" ? host.displayName : manifest.name, skillDirectories, servers, ...(host.composer !== undefined ? { composer } : {}), ...(host.capabilities !== undefined ? { capabilities: { requestUserInput: capabilities.requestUserInput === true } } : {}) }, files };
 }

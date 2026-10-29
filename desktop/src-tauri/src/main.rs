@@ -2,6 +2,11 @@
 
 #[cfg(windows)]
 mod browser_opener;
+mod desktop_menu;
+mod desktop_tray;
+mod tray_dismissal;
+mod clipboard_files;
+mod attachment_dialog;
 mod webview_layout;
 mod window_preferences;
 
@@ -31,19 +36,32 @@ const CONTENT_LABEL: &str = "eureka-content";
 
 struct DesktopState {
     preferences: Mutex<WindowPreferences>,
+    navigation: Mutex<(bool, bool)>,
+    menu: Mutex<(bool, Vec<String>)>,
+    zoom: Mutex<f64>,
     path: PathBuf,
 }
 
 #[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct FrameSnapshot {
     maximized: bool,
+    fullscreen: bool,
     focused: bool,
     theme: String,
+    can_go_back: bool,
+    can_go_forward: bool,
+    menu_ready: bool,
+    menu_labels: Vec<String>,
 }
 
 fn frame_snapshot(window: &tauri::Window) -> FrameSnapshot {
+    let state = window.app_handle().state::<DesktopState>();
+    let (can_go_back, can_go_forward) = *state.navigation.lock().unwrap();
+    let (menu_ready, menu_labels) = state.menu.lock().unwrap().clone();
     FrameSnapshot {
         maximized: window.is_maximized().unwrap_or(false),
+        fullscreen: window.is_fullscreen().unwrap_or(false),
         focused: window.is_focused().unwrap_or(true),
         theme: window
             .app_handle()
@@ -53,6 +71,10 @@ fn frame_snapshot(window: &tauri::Window) -> FrameSnapshot {
             .unwrap()
             .theme
             .clone(),
+        can_go_back,
+        can_go_forward,
+        menu_ready,
+        menu_labels,
     }
 }
 
@@ -160,10 +182,255 @@ async fn desktop_window_action(
         }
         "close" => window.close(),
         "drag" => window.start_dragging(),
+        "back" | "forward" => {
+            let (can_go_back, can_go_forward) = *webview
+                .app_handle()
+                .state::<DesktopState>()
+                .navigation
+                .lock()
+                .unwrap();
+            let allowed = if action == "back" {
+                can_go_back
+            } else {
+                can_go_forward
+            };
+            if allowed {
+                let content = webview
+                    .app_handle()
+                    .get_webview(CONTENT_LABEL)
+                    .ok_or_else(|| "The Eureka content view was closed.".to_string())?;
+                content.eval(if action == "back" {
+                    "window.dispatchEvent(new CustomEvent('eureka:navigate-history',{detail:-1}))"
+                } else {
+                    "window.dispatchEvent(new CustomEvent('eureka:navigate-history',{detail:1}))"
+                }).map_err(|error| error.to_string())?;
+                content.set_focus().map_err(|error| error.to_string())?;
+            }
+            return Ok(frame_snapshot(&window));
+        }
         _ => return Err("Unknown window caption action.".into()),
     }
     .map_err(|error| error.to_string())?;
     Ok(frame_snapshot(&window))
+}
+
+#[tauri::command]
+fn set_desktop_navigation_state(
+    webview: tauri::Webview,
+    can_go_back: bool,
+    can_go_forward: bool,
+) -> Result<(), String> {
+    if webview.label() != CONTENT_LABEL {
+        return Err("Navigation state requires the Eureka content view.".into());
+    }
+    *webview
+        .app_handle()
+        .state::<DesktopState>()
+        .navigation
+        .lock()
+        .unwrap() = (can_go_back, can_go_forward);
+    emit_frame_snapshot(&webview.window());
+    Ok(())
+}
+
+#[tauri::command]
+fn set_desktop_menu_state(
+    webview: tauri::Webview,
+    ready: bool,
+    labels: Vec<String>,
+) -> Result<(), String> {
+    if webview.label() != CONTENT_LABEL {
+        return Err("Menu state requires the content view.".into());
+    }
+    let state = webview.app_handle().state::<DesktopState>();
+    {
+        let mut menu = state.menu.lock().unwrap();
+        menu.0 = ready;
+        if labels.len() == 4 && labels.iter().all(|label| label.chars().count() <= 40) {
+            menu.1 = labels;
+        }
+    }
+    emit_frame_snapshot(&webview.window());
+    Ok(())
+}
+
+#[tauri::command]
+async fn desktop_open_menu(
+    webview: tauri::Webview,
+    menu: Option<String>,
+    x: f64,
+) -> Result<(), String> {
+    if webview.label() != TITLEBAR_LABEL
+        || !x.is_finite()
+        || !(0.0..=30000.0).contains(&x)
+        || menu
+            .as_ref()
+            .is_some_and(|id| !desktop_menu::MENU_IDS.contains(&id.as_str()))
+    {
+        return Err("Invalid desktop menu request.".into());
+    }
+    if !webview
+        .app_handle()
+        .state::<DesktopState>()
+        .menu
+        .lock()
+        .unwrap()
+        .0
+    {
+        return Ok(());
+    }
+    let content = webview
+        .app_handle()
+        .get_webview(CONTENT_LABEL)
+        .ok_or("The content view was closed.")?;
+    let detail = serde_json::json!({ "menu": menu, "x": x });
+    content
+        .eval(format!(
+            "window.dispatchEvent(new CustomEvent('eureka:desktop-menu-open',{{detail:{detail}}}))"
+        ))
+        .map_err(|error| error.to_string())?;
+    content.set_focus().map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+async fn desktop_dispatch_menu_action(
+    webview: tauri::Webview,
+    command: String,
+) -> Result<(), String> {
+    if webview.label() != TITLEBAR_LABEL || !desktop_menu::is_command(&command) {
+        return Err("Invalid desktop menu command.".into());
+    }
+    let content = webview
+        .app_handle()
+        .get_webview(CONTENT_LABEL)
+        .ok_or("The content view was closed.")?;
+    let detail = serde_json::json!({ "command": command });
+    content.eval(format!("window.dispatchEvent(new CustomEvent('eureka:desktop-menu-action',{{detail:{detail}}}))")).map_err(|error| error.to_string())?;
+    content.set_focus().map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn desktop_close_menu(webview: tauri::Webview, menu: String) -> Result<(), String> {
+    if webview.label() != CONTENT_LABEL || !desktop_menu::MENU_IDS.contains(&menu.as_str()) {
+        return Err("Invalid menu close request.".into());
+    }
+    webview
+        .app_handle()
+        .emit_to(
+            EventTarget::webview(TITLEBAR_LABEL),
+            "desktop-menu-closed",
+            menu,
+        )
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn desktop_cycle_menu(webview: tauri::Webview, direction: i8) -> Result<(), String> {
+    if webview.label() != CONTENT_LABEL || !(-1..=1).contains(&direction) {
+        return Err("Invalid menu direction.".into());
+    }
+    webview
+        .app_handle()
+        .emit_to(
+            EventTarget::webview(TITLEBAR_LABEL),
+            "desktop-menu-cycle",
+            direction,
+        )
+        .map_err(|error| error.to_string())
+}
+
+#[derive(Serialize)]
+struct DesktopViewState {
+    zoom: f64,
+    fullscreen: bool,
+}
+
+#[tauri::command]
+fn desktop_clipboard_files(webview: tauri::Webview) -> Result<Vec<String>, String> {
+    if webview.label() != CONTENT_LABEL { return Err("Clipboard files require the content view.".into()); }
+    clipboard_files::read_files()
+}
+
+#[tauri::command]
+async fn desktop_select_attachments(webview: tauri::Webview, cwd: Option<String>) -> Result<Vec<String>, String> {
+    if webview.label() != CONTENT_LABEL { return Err("Attachment selection requires the content view.".into()); }
+    #[cfg(windows)]
+    let owner = webview.window().hwnd().map_err(|error| error.to_string())?.0 as usize;
+    #[cfg(not(windows))]
+    let owner = 0usize;
+    tauri::async_runtime::spawn_blocking(move || attachment_dialog::open(owner, cwd)).await.map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+async fn desktop_select_directory(webview: tauri::Webview, cwd: Option<String>) -> Result<Option<String>, String> {
+    if webview.label() != CONTENT_LABEL { return Err("Directory selection requires the content view.".into()); }
+    #[cfg(windows)]
+    let owner = webview.window().hwnd().map_err(|error| error.to_string())?.0 as usize;
+    #[cfg(not(windows))]
+    let owner = 0usize;
+    tauri::async_runtime::spawn_blocking(move || attachment_dialog::open_directory(owner, cwd)).await.map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+async fn desktop_view_action(
+    webview: tauri::Webview,
+    action: String,
+) -> Result<DesktopViewState, String> {
+    if webview.label() != CONTENT_LABEL {
+        return Err("View actions require the content view.".into());
+    }
+    let window = webview.window();
+    let state = webview.app_handle().state::<DesktopState>();
+    match action.as_str() {
+        "state" => {}
+        "zoom-in" | "zoom-out" | "zoom-reset" => {
+            let current = *state.zoom.lock().unwrap();
+            let next = desktop_menu::next_zoom(current, &action);
+            webview.set_zoom(next).map_err(|error| error.to_string())?;
+            *state.zoom.lock().unwrap() = next;
+        }
+        "fullscreen" => window
+            .set_fullscreen(!window.is_fullscreen().map_err(|error| error.to_string())?)
+            .map_err(|error| error.to_string())?,
+        "quit" => desktop_tray::quit(webview.app_handle()),
+        _ => return Err("Unknown desktop view action.".into()),
+    }
+    let zoom = *state.zoom.lock().unwrap();
+    emit_frame_snapshot(&window);
+    Ok(DesktopViewState {
+        zoom,
+        fullscreen: window.is_fullscreen().unwrap_or(false),
+    })
+}
+
+#[tauri::command]
+fn desktop_tray_snapshot(webview: tauri::Webview) -> Result<serde_json::Value, String> {
+    if webview.label() != desktop_tray::POPUP_LABEL {
+        return Err("Tray snapshot requires the local tray popup.".into());
+    }
+    Ok(desktop_tray::popup_state(webview.app_handle()))
+}
+
+#[tauri::command]
+fn desktop_tray_action(webview: tauri::Webview, command: String, session_id: Option<String>) -> Result<(), String> {
+    if webview.label() != desktop_tray::POPUP_LABEL {
+        return Err("Tray actions require the local tray popup.".into());
+    }
+    desktop_tray::action(webview.app_handle(), &command, session_id.as_deref())
+}
+
+#[tauri::command]
+fn set_desktop_tray_state(
+    webview: tauri::Webview,
+    recent_sessions: Vec<desktop_tray::RecentSession>,
+    ready: bool,
+    can_create: bool,
+) -> Result<(), String> {
+    if webview.label() != CONTENT_LABEL {
+        return Err("Tray state requires the Eureka content view.".into());
+    }
+    desktop_tray::update(webview.app_handle(), recent_sessions, ready, can_create)
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -188,6 +455,7 @@ async fn set_desktop_theme(webview: tauri::Webview, preference: String) -> Resul
         .theme = preference;
     emit_frame_snapshot(&window);
     save_window_preferences(window.app_handle());
+    desktop_tray::sync_popup(webview.app_handle()).map_err(|error| error.to_string())?;
     Ok(())
 }
 
@@ -324,6 +592,7 @@ fn create_window(app: &tauri::AppHandle) -> Result<(), String> {
         local
     };
     let content = WebviewBuilder::new(CONTENT_LABEL, WebviewUrl::App("startup.html".into()))
+        .zoom_hotkeys_enabled(false)
         // Injected before the Next page renders, including a full reload.
         .initialization_script(
             "window.__EUREKA_NATIVE_TITLEBAR__ = true; document.addEventListener('DOMContentLoaded', function(){document.documentElement.classList.add('eureka-desktop','eureka-native-titlebar')}, {once:true});"
@@ -362,9 +631,18 @@ fn create_window(app: &tauri::AppHandle) -> Result<(), String> {
             emit_frame_snapshot(&event_window)
         }
         WindowEvent::ThemeChanged(_) => emit_frame_snapshot(&event_window),
-        WindowEvent::CloseRequested { .. } => {
-            record_window_size(&event_window);
-            save_window_preferences(event_window.app_handle());
+        WindowEvent::CloseRequested { api, .. } => {
+            let app = event_window.app_handle();
+            if desktop_tray::available(app) {
+                api.prevent_close();
+                if let Err(error) = desktop_tray::hide(app) {
+                    eprintln!("Could not hide Eureka to the tray: {error}");
+                }
+            } else {
+                // If the OS could not create a tray, keep normal close usable.
+                record_window_size(&event_window);
+                save_window_preferences(app);
+            }
         }
         _ => {}
     });
@@ -551,23 +829,44 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             open_external_url,
             desktop_window_action,
+            set_desktop_navigation_state,
+            set_desktop_menu_state,
+            desktop_open_menu,
+            desktop_dispatch_menu_action,
+            desktop_close_menu,
+            desktop_cycle_menu,
+            desktop_view_action,
+            desktop_clipboard_files,
+            desktop_select_attachments,
+            desktop_select_directory,
+            set_desktop_tray_state,
+            desktop_tray_snapshot,
+            desktop_tray_action,
             set_desktop_theme
         ])
         .plugin(tauri_plugin_single_instance::init(|app, _, _| {
-            if let Some(window) = app.get_window("main") {
-                let _ = window.unminimize();
-                let _ = window.show();
-                let _ = window.set_focus();
+            if let Err(error) = desktop_tray::restore(app) {
+                eprintln!("Could not restore the existing Eureka window: {error}");
             }
         }))
         .setup(|app| {
             let path = app.path().app_config_dir()?.join("window-state.json");
             let preferences = WindowPreferences::read(&path);
+            app.manage(desktop_tray::TrayState::default());
             app.manage(DesktopState {
                 preferences: Mutex::new(preferences),
+                navigation: Mutex::new((false, false)),
+                menu: Mutex::new((
+                    false,
+                    vec!["文件".into(), "编辑".into(), "视图".into(), "帮助".into()],
+                )),
+                zoom: Mutex::new(1.0),
                 path,
             });
             create_window(app.handle()).map_err(std::io::Error::other)?;
+            if let Err(error) = desktop_tray::install(app.handle()) {
+                eprintln!("Could not create the Eureka system tray: {error}");
+            }
             let handle = app.handle().clone();
             thread::spawn(move || start_eureka(handle));
             Ok(())
@@ -575,7 +874,7 @@ fn main() {
         .build(tauri::generate_context!())
         .expect("error while building Eureka")
         .run(|app, event| {
-            if matches!(event, RunEvent::ExitRequested { .. } | RunEvent::Exit) {
+            if matches!(event, RunEvent::Exit) {
                 save_window_preferences(app);
                 stop_sidecar(app);
             }

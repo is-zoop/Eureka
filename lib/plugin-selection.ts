@@ -1,8 +1,11 @@
 /** Public identity only. No paths, credentials or executable input from the client. */
-export interface SelectedPlugin { source: string; capabilityId: string; digest: string; name: string }
+export interface SelectedPlugin { source: string; capabilityId: string; digest: string; name: string; selectionMode?: "once" | "persistent"; subject?: string }
 export interface ComposerPlugin extends SelectedPlugin { description: string; skills: string[]; state: string }
 export function dedupePlugins(items: SelectedPlugin[]): SelectedPlugin[] {
   return [...new Map(items.map((item) => [`${item.source}\0${item.capabilityId}`, { ...item }])).values()];
+}
+export function retainedPluginSelection(items: SelectedPlugin[]): SelectedPlugin[] {
+  return dedupePlugins(items.filter((item) => item.selectionMode === "persistent"));
 }
 const PREFIX = "\n\n<eureka-selected-plugins>";
 export function selectionEnvelope(text: string, plugins: SelectedPlugin[], context = ""): string {

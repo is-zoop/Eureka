@@ -2,7 +2,9 @@
 import { NotificationNotice } from "./Notifications";
 import { OrganizationCapabilityIcon } from "./OrganizationCapabilityIcon";
 
-import { memo, useState, useRef, useEffect, useMemo, type ReactNode } from "react";
+import { memo, useState, useRef, useEffect, useMemo, useId, type ReactNode } from "react";
+import { Collapse } from "./Collapse";
+import { CopyFeedbackIcon } from "./CopyFeedbackIcon";
 import { MarkdownBody } from "./MarkdownBody";
 import { LabelTooltip } from "./LabelTooltip";
 import { ImagePreview } from "./ImagePreview";
@@ -257,9 +259,9 @@ export const MessageView = memo(function MessageView({ message, isStreaming, too
     if ((message as CustomMessage).customType === "compaction") {
       return <CompactionMessageView message={message as CustomMessage} />;
     }
-    // These messages only frame the runtime's plan-mode behavior. They must
+    // These messages only frame the runtime's plan/clarification behavior. They must
     // remain in the session for the agent, but add no user-facing content.
-    if (["eureka-plan-mode-exit", "eureka-plan-framing", "eureka-plan-execution-framing"].includes((message as CustomMessage).customType)) {
+    if (["eureka-plan-mode-exit", "eureka-plan-framing", "eureka-plan-execution-framing", "eureka-clarification-framing", "eureka-plugin-selection-framing"].includes((message as CustomMessage).customType)) {
       return null;
     }
     return <CustomMessageView message={message as CustomMessage} cwd={cwd} onOpenFile={onOpenFile} />;
@@ -411,7 +413,7 @@ function UserMessageView({ message, cwd, onOpenFile, onOpenReference, entryId, o
             flex: 1,
             minWidth: 0,
             background: "var(--user-bg)",
-            border: "1px solid rgba(59,130,246,0.14)",
+            border: "1px solid var(--border)",
             borderRadius: "var(--radius-card)",
             padding: "8px 12px",
             fontSize: 15,
@@ -491,7 +493,7 @@ function UserMessageView({ message, cwd, onOpenFile, onOpenReference, entryId, o
                 const fileName = reference.path.replace(/\\/g, "/").split("/").at(-1) ?? reference.path;
                 const label = `${fileName}${reference.isDir ? "/" : ""}`;
                 return (
-                  <button key={`${reference.isDir ? "dir" : "file"}:${reference.path}`} type="button" title={reference.path} onClick={() => onOpenReference?.(reference)} style={{ display: "inline-flex", alignItems: "center", gap: 5, maxWidth: "100%", height: 26, padding: "0 8px", border: "1px solid color-mix(in srgb, var(--accent) 25%, var(--border))", borderRadius: 7, background: "var(--bg-panel)", color: "var(--text-muted)", cursor: "pointer" }}>
+                  <button key={`${reference.isDir ? "dir" : "file"}:${reference.path}`} type="button" title={reference.path} onClick={() => onOpenReference?.(reference)} style={{ display: "inline-flex", alignItems: "center", gap: 5, maxWidth: "100%", height: 26, padding: "0 8px", border: "1px solid var(--border)", borderRadius: 7, background: "var(--bg-panel)", color: "var(--text-muted)", cursor: "pointer" }}>
                     <span style={{ display: "inline-flex", flexShrink: 0 }}>{reference.isDir ? <FolderIcon size={14} /> : getFileIcon(fileName, 14)}</span>
                     <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 12 }}>{label}</span>
                   </button>
@@ -535,16 +537,7 @@ function UserMessageView({ message, cwd, onOpenFile, onOpenReference, entryId, o
               onMouseEnter={(e) => { if (!copied) e.currentTarget.style.color = "var(--accent)"; }}
               onMouseLeave={(e) => { if (!copied) e.currentTarget.style.color = "var(--text-dim)"; }}
             >
-              {copied ? (
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="20 6 9 17 4 12" />
-                </svg>
-              ) : (
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-                </svg>
-              )}
+              <CopyFeedbackIcon copied={copied} size={11} />
                {copied ? t("i18n.copied") : t("i18n.copy")}
             </button>
           </div>
@@ -877,16 +870,7 @@ function AssistantMessageView({
             onMouseEnter={(e) => { if (!copied) e.currentTarget.style.color = "var(--accent)"; }}
             onMouseLeave={(e) => { if (!copied) e.currentTarget.style.color = "var(--text-dim)"; }}
           >
-            {copied ? (
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="20 6 9 17 4 12" />
-              </svg>
-            ) : (
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-              </svg>
-            )}
+            <CopyFeedbackIcon copied={copied} size={11} />
              {copied ? t("i18n.copied") : t("i18n.copy")}
           </button>
         )}
@@ -1036,14 +1020,14 @@ function ThinkingBlock({ block, duration, isActive, sessionId, entryId, blockInd
           </span>
         </button>
       </LabelTooltip>
-      {expanded && <>
+      <Collapse open={expanded}>{() => <>
         {metadata}
         <div className="tool-activity-details">
           <div className="thinking-activity-content">
             {error ? <NotificationNotice message={error} /> : loading ? t("i18n.loadingThinking") : block.deferred ? content : block.thinking}
           </div>
         </div>
-      </>}
+      </>}</Collapse>
     </div>
   );
 }
@@ -1064,10 +1048,12 @@ function ToolCallBlock({ block, result, duration, isRunning = false, metadata }:
     ls: "toolActivity.list",
     load_tool: "toolActivity.load",
     load_tools: "toolActivity.load",
+    request_user_input: "clarification.title",
   };
   const labelKey = isEditTool ? "toolActivity.edit" : isWriteTool ? "toolActivity.write" : labelKeys[toolName] ?? "toolActivity.generic";
   const label = t(labelKey);
-  const preview = getToolPreview(block);
+  const preview = toolName === "request_user_input" && isRecord(result?.details) && typeof result.details.eurekaClarificationSummary === "string"
+    ? result.details.eurekaClarificationSummary : getToolPreview(block);
   const filePath = block.input?.path ?? block.input?.file_path;
   const isFile = (toolName === "read" || isEditTool || isWriteTool) && typeof filePath === "string" && filePath.length > 0;
   const summary = isFile ? filePath.split(/[\\/]/).at(-1) || filePath
@@ -1109,10 +1095,10 @@ function ToolCallBlock({ block, result, duration, isRunning = false, metadata }:
           </span>
         </button>
       </LabelTooltip>
-      {expanded && <>
+      <Collapse open={expanded}>{() => <>
         {metadata}
         <div className="tool-activity-details">
-          {isEditTool ? <details className="task-phase-metadata"><summary>{t("toolActivity.arguments")}</summary>
+          {toolName === "request_user_input" && isRecord(result?.details) && result.details.eurekaClarification ? null : isEditTool ? <details className="task-phase-metadata"><summary>{t("toolActivity.arguments")}</summary>
             <pre className="tool-activity-input">{JSON.stringify(block.input, null, 2)}</pre>
           </details> : <pre className="tool-activity-input">{JSON.stringify(block.input, null, 2)}</pre>}
           {result && (resultDiff ? <PairedDiffResult diff={resultDiff} /> : <PairedResult text={resultText} isEmpty={resultIsEmpty} isError={isError} />)}
@@ -1120,7 +1106,7 @@ function ToolCallBlock({ block, result, duration, isRunning = false, metadata }:
             <PairedResult text={resultText} isEmpty={resultIsEmpty} isError={isError} />
           </details>}
         </div>
-      </>}
+      </>}</Collapse>
     </div>
   );
 }
@@ -1198,54 +1184,41 @@ function PairedResult({ text, isEmpty, isError }: {
 
 function CompactionMessageView({ message }: { message: CustomMessage }) {
   const { t } = useI18n();
+  const [expanded, setExpanded] = useState(false);
+  const panelId = useId();
   const summary = getMessageText(message.content);
-  const parsedSummary = useMemo(() => parseCompactionSummary(summary), [summary]);
   const time = formatTime(message.timestamp);
+  const tokens = (message.details as { tokensBefore?: number } | undefined)?.tokensBefore;
+  const hint = [time, typeof tokens === "number" ? `${tokens.toLocaleString()} tokens` : null].filter(Boolean).join(" · ") || t("chat.compactedContext");
 
   return (
-    <div style={{ marginBottom: 16 }}>
-      <div
-        style={{
-          border: "1px solid var(--border)",
-          borderRadius: 8,
-          overflow: "hidden",
-          background: "var(--bg)",
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            padding: "7px 10px",
-            borderBottom: "1px solid var(--border)",
-            background: "var(--bg-panel)",
-            color: "var(--text-muted)",
-          }}
-        >
-          <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, fontWeight: 650 }}>
-            compaction
-          </span>
-          {time && <span style={{ marginLeft: "auto", color: "var(--text-dim)", fontSize: 10 }}>{time}</span>}
-        </div>
-
-        <div style={{ padding: "11px 13px 12px" }}>
-          <div style={{ color: "var(--text)", fontSize: 15, fontWeight: 600, lineHeight: 1.35 }}>
-             {t("i18n.conversationCompacted")}
-          </div>
-          <div style={{ marginTop: 3, marginBottom: 10, color: "var(--text)", fontSize: 14, lineHeight: 1.5 }}>
-             {t("i18n.compactionDescription")}
-          </div>
-          {parsedSummary.body ? (
-            <MarkdownBody className="markdown-compaction-message">{parsedSummary.body}</MarkdownBody>
-          ) : (
-             <span style={{ color: "var(--text-dim)", fontSize: 12 }}>{t("i18n.noSummary")}</span>
-          )}
-          <CompactionFileMetadata readFiles={parsedSummary.readFiles} modifiedFiles={parsedSummary.modifiedFiles} />
-        </div>
+    <div className="compaction-marker">
+      <div className="compaction-marker-row">
+        <span className="compaction-marker-line" aria-hidden="true" />
+        <LabelTooltip content={hint}>
+          <button type="button" className="compaction-trigger"
+            aria-expanded={expanded} aria-controls={panelId} onClick={() => setExpanded(value => !value)}>
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" aria-hidden="true"><rect x="3.5" y="1.5" width="9" height="13" rx="1" /><path d="m6 4 2 2-2 2 2 2-2 2" /></svg>
+            {t("chat.compactedContext")}
+          </button>
+        </LabelTooltip>
+        <span className="compaction-marker-line" aria-hidden="true" />
+      </div>
+      <div id={panelId}>
+        <Collapse open={expanded}>{() => <CompactionSummaryContent summary={summary} />}</Collapse>
       </div>
     </div>
   );
+}
+
+function CompactionSummaryContent({ summary }: { summary: string }) {
+  const { t } = useI18n();
+  const parsed = useMemo(() => parseCompactionSummary(summary), [summary]);
+  return <div className="compaction-summary-content">
+    {parsed.body ? <MarkdownBody className="markdown-compaction-message">{parsed.body}</MarkdownBody>
+      : <span className="text-xs text-[var(--text-dim)]">{t("i18n.noSummary")}</span>}
+    <CompactionFileMetadata readFiles={parsed.readFiles} modifiedFiles={parsed.modifiedFiles} />
+  </div>;
 }
 
 function CompactionFileMetadata({ readFiles, modifiedFiles }: { readFiles: string[]; modifiedFiles: string[] }) {
@@ -1488,6 +1461,11 @@ function previewText(text: string): string {
 function getToolPreview(block: ToolCallContent): string {
   const input = block.input;
   if (!input || typeof input !== "object") return "";
+  if (block.toolName === "request_user_input") {
+    if (Array.isArray(input.questions)) return input.questions.filter(isRecord).map((question) =>
+      typeof question.title === "string" ? question.title : typeof question.question === "string" ? question.question : "").filter(Boolean).join(" · ");
+    return typeof input.question === "string" ? input.question : "";
+  }
   const keys = Object.keys(input);
   if (keys.length === 0) return "";
 

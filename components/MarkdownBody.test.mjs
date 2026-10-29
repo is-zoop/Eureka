@@ -20,6 +20,14 @@ function renderMarkdown(markdown) {
   );
 }
 
+test("marks streaming separately so pretty wrapping only applies to completed prose", () => {
+  for (const isStreaming of [false, true]) {
+    const html = renderToStaticMarkup(React.createElement(MarkdownBody, { isStreaming }, "A paragraph with `code`."));
+    assert.match(html, new RegExp(`data-streaming="${isStreaming}"`));
+    assert.match(html, /<code class="markdown-inline-code">code<\/code>/);
+  }
+});
+
 test("opens non-file markdown links in a safe new tab", () => {
   const html = renderMarkdown("[docs](https://example.com/docs)");
 

@@ -19,13 +19,14 @@ export function ClarificationGroupCard({ group, onAction, history = false }: {
   };
   const retry = group.status === "answered" && ["ready", "failed"].includes(group.continuation);
   return <div data-clarification-group={group.id}>
-    {group.source === "plugin" && <p className="text-xs text-[var(--text-muted)]">{group.task.plugins.map((p) => p.name).join(" · ")}</p>}
-    <UserInputCard questions={group.questions} readOnly={history || group.status !== "pending"} onAnswer={(_, responses) => action("answer_clarification", responses)} />
+    {group.status === "pending" && <>
+      {group.source === "plugin" && <p className="text-xs text-[var(--text-muted)]">{group.task.plugins.map((p) => p.name).join(" · ")}</p>}
+      <UserInputCard questions={group.questions} readOnly={history} onAnswer={(_, responses) => action("answer_clarification", responses)} />
+    </>}
     {group.status === "cancelled" && <p className="text-xs text-[var(--text-muted)]">{t("clarification.cancelled")}</p>}
     {group.error && <p role="alert" className="my-2 text-xs text-red-600">{group.error}</p>}
-    {!history && group.status !== "cancelled" && group.continuation !== "completed" && <div className="mb-3 flex justify-end gap-2">
-      {retry && <Button variant="outline" disabled={busy} onClick={() => void action("retry_clarification")}>{t("clarification.retry")}</Button>}
-      {group.continuation !== "running" && <Button variant="outline" disabled={busy} onClick={() => void action("cancel_clarification")}>{t("clarification.cancel")}</Button>}
+    {!history && retry && <div className="mb-3 flex justify-end">
+      <Button variant="outline" disabled={busy} onClick={() => void action("retry_clarification")}>{t("clarification.retry")}</Button>
     </div>}
   </div>;
 }

@@ -1,0 +1,18 @@
+ const home=page.getByRole('button',{name:'主页',exact:true}),ext=page.getByRole('button',{name:'扩展中心',exact:true});
+ await home.waitFor();const draft=page.locator('[data-app-page="chat"] textarea').first();await draft.fill('reload layout draft');await ext.click();
+ const workspace=page.locator('[data-app-page="extensions"]'),reload=workspace.getByRole('button',{name:'重新加载',exact:true});
+ await reload.waitFor();await workspace.getByRole('heading',{name:'导航验证技能',exact:true}).waitFor();
+ assert.equal(await reload.evaluate(el=>el.parentElement.tagName==='HEADER'&&!!el.parentElement.querySelector('h1')),true);
+ assert.equal(await reload.locator('svg[aria-hidden="true"]').count(),1);assert.equal(await workspace.getByRole('region').filter({visible:true}).getByRole('button',{name:'重新加载',exact:true}).count(),0);
+ await reload.click();await page.getByText('当前会话正在运行，请等待结束后重载。',{exact:true}).waitFor();
+ assert.equal(requests.filter(r=>r.command==='reload').length,0);
+ running=false;await reload.click();await page.waitForFunction(()=>Array.from(document.querySelectorAll('button')).some(el=>el.textContent==='重新加载'&&el.disabled));
+ assert.equal(await reload.getAttribute('aria-busy'),'true');assert.ok(await reload.locator('svg').evaluate(el=>el.classList.contains('animate-spin')));
+ await workspace.locator('[data-installed-capabilities]').getByRole('navigation').getByRole('button',{name:'MCP',exact:true}).click();assert.ok(await reload.isDisabled());
+ await page.waitForFunction(()=>Array.from(document.querySelectorAll('button')).some(el=>el.textContent==='重新加载'&&!el.disabled));
+ assert.equal(requests.filter(r=>r.command==='reload').length,1);assert.equal(requests.find(r=>r.command==='reload').path,'/api/agent/nav-qa-0');
+ await page.screenshot({path:'.tmp/extension-reload-header-desktop.png'});
+ await page.setViewportSize({width:390,height:844});assert.ok(await reload.isVisible());assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+ await page.screenshot({path:'.tmp/extension-reload-header-mobile.png'});
+ await page.getByRole('button',{name:'显示侧边栏',exact:true}).click();await home.click();assert.equal(await draft.inputValue(),'reload layout draft');
+ assert.deepEqual(errors,[]);console.log(JSON.stringify({reloadMovedToTitleHeader:true,refreshIcon:true,oldToolbarButtonRemoved:true,streamingGuardPreserved:true,busyStateAndSpinner:true,sameReloadCommand:true,mobileNoOverflow:true,homeDraftPreserved:true,pageErrors:errors}));

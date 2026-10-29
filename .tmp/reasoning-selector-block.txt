@@ -1,0 +1,55 @@
+            {onThinkingLevelChange && (
+              <DropdownMenu open={thinkingDropdownOpen} onOpenChange={setThinkingDropdownOpen}>
+                <Tooltip>
+                  <DropdownMenuTrigger render={<TooltipTrigger render={<button
+                    type="button"
+                    aria-label={t("chat.changeReasoningLabel")}
+                    className={selectorStyles.trigger}
+                  >
+                    <span className={selectorStyles.effortLabel}>{t("chat.reasoningEffort")}</span>
+                    <span>{thinkingDisplayLabel}</span>
+                    <ChevronDownIcon size={13} aria-hidden="true" />
+                  </button>} />} />
+                  <TooltipContent>{t("chat.changeReasoning", { level: thinkingDisplayLabel })}</TooltipContent>
+                </Tooltip>
+                <DropdownMenuContent
+                  align={isMobile ? "start" : "end"}
+                  side="top"
+                  sideOffset={6}
+                  className={selectorStyles.reasoningPopup}
+                >
+                  <DropdownMenuRadioGroup
+                    value={effectiveThinkingLevel ?? "auto"}
+                    onValueChange={(value: typeof THINKING_LEVELS[number]) => {
+                      if (value !== (effectiveThinkingLevel ?? "auto")) {
+                        if (isStreaming) setDeferredThinkingLevel(value);
+                        else onThinkingLevelChange(value);
+                      }
+                      setThinkingDropdownOpen(false);
+                    }}
+                  >
+                    <DropdownMenuGroup>
+                      <DropdownMenuLabel style={{ padding: "6px 8px", color: "var(--text-muted)", fontSize: 12, fontWeight: 400 }}>
+                        {t("chat.reasoningEffort")}
+                      </DropdownMenuLabel>
+                      {THINKING_LEVELS.filter((lvl) => !availableThinkingLevels || lvl === "auto" || availableThinkingLevels.includes(lvl)).map((lvl) => {
+                        const mappedVal = (lvl !== "auto" && thinkingLevelMap) ? thinkingLevelMap[lvl] : undefined;
+                        const displayLabel = capitalizeDisplayLabel((mappedVal != null && mappedVal !== lvl) ? mappedVal : lvl);
+                        const showOriginal = mappedVal != null && mappedVal !== lvl;
+                        return (
+                          <DropdownMenuRadioItem key={lvl} value={lvl} closeOnClick label={displayLabel} className={selectorStyles.reasoningItem}>
+                            <span className={selectorStyles.level}>
+                              <span>
+                                {displayLabel}
+                                {showOriginal && <span style={{ fontSize: 10, color: "var(--text-dim)", fontFamily: "var(--font-mono)", marginLeft: 5 }}>({lvl})</span>}
+                              </span>
+                              <span className={selectorStyles.description}>{t(THINKING_LEVEL_DESC_KEYS[lvl])}</span>
+                            </span>
+                          </DropdownMenuRadioItem>
+                        );
+                      })}
+                    </DropdownMenuGroup>
+                  </DropdownMenuRadioGroup>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}

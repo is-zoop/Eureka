@@ -3,6 +3,7 @@ import { spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, rmSync, copyFileSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve, join } from "node:path";
+import { copyStandaloneResources } from "./standalone-resources.mjs";
 
 const desktopDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const rootDir = resolve(desktopDir, "..");
@@ -23,6 +24,7 @@ const piPackagesDir = join(rootDir, "node_modules", "@earendil-works");
 // production bundle. On Windows the real profile contains protected legacy
 // junctions such as "Application Data", so isolate build-time discovery.
 const buildHome = join(desktopDir, ".build-home");
+const skipBuild = process.argv.includes("--skip-build");
 
 if (!existsSync(nextBin)) {
   throw new Error("Next.js is not installed in the repository root. Run npm install first.");
@@ -43,20 +45,23 @@ if (!existsSync(chromiumExecutable)) throw new Error("Chromium is missing. Run n
 const chromiumRevisionDir = dirname(dirname(chromiumExecutable));
 mkdirSync(buildHome, { recursive: true });
 
-const build = spawnSync(process.execPath, [nextBin, "build", "--webpack"], {
-  cwd: rootDir,
-  env: {
-    ...process.env,
-    EUREKA_DESKTOP_BUILD: "1",
-    HOME: buildHome,
-    USERPROFILE: buildHome,
-    APPDATA: buildHome,
-    LOCALAPPDATA: buildHome,
-  },
-  stdio: "inherit",
-});
-if (build.error) throw build.error;
-if (build.status !== 0) process.exit(build.status ?? 1);
+if (!skipBuild) {
+  const build = spawnSync(process.execPath, [nextBin, "build", "--webpack"], {
+    cwd: rootDir,
+    env: {
+      ...process.env,
+      EUREKA_DESKTOP_BUILD: "1",
+      HOME: buildHome,
+      USERPROFILE: buildHome,
+      APPDATA: buildHome,
+      LOCALAPPDATA: buildHome,
+    },
+    stdio: "inherit",
+  });
+  if (build.error) throw build.error;
+  if (build.status !== 0) process.exit(build.status ?? 1);
+}
+if (skipBuild) console.log("Reusing the existing Next standalone build.");
 
 const standaloneDir = join(rootDir, ".next", "standalone");
 if (!existsSync(join(standaloneDir, "server.js"))) {
@@ -66,10 +71,13 @@ if (statSync(process.execPath).isDirectory()) {
   throw new Error("Could not resolve the Node.js executable for the desktop runtime.");
 }
 
-rmSync(resourcesDir, { recursive: true, force: true });
+// Validate the exact generated directory before recursively replacing it.
+if (resourcesDir !== resolve(rootDir, "desktop", "resources")) throw new Error("Invalid desktop resource directory.");
+console.log("Replacing generated desktop resources (excluding build outputs and caches).");
+rmSync(resourcesDir, { recursive: true, force: true, maxRetries: 3 });
 mkdirSync(appDir, { recursive: true });
 mkdirSync(nodeDir, { recursive: true });
-cpSync(standaloneDir, appDir, { recursive: true });
+copyStandaloneResources(standaloneDir, appDir);
 // Pi reads themes and other interactive-mode resources from disk at runtime.
 // Those JSON assets are accessed dynamically and therefore omitted by Next's
 // standalone tracer unless the SDK packages are copied in full.
@@ -108,3 +116,4 @@ const browserRelativeExecutable = chromiumExecutable.slice(chromiumRevisionDir.l
 // The sidecar resolves this relative path under its own application directory.
 const { writeFileSync } = await import("node:fs");
 writeFileSync(join(appDir, "browser", "runtime.json"), JSON.stringify({ executable: join("chromium", browserRelativeExecutable) }));
+console.log(`Desktop resources ready: ${resourcesDir}`);
