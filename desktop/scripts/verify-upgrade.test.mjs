@@ -1,0 +1,32 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { mkdtemp, mkdir, writeFile, readFile, rm, unlink } from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { snapshotUpgradeData, compareUpgradeData } from "./verify-upgrade.mjs";
+
+test("upgrade inspection is read-only, stores fingerprints instead of credentials, and detects lost data/key rotation", async t => {
+  const root = await mkdtemp(join(tmpdir(), "eureka-upgrade-verify-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const roots = { sessions: join(root, "sessions"), configuration: join(root, "agent"), automation: join(root, "app-data"), desktop: join(root, "desktop"), accounts: join(root, "accounts") };
+  for (const path of Object.values(roots)) await mkdir(path);
+  const secret = "a".repeat(64), credential = "test-private-value";
+  await writeFile(join(roots.desktop, "session-secret"), secret);
+  await writeFile(join(roots.configuration, "auth.json"), JSON.stringify({ token: credential }));
+  await writeFile(join(roots.sessions, "session.jsonl"), '{"message":"private conversation"}\n');
+  const before = await snapshotUpgradeData(roots);
+  assert.equal(before.files.length, 3);
+  assert.ok(!JSON.stringify(before).includes(credential));
+  assert.ok(!JSON.stringify(before).includes("private conversation"));
+  assert.ok(!JSON.stringify(before).includes(secret));
+  assert.equal(await readFile(join(roots.desktop, "session-secret"), "utf8"), secret);
+  assert.equal(compareUpgradeData(before, await snapshotUpgradeData(roots)).passed, true);
+  await writeFile(join(roots.configuration, "auth.json"), '{"token":"refreshed"}');
+  const refreshed = compareUpgradeData(before, await snapshotUpgradeData(roots));
+  assert.equal(refreshed.passed, true); assert.deepEqual(refreshed.changed, ["configuration/auth.json"]);
+  await writeFile(join(roots.desktop, "session-secret"), "b".repeat(64));
+  assert.equal(compareUpgradeData(before, await snapshotUpgradeData(roots)).sessionKeyChanged, true);
+  await unlink(join(roots.sessions, "session.jsonl"));
+  const lost = compareUpgradeData(before, await snapshotUpgradeData(roots));
+  assert.equal(lost.passed, false); assert.deepEqual(lost.missing, ["sessions/session.jsonl"]);
+});

@@ -119,6 +119,10 @@ npm run version:check
 
 ## Update support status
 
+Use [the installation and upgrade acceptance checklist](upgrade-acceptance.md)
+before publishing a draft. `npm run desktop:verify -- before` and `-- after`
+provide local, read-only file-retention checks; they do not replace actual installer testing.
+
 `/api/app-update` checks this repository's latest stable GitHub Release instead
 of an unrelated npm package. It only reports a version and release-notes link.
 No accessible published release returns no available update; other upstream

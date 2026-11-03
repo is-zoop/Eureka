@@ -37,6 +37,7 @@
     "desktop:dev": "npm --prefix desktop run dev",
     "desktop:build": "npm --prefix desktop run build",
     "desktop:bundle": "npm --prefix desktop run bundle",
+    "desktop:verify": "node desktop/scripts/verify-upgrade.mjs",
     "lint": "eslint .",
     "test": "node --experimental-strip-types --test \"app/**/*.test.mjs\" \"components/**/*.test.mjs\" \"hooks/**/*.test.mjs\" \"lib/**/*.test.mjs\" \"public/**/*.test.mjs\"",
     "version:sync": "node scripts/sync-version.mjs",

@@ -3,4 +3,5 @@ node_modules/
 .build-home/
 resources/
 release/
+verification/
 src-tauri/target/
