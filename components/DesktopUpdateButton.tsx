@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type Ref } from "react";
 import { AlertCircleIcon, ArrowRightIcon, CheckIcon, DownloadIcon, LoaderCircleIcon, RefreshCwIcon } from "lucide-react";
 import { useDesktopUpdater } from "@/hooks/useDesktopUpdater";
 import { useI18n } from "@/hooks/useI18n";
-import { DESKTOP_UPDATE_OPEN_EVENT, desktopUpdateController, updateBusy, updateErrorKey, type UpdateAction, type UpdateView } from "@/lib/desktop-update-controller";
+import { DESKTOP_UPDATE_OPEN_EVENT, desktopUpdateController, hasDesktopUpdate, updateBusy, updateErrorKey, type UpdateAction, type UpdateView } from "@/lib/desktop-update-controller";
 import { APP_VERSION } from "@/lib/app-update";
 import { LabelTooltip } from "./LabelTooltip";
 import { MarkdownBody } from "./MarkdownBody";
@@ -56,9 +56,22 @@ export function DesktopUpdateContent({ view, run, close }: { view: UpdateView; r
   </>;
 }
 
+export function DesktopUpdateTrigger({ view, onClick, buttonRef }: { view: UpdateView; onClick: () => void; buttonRef?: Ref<HTMLButtonElement> }) {
+  const { t } = useI18n();
+  if (!hasDesktopUpdate(view)) return null;
+  const busy = updateBusy(view);
+  const ready = Boolean(view.state?.readyToInstall);
+  const phase = view.pending === "install" ? "installing" : view.pending === "download" ? "downloading" : view.state?.phase;
+  const percent = view.state?.totalBytes ? Math.max(0, Math.min(100, Math.floor(view.state.downloadedBytes / view.state.totalBytes * 100))) : null;
+  const tooltip = busy ? phase === "downloading" ? `${t("updates.downloading")}${percent === null ? "" : ` ${percent}%`}` : t(phase === "installing" ? "updates.installing" : "updates.inProgress") : t(ready ? "updates.installVersion" : "updates.downloadVersion", { version: view.state!.version! });
+  return <LabelTooltip content={tooltip} side="right"><button ref={buttonRef} type="button" className={styles.trigger} aria-label={tooltip} aria-busy={busy} data-desktop-update-trigger onClick={onClick}>
+    <span className={styles.badge} aria-hidden="true">{busy ? <LoaderCircleIcon size={14} className={styles.spin} /> : ready ? <CheckIcon size={14} strokeWidth={2} /> : <DownloadIcon size={14} strokeWidth={2} />}</span>
+    {!busy && <span className={styles.dot} aria-hidden="true" />}
+  </button></LabelTooltip>;
+}
+
 export function DesktopUpdateButton() {
   const view = useDesktopUpdater();
-  const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
   useEffect(() => {
@@ -67,16 +80,15 @@ export function DesktopUpdateButton() {
     return () => window.removeEventListener(DESKTOP_UPDATE_OPEN_EVENT, openFromHelp);
   }, []);
   if (!view.host) return null;
-  const busy = updateBusy(view);
-  const ready = Boolean(view.state?.readyToInstall);
-  const available = Boolean(view.state?.version);
-  const tooltip = ready ? t("updates.ready") : available ? t("updates.available", { version: view.state!.version! }) : busy ? t("updates.inProgress") : t("updates.open");
+  const handleTriggerClick = async () => {
+    if (updateBusy(view)) { setOpen(true); return; }
+    if (view.state?.readyToInstall) setOpen(true);
+    await view.runPrimary();
+    if (desktopUpdateController.getSnapshot().error) setOpen(true);
+  };
   return <Dialog open={open} onOpenChange={setOpen}>
-    <LabelTooltip content={tooltip} side="right"><button ref={trigger} type="button" className={styles.trigger} aria-label={t("updates.open")} aria-haspopup="dialog" data-desktop-update-trigger onClick={() => setOpen(true)}>
-      <span className={styles.badge} aria-hidden="true">{busy ? <LoaderCircleIcon size={14} className={styles.spin} /> : ready ? <CheckIcon size={14} strokeWidth={2} /> : <DownloadIcon size={14} strokeWidth={2} />}</span>
-      {available && !busy && <span className={styles.dot} aria-hidden="true" />}
-    </button></LabelTooltip>
-    <DialogContent className="w-[min(440px,calc(100vw-32px))]" finalFocus={trigger}>
+    <DesktopUpdateTrigger view={view} buttonRef={trigger} onClick={() => void handleTriggerClick()} />
+    <DialogContent className="w-[min(440px,calc(100vw-32px))]" finalFocus={hasDesktopUpdate(view) ? trigger : undefined}>
       <DesktopUpdateContent view={view} run={view.run} close={() => setOpen(false)} />
     </DialogContent>
   </Dialog>;
