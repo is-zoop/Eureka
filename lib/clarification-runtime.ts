@@ -17,6 +17,7 @@ export class ClarificationRuntime {
   constructor(private store: Store, private changed: (state: ClarificationState) => void) {
     this.state = readClarificationState((store.getBranch?.() ?? store.getEntries()) as SessionEntry[]);
     controllers.set(store, this);
+    if (this.state.queue.some(q => q.automationTask && !q.paused)) this.save({ ...this.state, queue: this.state.queue.map(q => q.automationTask ? { ...q, paused: true } : q) });
     if (this.state.groups.some((g) => g.continuation === "running")) {
       this.save({ ...this.state, groups: this.state.groups.map((g) => g.continuation === "running" ? { ...g, continuation: "failed", error: "会话运行已中断。回答已保存，请确认后重试继续。" } : g) });
     }

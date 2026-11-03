@@ -1,6 +1,9 @@
 "use client";
 import { NotificationNotice } from "./Notifications";
-import { OrganizationCapabilityIcon } from "./OrganizationCapabilityIcon";
+import { MessageResourceTags } from "./MessageResourceTags";
+import { parseLeadingFileReferences, type DisplayReference } from "@/lib/message-resources";
+import { composerReferenceText } from "@/lib/composer-references";
+export { parseLeadingFileReferences } from "@/lib/message-resources";
 
 import { memo, useState, useRef, useEffect, useMemo, useId, type ReactNode } from "react";
 import { Collapse } from "./Collapse";
@@ -16,10 +19,9 @@ import { getAssistantErrorMessage, isEmptyThinkingBlock } from "@/lib/message-di
 import { PatchDiffView } from "./PatchDiffView";
 import { isEditToolName, isWriteToolName } from "@/lib/tool-names";
 import { TurnWrittenFiles } from "./TurnWrittenFiles";
-import { FolderIcon, getFileIcon } from "./FileIcons";
 import { haveSameWrittenFiles, type OpenTurnChanges, type WrittenFile } from "@/lib/turn-written-files";
 import { splitPluginSelection, selectionEnvelope } from "@/lib/plugin-selection";
-import { skillExpansionToCommand } from "@/lib/slash-display";
+import { skillExpansionToCommand, skillExpansionLocation } from "@/lib/slash-display";
 import type { TaskBlockReference } from "@/lib/task-phases";
 import { estimateThinkingSeconds, getMessageThinkingTiming, isThinkingActive, thinkingTimingKey, startThinkingTiming, finishThinkingTiming, rememberThinkingDuration, aliasThinkingTiming } from "@/lib/thinking-timing";
 import { getThinkingPreview } from "@/lib/thinking-preview";
@@ -293,31 +295,6 @@ export const MessageView = memo(function MessageView({ message, isStreaming, too
     && prev.sessionId === next.sessionId;
 });
 
-interface DisplayReference { path: string; isDir: boolean; }
-
-/** Only consumes consecutive leading @path tokens. This keeps prose, code and
- * historical inline mentions untouched while supporting both old and new turns. */
-export function parseLeadingFileReferences(content: string): { references: DisplayReference[]; body: string } {
-  const references: DisplayReference[] = [];
-  let offset = 0;
-  while (offset < content.length) {
-    const whitespace = content.slice(offset).match(/^\s*/)?.[0] ?? "";
-    const start = offset + whitespace.length;
-    if (content[start] !== "@") break;
-    const quoted = content[start + 1] === '"';
-    const end = quoted
-      ? content.indexOf('"', start + 2)
-      : (() => { const match = content.slice(start + 1).match(/^\S+/); return match ? start + 1 + match[0].length : -1; })();
-    if (end < 0) break;
-    const path = quoted ? content.slice(start + 2, end) : content.slice(start + 1, end);
-    if (!path || path.includes(":")) break; // line references stay as ordinary text
-    const isDir = path.endsWith("/");
-    references.push({ path: isDir ? path.slice(0, -1) : path, isDir });
-    offset = quoted ? end + 1 : end;
-  }
-  return references.length ? { references, body: content.slice(offset).trimStart() } : { references: [], body: content };
-}
-
 function UserMessageView({ message, cwd, onOpenFile, onOpenReference, entryId, onFork, forking, onNavigate, prevAssistantEntryId, onEditContent }: {
   message: UserMessage;
   cwd?: string;
@@ -350,9 +327,10 @@ function UserMessageView({ message, cwd, onOpenFile, onOpenReference, entryId, o
 
   const selection = splitPluginSelection(content);
   content = selection.text;
-  const { references, body: displayContent } = parseLeadingFileReferences(content);
 
-  const commandText = skillExpansionToCommand(content);
+  const leading = parseLeadingFileReferences(content);
+  const commandInput = leading.body;
+  const commandText = skillExpansionToCommand(commandInput) ?? (/^\/skill:[^\s]+(?:\s|$)/.test(commandInput) ? commandInput : null);
   const commandSeparator = commandText?.search(/\s/) ?? -1;
   const commandName = commandText
     ? commandSeparator === -1 ? commandText : commandText.slice(0, commandSeparator)
@@ -361,10 +339,15 @@ function UserMessageView({ message, cwd, onOpenFile, onOpenReference, entryId, o
     ? commandText.slice(commandSeparator + 1)
     : "";
 
+  const argumentsDisplay = parseLeadingFileReferences(commandText ? commandArgs : "");
+  const references = [...leading.references, ...argumentsDisplay.references];
+  const displayContent = commandText ? argumentsDisplay.body : leading.body;
+  const skill = commandText ? { name: commandName.replace(/^\/skill:/, ""), command: commandName, location: skillExpansionLocation(commandInput) } : undefined;
+
   const time = formatTime(message.timestamp);
   const canFork = !!entryId && !!onFork;
-  const copyTarget = commandText ?? content;
-  const editTarget = commandText ? replaceUserMessageText(message, selectionEnvelope(commandText, selection.plugins)) : message;
+  const copyTarget = commandText ? [...composerReferenceText(leading.references), commandText].join(" ") : content;
+  const editTarget = commandText ? replaceUserMessageText(message, selectionEnvelope(copyTarget, selection.plugins)) : message;
 
   const imageBlocksNode = imageBlocks.length > 0 && (
     <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: content ? 8 : 0 }}>
@@ -424,86 +407,10 @@ function UserMessageView({ message, cwd, onOpenFile, onOpenReference, entryId, o
             overflowY: "auto",
           }}
         >
-          {selection.plugins.length > 0 && <div className="composer-plugin-tags">{selection.plugins.map((p) => <span className="plugin-tag" key={`${p.source}:${p.capabilityId}`}><OrganizationCapabilityIcon capability={p} size={16} />{p.name}</span>)}</div>}
-          {commandText ? (
-            <div style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 0 }}>
-              {imageBlocksNode}
-              <div style={{ display: "flex", alignItems: "flex-start", gap: 8, flexWrap: "wrap" }}>
-                <button
-                  onClick={() => setExpanded((prev) => !prev)}
-                  title={expanded ? t("i18n.collapse") : t("i18n.expand")}
-                  aria-expanded={expanded}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 6,
-                    flexShrink: 0,
-                    padding: 0,
-                    background: "none",
-                    border: "none",
-                    cursor: "pointer",
-                    color: "var(--accent)",
-                    fontFamily: "var(--font-mono)",
-                    fontSize: 13,
-                    textAlign: "left",
-                  }}
-                >
-                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {commandName}
-                  </span>
-                  <svg
-                    width="11"
-                    height="11"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    style={{ flexShrink: 0, opacity: 0.75, transform: expanded ? "rotate(180deg)" : "none", transition: "transform 0.15s" }}
-                    aria-hidden="true"
-                  >
-                    <polyline points="6 9 12 15 18 9" />
-                  </svg>
-                </button>
-                {commandArgs && (
-                  <span style={{
-                    color: "var(--text)",
-                    fontSize: 14,
-                    lineHeight: 1.6,
-                    whiteSpace: "pre-wrap",
-                    wordBreak: "break-word",
-                    minWidth: 0,
-                    flex: 1,
-                  }}>
-                    {commandArgs}
-                  </span>
-                )}
-              </div>
-              {expanded && (
-                <MarkdownBody className="markdown-user-message" cwd={cwd} onOpenFile={onOpenFile}>{content}</MarkdownBody>
-              )}
-            </div>
-          ) : (
-          <>
+          <MessageResourceTags plugins={selection.plugins} references={references} skill={skill} cwd={cwd} expanded={expanded} onToggleSkill={() => setExpanded(value => !value)} onOpenReference={reference => { if (onOpenReference) onOpenReference(reference); else if (!reference.isDir) onOpenFile?.(reference.path); }} />
           {imageBlocksNode}
-          {references.length > 0 && (
-            <div aria-label="已引用文件" style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: displayContent || imageBlocks.length ? 8 : 0 }}>
-              {references.map((reference) => {
-                const fileName = reference.path.replace(/\\/g, "/").split("/").at(-1) ?? reference.path;
-                const label = `${fileName}${reference.isDir ? "/" : ""}`;
-                return (
-                  <button key={`${reference.isDir ? "dir" : "file"}:${reference.path}`} type="button" title={reference.path} onClick={() => onOpenReference?.(reference)} style={{ display: "inline-flex", alignItems: "center", gap: 5, maxWidth: "100%", height: 26, padding: "0 8px", border: "1px solid var(--border)", borderRadius: 7, background: "var(--bg-panel)", color: "var(--text-muted)", cursor: "pointer" }}>
-                    <span style={{ display: "inline-flex", flexShrink: 0 }}>{reference.isDir ? <FolderIcon size={14} /> : getFileIcon(fileName, 14)}</span>
-                    <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 12 }}>{label}</span>
-                  </button>
-                );
-              })}
-            </div>
-          )}
           {displayContent && <SafeMarkdownBody className="markdown-user-message" cwd={cwd} onOpenFile={onOpenFile}>{displayContent}</SafeMarkdownBody>}
-          </>
-          )}
+          {commandText && expanded && <MarkdownBody className="markdown-user-message" cwd={cwd} onOpenFile={onOpenFile}>{content}</MarkdownBody>}
         </div>
 
       </div>

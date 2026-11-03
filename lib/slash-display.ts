@@ -5,6 +5,10 @@ import { splitPluginSelection } from "./plugin-selection";
  */
 const SKILL_EXPANSION_RE = /^<skill name="([^"\n]+)" location="([^"\n]+)">\nReferences are relative to [^\n]+\.\n\n([\s\S]*)\n<\/skill>(?:\n\n([\s\S]+))?$/;
 
+export function skillExpansionLocation(text: string): string | undefined {
+  return splitPluginSelection(text).text.match(SKILL_EXPANSION_RE)?.[2];
+}
+
 /**
  * Restore a complete SDK skill expansion to its compact command form.
  *

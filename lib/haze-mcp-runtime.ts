@@ -77,7 +77,7 @@ export async function installHazeManagedMcpRuntime(pi: ExtensionAPI) {
     const snapshots: PluginSnapshot[] = [];
     const source = process.env.EUREKA_AUTH_HAZE_ISSUER?.replace(/\/$/, "");
     for (const install of source ? effectivePlugins(context.cwd, source) : []) {
-      if (install.disabled || !install.plugin) continue;
+      if (install.disabled || !install.plugin || install.plugin.manifest.automation) continue;
       const plugin = install.plugin;
       const snapshot: PluginSnapshot = { capabilityId: install.capabilityId, source: plugin.source, digest: plugin.digest, root: plugin.root, servers: [], capabilities: plugin.manifest.capabilities };
       snapshots.push(snapshot);

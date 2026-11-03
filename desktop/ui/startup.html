@@ -5,9 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="light dark" />
     <title>Eureka</title>
+    <script src="startup-theme.js"></script>
     <style>
       :root {
-        color-scheme: light dark;
+        color-scheme: light;
         --background: #f6f6f6;
         --text: #30302e;
         --muted: #74746e;
@@ -113,24 +114,33 @@
         to { transform: translateX(350%); }
       }
 
-      @media (prefers-color-scheme: dark) {
-        :root {
-          --background: #1a1a1a;
-          --text: #e8e8e8;
-          --muted: #9ca3af;
-          --halo: rgba(232, 232, 232, .06);
-          --track: rgba(232, 232, 232, .1);
-          --indicator: rgba(232, 232, 232, .55);
-        }
-        .logo-light { display: none; }
-        .brand-icon .logo-dark { display: block; }
+      :root.dark {
+        color-scheme: dark;
+        --background: #1a1a1a;
+        --text: #e8e8e8;
+        --muted: #9ca3af;
+        --halo: rgba(232, 232, 232, .06);
+        --track: rgba(232, 232, 232, .1);
+        --indicator: rgba(232, 232, 232, .55);
+      }
+      .dark .logo-light { display: none; }
+      .dark .brand-icon .logo-dark { display: block; }
+
+      @keyframes float-gentle {
+        0%, 100% { transform: translateY(0); }
+        50% { transform: translateY(-2px); }
+      }
+
+      @keyframes breathe-gentle {
+        0%, 100% { opacity: .75; transform: scale(1); }
+        50% { opacity: .95; transform: scale(1.025); }
       }
 
       @media (prefers-reduced-motion: reduce) {
-        main, .brand-icon::before, .brand-icon img, .loading-track::after {
-          animation: none;
-        }
-        .loading-track::after { margin-inline: auto; }
+        main { animation: none; }
+        .brand-icon::before { animation: breathe-gentle 7.2s ease-in-out infinite; }
+        .brand-icon img { animation: float-gentle 7.2s ease-in-out infinite; }
+        .loading-track::after { animation-duration: 3.2s; }
       }
     </style>
   </head>

@@ -177,6 +177,12 @@
       "description": "Permission identifier",
       "oneOf": [
         {
+          "description": "Allows only the Eureka content view to manage an isolated native website view.",
+          "type": "string",
+          "const": "allow-desktop-automation-browser",
+          "markdownDescription": "Allows only the Eureka content view to manage an isolated native website view."
+        },
+        {
           "description": "Allows the composer to read copied file paths when the user pastes.",
           "type": "string",
           "const": "allow-desktop-clipboard-files",
@@ -193,6 +199,12 @@
           "type": "string",
           "const": "allow-desktop-menu-titlebar",
           "markdownDescription": "Allows the local titlebar to open app menus and dispatch predefined keyboard actions."
+        },
+        {
+          "description": "Allows only the Eureka content view to save supplied bytes to a path chosen in the system Save As dialog.",
+          "type": "string",
+          "const": "allow-desktop-save-file",
+          "markdownDescription": "Allows only the Eureka content view to save supplied bytes to a path chosen in the system Save As dialog."
         },
         {
           "description": "Allows the composer to open the system picker at the current project directory.",

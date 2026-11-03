@@ -1,4 +1,5 @@
 import { readClarificationState } from "@/lib/clarification";
+import { authorizeCreationSessionId } from "@/lib/automation-creation-auth";
 import { NextResponse } from "next/server";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { resolveSessionPath, buildSessionContext, buildSessionHistory, SessionHistoryCursorError } from "@/lib/session-reader";
@@ -9,6 +10,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
+  try{await authorizeCreationSessionId(id);}catch{return NextResponse.json({error:"请登录创建该自动化的 Haze 账号"},{status:403});}
   const url = new URL(req.url);
   const leafId = url.searchParams.get("leafId") ?? undefined;
   const deferThinking = url.searchParams.has("deferThinking");

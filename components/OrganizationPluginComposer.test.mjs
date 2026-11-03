@@ -4,6 +4,7 @@ import { registerHooks } from "node:module";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { createJiti } from "jiti";
+import { fileURLToPath } from "node:url";
 const cssHook = registerHooks({
   load(url, context, nextLoad) {
     if (url.endsWith(".module.css")) return { format: "module", source: "export default new Proxy({}, { get: (_, name) => String(name) });", shortCircuit: true };
@@ -11,7 +12,7 @@ const cssHook = registerHooks({
   },
 });
 after(() => cssHook.deregister());
-const jiti = createJiti(import.meta.url, { jsx: { runtime: "automatic" }, tsconfigPaths: true });
+const jiti = createJiti(import.meta.url, { jsx: { runtime: "automatic" }, tsconfigPaths: true, alias: { "./ui/dialog": fileURLToPath(new URL("./test-fixtures/dialog-ssr.mjs", import.meta.url)) } });
 const { ChatInput, buildSlashCommandLayout, SlashCommandPaletteIcon } = await jiti.import("./ChatInput.tsx");
 const { BrowserPanel } = await jiti.import("./BrowserPanel.tsx");
 const { I18nProvider } = await jiti.import("@/hooks/useI18n");
@@ -64,11 +65,11 @@ test("selected skill commands render a removable icon chip and keep arguments in
   const html = render(React.createElement(ChatInput, { onSend() {}, onAbort() {}, isStreaming: false, draftKey: "skill-chip",
     slashCommands: [{ source: "skill", name: "skill:atlas-ask", organizationCapability: { capabilityId: "42", source: plugin.source } }],
   }));
-  assert.match(html, /class="composer-command-chip"/);
-  assert.match(html, /class="composer-command-chip" title="atlas-ask" style="[^"]*display:inline-flex;align-items:center;gap:6px/);
-  assert.match(html, /class="composer-command-chip"[^>]+style="[^"]*border:1px solid [^"]*border-radius:7px;[^"]*background:/);
+  assert.match(html, /class="composer-command-chip[^"]*"/);
+  assert.match(html, /class="composer-command-chip[^"]*" title="atlas-ask" style="[^"]*display:inline-flex;align-items:center;gap:6px/);
+  assert.match(html, /class="composer-command-chip[^"]*"[^>]+style="[^"]*border:1px solid [^"]*border-radius:var\(--radius-card\);[^"]*background:/);
   assert.match(html, /class="composer-command-editor" style="position:relative;min-width:0"/);
-  assert.match(html, /class="composer-command-chip"[^>]+style="[^"]*position:absolute;top:0;left:0/);
+  assert.match(html, /class="composer-command-chip[^"]*"[^>]+style="[^"]*position:absolute;top:0;left:0/);
   assert.match(html, /<textarea[^>]+style="[^"]*text-indent:var\(--composer-command-indent, 0px\)/);
   assert.match(html, /<textarea[^>]+style="[^"]*transition-property:color, opacity/);
   assert.doesNotMatch(html, /composer-command-row/);
@@ -113,7 +114,10 @@ test("navigation-fixed installation dialogs never ask for the destination scope"
         cwd: "/project", fixedScope, busy: false, onClose() {}, onConfirm: async () => true,
       }));
       assert.doesNotMatch(html, /name="plugin-scope"|aria-label="(?:Installation scope|安装范围)"/);
-      assert.match(html, /(?:Confirm install|确认安装)/);
+      if (type === "Plugin") {
+        assert.doesNotMatch(html, /(?:Confirm install|确认安装)/, "a known scope waits for preparation before asking for any actual approvals");
+        assert.match(html, /role="status"/);
+      } else assert.match(html, /(?:Confirm install|确认安装)/);
       if (type === "MCP") assert.match(html, /type="number"/, "connector runtime configuration stays available");
     }
   }

@@ -3,7 +3,8 @@ import { spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, rmSync, copyFileSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve, join } from "node:path";
-import { copyStandaloneResources } from "./standalone-resources.mjs";
+import { copyStandaloneResources, copyStandaloneServerAssets } from "./standalone-resources.mjs";
+import { verifyStandaloneResources } from "./verify-resources.mjs";
 
 const desktopDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const rootDir = resolve(desktopDir, "..");
@@ -78,6 +79,7 @@ rmSync(resourcesDir, { recursive: true, force: true, maxRetries: 3 });
 mkdirSync(appDir, { recursive: true });
 mkdirSync(nodeDir, { recursive: true });
 copyStandaloneResources(standaloneDir, appDir);
+copyStandaloneServerAssets(join(rootDir, ".next"), appDir);
 // Pi reads themes and other interactive-mode resources from disk at runtime.
 // Those JSON assets are accessed dynamically and therefore omitted by Next's
 // standalone tracer unless the SDK packages are copied in full.
@@ -116,4 +118,6 @@ const browserRelativeExecutable = chromiumExecutable.slice(chromiumRevisionDir.l
 // The sidecar resolves this relative path under its own application directory.
 const { writeFileSync } = await import("node:fs");
 writeFileSync(join(appDir, "browser", "runtime.json"), JSON.stringify({ executable: join("chromium", browserRelativeExecutable) }));
+console.log("Verifying packaged startup and login pages…");
+await verifyStandaloneResources(appDir, join(nodeDir, process.platform === "win32" ? "node.exe" : "node"));
 console.log(`Desktop resources ready: ${resourcesDir}`);

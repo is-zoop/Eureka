@@ -1,0 +1,17 @@
+.workspace{display:flex;flex:1;min-width:0;min-height:0;background:var(--bg);color:var(--text)}
+.sidebar{min-width:0}
+.sidebarTitle{flex:1;min-width:0;margin:0;padding:4px;font-size:18px;font-weight:600;line-height:inherit}
+.toolList{margin:0;list-style:none}
+.appEntry{display:flex;align-items:center;min-width:0;border-radius:var(--radius-control)}
+.appEntry:hover{background:var(--bg-hover)}
+.appEntry[data-selected=true]{background:var(--bg-selected)}
+.toolList .appSelect{flex:1;min-width:0;background:transparent}
+.appSelect svg{flex-shrink:0;color:var(--text-muted)}
+.appSelect>span{min-width:0}
+.toolList .appMenu{width:26px;height:28px;flex-shrink:0;margin-right:4px;color:var(--text-muted);opacity:0}
+.appEntry:hover .appMenu,.appEntry:focus-within .appMenu,.appMenu[aria-expanded=true]{opacity:1}
+.main{flex:1;min-width:0;min-height:0;display:flex;flex-direction:column;overflow:hidden}
+.notice{margin:14px 20px;font-size:13px;color:var(--text-muted);line-height:1.7}
+.error{margin:12px 20px;color:var(--danger,#b42318);font-size:13px;line-height:1.6}
+.toolActions{display:flex;gap:8px;flex-wrap:wrap}
+@media(max-width:959px){.workspace{flex-direction:column}.sidebarTitle{font-size:15px}.toolList{flex:0 1 auto;max-height:min(32vh,280px)}.toolList .appMenu{opacity:1}}

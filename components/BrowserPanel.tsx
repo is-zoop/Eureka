@@ -1,9 +1,13 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowLeftIcon as ArrowLeft, ArrowRightIcon as ArrowRight, GlobeIcon as Globe, PlusIcon as Plus, RefreshCwIcon as RefreshCw, XIcon as X } from "lucide-react";
+import { useI18n } from "@/hooks/useI18n";
+import { Button } from "./ui/button";
 import type { BrowserAction, BrowserEvent, BrowserState } from "@/lib/browser-types";
+import type { AutomationTaskState } from "@/lib/automation-task-state";
 
-export function BrowserPanel({ sessionId, onHide }: { sessionId: string; onHide: () => void }) {
+export function BrowserPanel({ sessionId, onHide, automation = false, onTaskState }: { sessionId: string; onHide: () => void; automation?: boolean; onTaskState?: (state: AutomationTaskState) => void }) {
+  const { t } = useI18n();
   const [state, setState] = useState<BrowserState>({ sessionId, tabs: [], activeTabId: null });
   const [address, setAddress] = useState("");
   const [error, setError] = useState("");
@@ -20,6 +24,7 @@ export function BrowserPanel({ sessionId, onHide }: { sessionId: string; onHide:
   const lastMove = useRef(0);
   const alive = useRef(true);
   active.current = state.activeTabId;
+  const directWindow = state.presentation === "window";
 
   const command = useCallback((action: BrowserAction | { action: "close" }) => {
     const task = queue.current.catch(() => {}).then(async () => {
@@ -54,20 +59,22 @@ export function BrowserPanel({ sessionId, onHide }: { sessionId: string; onHide:
       };
       image.src = `data:image/jpeg;base64,${event.data}`;
     };
-    source.onerror = () => { setError("浏览器画面连接中断，正在尝试重连；请确认当前登录状态。"); };
+    source.onerror = () => { setError("浏览器连接中断，正在尝试重连；请确认当前登录状态。"); };
     source.onopen = () => setError("");
     return () => { alive.current = false; abort.abort(); source.close(); };
   }, [sessionId]);
 
   const currentTab = state.tabs.find((tab) => tab.id === state.activeTabId);
+  const taskPhase = error ? "error" : ready === null ? "opening" : !state.tabs.length ? "stopped" : currentTab?.loading ? "loading" : "manual";
+  useEffect(() => { onTaskState?.({ phase: taskPhase, ...(error ? { message: error } : {}) }); }, [taskPhase, error, onTaskState]);
   useEffect(() => { setAddress(currentTab?.url === "about:blank" ? "" : currentTab?.url ?? ""); }, [currentTab?.url, currentTab?.id]);
   useEffect(() => {
     canvas.current?.getContext("2d")?.clearRect(0, 0, canvas.current.width, canvas.current.height);
     lastResize.current = "";
-  }, [state.activeTabId]);
+  }, [state.activeTabId, directWindow]);
   useEffect(() => {
     const target = viewport.current;
-    if (!target || !state.activeTabId) return;
+    if (!target || !state.activeTabId || directWindow) return;
     let timer: ReturnType<typeof setTimeout>;
     const observer = new ResizeObserver(() => {
       clearTimeout(timer);
@@ -82,7 +89,7 @@ export function BrowserPanel({ sessionId, onHide }: { sessionId: string; onHide:
     });
     observer.observe(target);
     return () => { observer.disconnect(); clearTimeout(timer); };
-  }, [command, state.activeTabId]);
+  }, [command, state.activeTabId, directWindow]);
 
   const mouse = (event: React.MouseEvent | React.WheelEvent, kind: "mousePressed" | "mouseReleased" | "mouseMoved" | "mouseWheel") => {
     if (!active.current || !canvas.current) return;
@@ -102,8 +109,26 @@ export function BrowserPanel({ sessionId, onHide }: { sessionId: string; onHide:
     void command({ action: "key", tabId: active.current, kind, key: event.key, code: event.code, modifiers: (event.altKey ? 1 : 0) | (event.ctrlKey ? 2 : 0) | (event.metaKey ? 4 : 0) | (event.shiftKey ? 8 : 0) }).catch(() => {});
   };
 
-  return <section className="browser-panel" aria-label="内置浏览器">
-    <header className="browser-toolbar"><Globe size={16} /><strong>浏览器</strong>{currentTab?.loading && <span role="status">加载中…</span>}<span style={{ flex: 1 }} /><button title="关闭浏览器并清理网页登录状态" onClick={() => { void command({ action: "close" }).then(onHide).catch(() => {}); }}><X size={16} /></button><button onClick={onHide}>隐藏</button></header>
+  if (directWindow) return <section className="browser-panel" aria-label={t("automation.windowPanel")}>
+    <header className="browser-toolbar"><Globe size={16} /><strong>{t("automation.windowPanel")}</strong><span style={{ flex: 1 }} />
+      <button title={t("automation.closeWindow")} onClick={() => { void command({ action: "close" }).then(onHide).catch(() => {}); }}><X size={16} /></button>
+      <button onClick={onHide}>{t("automation.hidePanel")}</button>
+    </header>
+    <div style={{ padding: 20, overflowY: "auto", fontSize: 13, lineHeight: 1.8 }}>
+      <p>{t(state.tabs.length ? "automation.directWindowHint" : "automation.windowClosed")}</p>
+      {state.activeTabId && <Button variant="outline" size="sm" onClick={() => { void command({ action: "show-panel", tabId: state.activeTabId! }).catch(() => {}); }}>{t("automation.returnToPanel")}</Button>}
+      {state.tabs.map((tab) => <div key={tab.id} style={{ marginTop: 18, paddingTop: 14, borderTop: "1px solid var(--border)" }}>
+        <strong>{tab.title}</strong><div style={{ color: "var(--text-muted)", overflowWrap: "anywhere" }}>{tab.url}</div>
+        <button className="browser-tab" style={{ marginTop: 8 }} onClick={() => { void command({ action: "select-tab", tabId: tab.id }).catch(() => {}); }}>{t("automation.showWindow")}</button>
+      </div>)}
+      {error && <p role="alert" style={{ color: "var(--danger)" }}>{error}</p>}
+    </div>
+  </section>;
+
+  return <section className="browser-panel" aria-label={automation ? t("automation.windowPanel") : "内置浏览器"}>
+    <header className="browser-toolbar"><Globe size={16} /><strong>浏览器</strong>{currentTab?.loading && <span role="status">加载中…</span>}<span style={{ flex: 1 }} />
+      {automation && state.activeTabId && <button onClick={() => { void command({ action: "show-window", tabId: state.activeTabId! }).catch(() => {}); }}>{t("automation.popOut")}</button>}
+      <button title="关闭浏览器并清理网页登录状态" onClick={() => { void command({ action: "close" }).then(onHide).catch(() => {}); }}><X size={16} /></button><button onClick={onHide}>{t("automation.hidePanel")}</button></header>
     <div className="browser-tabs">{state.tabs.map((tab) => <div key={tab.id} className={tab.id === state.activeTabId ? "browser-tab active" : "browser-tab"}><button title={tab.url} onClick={() => { void command({ action: "select-tab", tabId: tab.id }).catch(() => {}); }}>{tab.title}</button><button title="关闭标签页" onClick={() => { void command({ action: "close-tab", tabId: tab.id }).catch(() => {}); }}>×</button></div>)}<button title="新建标签页" onClick={() => { void command({ action: "new-tab" }).catch(() => {}); }}><Plus size={15} /></button></div>
     <form className="browser-toolbar" onSubmit={(event) => { event.preventDefault(); setError(""); const url = /^https?:\/\//i.test(address) ? address : `https://${address}`; void command(state.activeTabId ? { action: "navigate", tabId: state.activeTabId, url } : { action: "open", url }).catch(() => {}); }}>
       <button type="button" disabled={!state.activeTabId} title="后退" onClick={() => { void command({ action: "back", tabId: state.activeTabId! }).catch(() => {}); }}><ArrowLeft size={15} /></button>

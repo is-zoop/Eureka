@@ -6,6 +6,7 @@ import { basename, dirname, join } from "path";
 import { promisify } from "util";
 import { fileURLToPath, pathToFileURL } from "url";
 import { NextResponse } from "next/server";
+import { authorizeCreationSessionId } from "@/lib/automation-creation-auth";
 import { resolveSessionPath } from "@/lib/session-reader";
 
 const execFileAsync = promisify(execFile);
@@ -234,7 +235,7 @@ async function exportSession(filePath: string, outputPath: string): Promise<void
   if (!packageDir) throw new Error("pi CLI not found");
 
   const exporterUrl = pathToFileURL(join(packageDir, "dist", "core", "export-html", "index.js")).href;
-  const { exportFromFile } = (await import(exporterUrl)) as ExportHtmlModule;
+  const { exportFromFile } = (await import(/* webpackIgnore: true */ exporterUrl)) as ExportHtmlModule;
   await exportFromFile(filePath, outputPath);
 }
 
@@ -243,6 +244,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
+  try{await authorizeCreationSessionId(id);}catch{return NextResponse.json({error:"请登录创建该自动化的 Haze 账号"},{status:403});}
   const inline = new URL(req.url).searchParams.get("inline") === "1";
 
   try {

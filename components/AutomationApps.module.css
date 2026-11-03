@@ -1,0 +1,4 @@
+.hint{font-size:13px;line-height:1.7;color:var(--text-muted);margin:12px 18px 18px}
+.error{font-size:13px;line-height:1.7;color:var(--danger,#b42318);margin:12px 0}
+.runtimePage{display:flex;flex-direction:column;flex:1;min-height:0;min-width:0;overflow:hidden;background:var(--bg-panel);color:var(--text)}
+.runtimePage>.error{margin:10px 18px;flex-shrink:0;max-height:70px;overflow:auto}

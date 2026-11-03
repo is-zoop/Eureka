@@ -30,9 +30,21 @@ The reuse option requires an existing `.next/standalone/server.js`; it does not
 compile changed frontend code. Do not run a production Next build while the
 development server is using the same `.next` directory.
 
+Resource preparation includes the complete `.next/server` directory from the
+matching production build, including transitive instrumentation chunks that
+Next's standalone trace may omit. It then boots the packaged Node server on an
+isolated local port and checks the login page and homepage before bundling.
+An HTTP 500 or a mismatched build ID fails preparation immediately.
+
 The production resource preparation script copies the Node executable from the machine running the build. Build on the same Windows architecture you intend to distribute.
 
 The desktop frame uses two child WebViews in one native window: a packaged local titlebar and the independently navigating Eureka frontend. The titlebar does not wait for the Node service, page hydration, or authentication. This uses Tauri's `unstable` multi-WebView feature with the SDK versions locked in `Cargo.lock`.
+
+The packaged startup page receives the saved app theme from Rust before its first
+paint, including a matching WebView background. Explicit light/dark preferences
+take priority over the operating system; auto follows system changes. Reduced
+motion keeps a gentle logo/halo animation and a slower loading indicator instead
+of freezing the startup page.
 
 The top five pixels of the local caption forward resize drags to the native
 window, including both upper corners. This keeps the caption WebView from

@@ -1,4 +1,5 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "identifier": "com.eureka.desktop.dev"
+  "identifier": "com.eureka.desktop.dev",
+  "bundle": { "resources": [] }
 }

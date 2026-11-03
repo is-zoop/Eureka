@@ -7,19 +7,14 @@ import { ExtensionNotice as NotificationNotice } from "./ExtensionNotice";
 import { OrganizationCapabilityIcon } from "./OrganizationCapabilityIcon";
 import type { OrganizationExtensionDetailItem } from "./OrganizationExtensionDetails";
 import { RadioGroup, RadioGroupItem } from "./ui/radio-group";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogBody } from "./ui/dialog";
 import { useI18n } from "@/hooks/useI18n";
 
 export type InstallScope = "project" | "global";
 export type McpRuntimeOptions = { lifecycle: "lazy" | "eager" | "keep-alive"; idleTimeout: number };
 
 function DialogFrame({ item, title, children, onClose }: { item: OrganizationExtensionDetailItem; title: string; children: React.ReactNode; onClose: () => void }) {
-  const { t } = useI18n();
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onClose]);
-  return <div role="presentation" className="fixed inset-0 z-[1200] flex items-center justify-center bg-black/40 p-4" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><section role="dialog" aria-modal="true" aria-label={title} className="w-full max-w-xl overflow-hidden rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-panel)] shadow-[var(--shadow-soft)]"><header className="flex items-center justify-between border-b border-[var(--border)] px-5 py-4"><h2 className="flex items-center gap-3 text-base font-semibold text-[var(--text)]"><OrganizationCapabilityIcon capability={{ capabilityId: item.id }} iconUrl={item.iconUrl} type={item.type} size={28} />{title}</h2><button type="button" aria-label={t("common.close")} onClick={onClose} className="grid h-7 w-7 place-items-center rounded-[var(--radius-control)] text-[var(--text-muted)] hover:bg-[var(--bg-hover)]">×</button></header>{children}</section></div>;
+  return <Dialog open onOpenChange={value => { if (!value) onClose(); }}><DialogContent className="max-w-xl"><DialogHeader><DialogTitle className="flex items-center gap-3"><OrganizationCapabilityIcon capability={{ capabilityId: item.id }} iconUrl={item.iconUrl} type={item.type} size={28} />{title}</DialogTitle></DialogHeader><DialogBody className="p-0">{children}</DialogBody></DialogContent></Dialog>;
 }
 
 function RuntimeFields({ value, onChange }: { value: McpRuntimeOptions; onChange: (value: McpRuntimeOptions) => void }) {

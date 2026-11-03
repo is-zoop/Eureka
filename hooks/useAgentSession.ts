@@ -1,5 +1,7 @@
 "use client";
 import { composerReferenceText } from "@/lib/composer-references";
+import { useAutomationMode } from "./useAutomationMode";
+import type { AutomationLaunchRequest } from "@/lib/automation-mode";
 
 import { EMPTY_CLARIFICATION, blockingClarification, type ClarificationState, type ClarificationQueuedInput } from "@/lib/clarification";
 import { submissionClarificationPreference, rememberClarificationSubmission, forgetClarificationSubmission } from "@/lib/clarification-preference";
@@ -45,6 +47,8 @@ export interface SessionData {
   planMode?: EurekaPlanState;
   clarification?: ClarificationState;
   history?: SessionHistoryPage;
+  hasAutomationTask?: boolean;
+  legacyAutomationCreation?: boolean;
   context: {
     messages: AgentMessage[];
     entryIds: string[];
@@ -141,9 +145,11 @@ export interface SlashCommandInfo {
 
 export type BuiltinSlashCommandResult =
   | { handled: false }
-  | { handled: true; message?: string; error?: string; action?: "openSessionStats" };
+  | { handled: true; message?: string; error?: string; action?: "openSessionStats"; submission?: string };
 
 export interface UseAgentSessionOptions {
+  automationLaunch?: AutomationLaunchRequest | null;
+  onAutomationLaunchHandled?: () => void;
   session: SessionInfo | null;
   sessionRunning?: boolean;
   newSessionCwd: string | null;
@@ -436,7 +442,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     } satisfies SessionStatsInfo;
   }, [messages, sessionStatsOverride, contextUsage, data?.filePath, data?.totalActiveMs, session?.id, session?.name]);
 
-  const loadSession = useCallback(async (sid: string, showLoading = false, includeState = false): Promise<{ running: boolean; state?: AgentStateResponse } | null> => {
+  const loadSession = useCallback(async (sid: string, showLoading = false, includeState = false, reload = false): Promise<{ running: boolean; state?: AgentStateResponse } | null> => {
     const historyRequest = beginHistorySnapshot();
     const messageRevision = liveMessageRevisionRef.current;
     const requestedRun = promptRunIdRef.current;
@@ -444,18 +450,19 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     try {
       if (showLoading) setLoading(true);
       const params = new URLSearchParams({ deferThinking: "1", deferMedia: "1", includeHistory: "1" });
-      const res = await fetch(`/api/sessions/${encodeURIComponent(sid)}?${params}`);
+      if (reload) params.set("reload", "1");
+      const res = await fetch(`/api/sessions/${encodeURIComponent(sid)}?${params}`, { cache: "no-store", signal: AbortSignal.timeout(30000) });
       if (sessionIdRef.current !== sid || !isCurrentHistorySnapshot(historyRequest)) return null;
       if (res.status === 404) {
         if (showLoading) {
           setData(null);
           setActiveLeafId(null);
           setMessages([]);
-          setError(null);
+          setError("这条会话暂时没有找到，可能是列表或路径缓存尚未更新。请点击重新读取。");
         }
         return null;
       }
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) throw new Error(res.status === 401 || res.status === 403 ? "会话读取未获授权，请确认当前登录后重新读取。" : `会话读取失败（HTTP ${res.status}），请重新读取。`);
       const d = await res.json() as SessionData;
       if (sessionIdRef.current !== sid) return null;
       if (!isCurrentHistorySnapshot(historyRequest) || requestedRun !== promptRunIdRef.current) return null;
@@ -519,7 +526,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         return null;
       }
     } catch (e) {
-      if (sessionIdRef.current === sid && isCurrentHistorySnapshot(historyRequest)) setError(String(e));
+      if (sessionIdRef.current === sid && isCurrentHistorySnapshot(historyRequest)) setError(e instanceof DOMException && e.name === "TimeoutError" ? "会话读取超时，请稍后重新读取。" : e instanceof Error ? e.message : String(e));
       return null;
     } finally {
       if (showLoading && !messagesLoaded && sessionIdRef.current === sid && isCurrentHistorySnapshot(historyRequest)) setLoading(false);
@@ -788,6 +795,8 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     if (!message) return;
     notify({ ...notice, message, id: notice.id ? `session:${sessionIdRef.current}:${/^(prompt|extension)-error:/.test(notice.id) ? noticeScope + ":" : ""}${notice.id}` : undefined });
   }, [noticeScope]);
+
+  const automation = useAutomationMode({ draftKey: composerDraftKey, sessionId: session?.id ?? null, launchRequest: opts.automationLaunch, onLaunchHandled: opts.onAutomationLaunchHandled, recover: data?.hasAutomationTask === true, busy: agentRunning || bashRunning, planActive: planMode.planModeActive || planMode.phase === "executing", toolsOff: toolPreset === "none", notify: message => addNotice({ type: "warning", message }) });
 
   const handleExtensionUiRequest = useCallback((request: ExtensionUiRequest) => {
     if (isBlockingExtensionUiRequest(request)) onAttentionNeeded?.(request);
@@ -1309,6 +1318,8 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   handleAgentEventRef.current = handleAgentEvent;
 
   const handleSend = useCallback(async (message: string, images?: AttachedImage[], references?: ChatDraftReference[], options?: SelectedPlugin[] | { bypassPlanQuestionGuard?: boolean; executePlan?: boolean }) => {
+    let automationTask;
+    try { automationTask = automation.submission(); } catch (e) { addNotice({ type: "warning", message: e instanceof Error ? e.message : "自动化任务不可用。" }); restoreSubmission(message, images, references, composerDraftKey, Array.isArray(options) ? options : undefined); return; }
     const selectedPlugins = Array.isArray(options) ? options : [];
     const clarificationEnabled = submissionClarificationPreference(resolveComposerDraftKey(composerDraftKey), message);
     options = Array.isArray(options) ? undefined : options;
@@ -1333,6 +1344,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
 
     const isBashCommand = !images?.length && trimmedMessage.startsWith("!");
     if (isBashCommand) {
+      if (automationTask) { addNotice({ type: "warning", message: "请先退出自动化创建，再执行本地命令。" }); restoreSubmission(message, images, references, composerDraftKey, selectedPlugins); return; }
       if (planMode.planModeActive) {
         addNotice({ type: "warning", message: "规划模式不允许执行本地命令。" });
         restoreSubmission(message, images, references, composerDraftKey, selectedPlugins);
@@ -1392,11 +1404,13 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         promptRequestStarted = true;
         await sendAgentCommand(sid, {
           type: options?.executePlan ? "execute_plan" : "prompt",
+          automationTask,
           message: wireMessage,
           selectedPlugins: selectedPlugins.length ? selectedPlugins : undefined,
           clarificationEnabled,
           ...(options?.executePlan ? {} : piImages?.length ? { images: piImages } : {}),
         });
+        automation.accepted(sid);
         promoteNewSession(1, wireMessage);
       } else if (session) {
         sentSessionId = session.id;
@@ -1404,6 +1418,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         promptRequestStarted = true;
         await sendAgentCommand(session.id, {
           type: options?.executePlan ? "execute_plan" : "prompt",
+          automationTask,
           message: wireMessage,
           selectedPlugins: selectedPlugins.length ? selectedPlugins : undefined,
           clarificationEnabled,
@@ -1450,7 +1465,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       setAgentPhase(null);
       dispatch({ type: "end" });
     }
-  }, [dispatch, resolveComposerDraftKey, clarification, isNew, newSessionCwd, newSessionModel, session, ensureNewSession, ensureEventsConnected, promoteNewSession, waitForPromptSettlement, addNotice, cancelEventStreamGrace, closeEvents, composerDraftKey, reconcileAgentState, restoreSubmission, planMode, updateLiveMessages]);
+  }, [dispatch, resolveComposerDraftKey, clarification, isNew, newSessionCwd, newSessionModel, session, ensureNewSession, ensureEventsConnected, promoteNewSession, waitForPromptSettlement, addNotice, cancelEventStreamGrace, closeEvents, composerDraftKey, reconcileAgentState, restoreSubmission, planMode, updateLiveMessages, automation.submission, automation.accepted]);
 
   const executeBash = useCallback(async (command: string, excludeFromContext: boolean) => {
     if (agentRunningRef.current || bashRunningRef.current) return;
@@ -1652,6 +1667,10 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
 
     const [, commandName, rawArgs = ""] = match;
     const args = rawArgs.trim();
+    if (["automation", "自动化"].includes(commandName)) {
+      try { await automation.enable(); return { handled: true, ...(args ? { submission: args } : {}) }; }
+      catch (e) { const message = e instanceof Error ? e.message : "自动化模式无法开启。"; addNotice({ type: "warning", message }); return { handled: true, error: message }; }
+    }
     const sid = sessionIdRef.current ?? await ensureNewSession();
     const complete = (result: BuiltinSlashCommandResult): BuiltinSlashCommandResult => {
       if (!result.handled) return result;
@@ -1734,7 +1753,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         if (sessionIdRef.current === sid) setIsCompacting(false);
       }
     }
-  }, [addNotice, ensureNewSession, isCompacting, loadModels, loadSession, loadSlashCommands, loadTools, promoteNewSession, onSessionStatsPanelOpen]);
+  }, [addNotice, ensureNewSession, isCompacting, loadModels, loadSession, loadSlashCommands, loadTools, promoteNewSession, onSessionStatsPanelOpen, automation.enable]);
 
   // Let AgentSession.prompt decide atomically whether to queue against the
   // current run or start a new turn if it settled while the request was in
@@ -1765,6 +1784,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         selectedPlugins: selectedPlugins.length ? selectedPlugins : undefined,
         clarificationEnabled,
         streamingBehavior: behavior,
+        automationTask: automation.submission(),
         ...(piImages?.length ? { images: piImages } : {}),
       });
       forgetClarificationSubmission(resolveComposerDraftKey(composerDraftKey));
@@ -1782,7 +1802,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         message: e instanceof Error ? e.message : String(e),
       });
     }
-  }, [addNotice, composerDraftKey, ensureEventsConnected, restoreSubmission, resolveComposerDraftKey]);
+  }, [addNotice, composerDraftKey, ensureEventsConnected, restoreSubmission, resolveComposerDraftKey, automation.submission]);
 
   const handleSteer = useCallback(async (message: string, images?: AttachedImage[], references?: ChatDraftReference[], selectedPlugins?: SelectedPlugin[]) => {
     await sendStreamingPrompt(message, "steer", images, references, selectedPlugins);
@@ -1821,6 +1841,11 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       // while SSE is connected — clear locally so idle recalls update the UI.
       setQueuedMessages({ steering: [], followUp: [] });
       const texts = [...(result?.steering ?? []), ...(result?.followUp ?? [])];
+      const recalledTasks = result?.submissions?.flatMap(item => item.automationTask ? [item.automationTask] : []) ?? [];
+      if (recalledTasks.length) {
+        automation.restore(recalledTasks[0]);
+        if (recalledTasks.length !== result?.submissions?.length || recalledTasks.some(task => task.id !== recalledTasks[0].id)) addNotice({ type: "warning", message: "召回内容包含不同任务，请核对后分开提交；已保留自动化标签，未作为普通命令执行。" });
+      }
       if (texts.length > 0) {
         const selections = texts.map(splitPluginSelection);
         const restoredText = selections.map((item) => item.text).join("\n\n");
@@ -1832,7 +1857,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       console.error("Failed to recall queued messages:", e);
       addNotice({ type: "error", message: "Failed to recall queued messages" });
     }
-  }, [opts.chatInputRef, addNotice]);
+  }, [opts.chatInputRef, addNotice, automation.restore]);
 
   const handleThinkingLevelChange = useCallback(async (level: ThinkingLevelOption) => {
     setThinkingLevel(level);
@@ -1877,6 +1902,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   }, [loadTools, planMode]);
 
   const handlePlanModeChange = useCallback(async (planning: boolean) => {
+    if (planning && automation.enabled) { addNotice({ type: "warning", message: "请先退出自动化创建，再进入计划模式。" }); return; }
     if (!planning && planMode.phase !== "idle") {
       const sid = sessionIdRef.current;
       if (!sid) return;
@@ -1907,7 +1933,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     } catch (error) {
       addNotice({ type: "error", message: error instanceof Error ? error.message : String(error) });
     }
-  }, [addNotice, ensureNewSession, loadTools, toolPreset, planMode.phase, planMode.planModeActive]);
+  }, [addNotice, ensureNewSession, loadTools, toolPreset, planMode.phase, planMode.planModeActive, automation.enabled]);
 
   const handleSubmitPlan = useCallback(async (content: string, sourceEntryId?: string) => {
     const sid = sessionIdRef.current;
@@ -2025,11 +2051,15 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     }
   }, [addNotice, loadTools]);
 
-  // Load session on mount
+  const reloadSession = useCallback(() => { const sid = sessionIdRef.current ?? session?.id; if (sid) return loadSession(sid, true, true, true); }, [loadSession, session?.id]);
+
+  // Read when the selected identity changes, even if the parent preserves this component.
   useEffect(() => {
     sessionHookMountedRef.current = true;
-    resetHistory();
     if (session) {
+      if (newSessionPromotedRef.current && sessionIdRef.current === session.id) return;
+      if (sessionIdRef.current !== session.id) { closeEvents(); promptRunIdRef.current++; agentRunningRef.current = false; sdkAgentActiveRef.current = false; rpcPromptPendingRef.current = false; setAgentRunning(false); setData(null); setMessages([]); setEntryIds([]); setCurrentModelOverride(null); }
+      resetHistory();
       sessionIdRef.current = session.id;
       loadSession(session.id, true, true).then((agentState) => {
         if (agentState?.running) {
@@ -2065,6 +2095,11 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         }
       });
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.id]);
+
+  useEffect(() => {
+    sessionHookMountedRef.current = true;
     return () => {
       sessionHookMountedRef.current = false;
       invalidateHistory();
@@ -2184,7 +2219,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     agentRunning, modelNames, modelList, modelError, modelScopeWarnings, modelThinkingLevels, modelThinkingLevelMaps, newSessionModel, toolPreset, thinkingLevel,
     retryInfo, contextUsage, systemPrompt, forkingEntryId,
     isCompacting: isCompacting || (pendingCompactSession !== null && pendingCompactSession === sessionIdRef.current), compactError, compactResult, currentModel, displayModel, modelSwitching, sessionStats,
-    slashCommands, slashCommandsLoading, queuedMessages, planMode, clarification, handleClarificationAction,
+    slashCommands, slashCommandsLoading, queuedMessages, planMode, clarification, handleClarificationAction, automation,
     extensionDialog, extensionCustomUi, extensionStatuses, extensionWidgets, respondToExtensionUi, sendExtensionCustomInput,
     isAutoModelSelection: isNew && newSessionModel === null,
     agentPhase,
@@ -2194,6 +2229,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     pendingScrollToTailRef, initialScrollDoneRef,
     // Actions
     handleSend, handleAbort, handleFork, handleNavigate, handleModelChange,
+    reloadSession,
     handleCompact, handleSteer, handleFollowUp, handlePromptWithStreamingBehavior, handleAbortCompaction,
     handleRecallQueue,
     handleBuiltinSlashCommand,

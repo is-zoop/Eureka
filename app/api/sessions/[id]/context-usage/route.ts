@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { authorizeCreationSessionId } from "@/lib/automation-creation-auth";
 import { SessionManager, SettingsManager, ModelRuntime, getAgentDir, calculateContextTokens, buildSessionContext } from "@earendil-works/pi-coding-agent";
 import { getRpcSession } from "@/lib/rpc-manager";
 import { resolveSessionPath } from "@/lib/session-reader";
@@ -10,6 +11,7 @@ export const dynamic = "force-dynamic";
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  try{await authorizeCreationSessionId(id);}catch{return NextResponse.json({error:"请登录创建该自动化的 Haze 账号"},{status:403});}
   const leafId = new URL(req.url).searchParams.get("leafId") ?? undefined;
   try {
     const rpc = getRpcSession(id);

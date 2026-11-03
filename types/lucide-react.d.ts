@@ -33,6 +33,14 @@ declare module "lucide-react" {
   export const HouseIcon: LucideIcon;
   export const LayoutListIcon: LucideIcon;
   export const PackagePlusIcon: LucideIcon;
+  export const PackageOpenIcon: LucideIcon;
+  export const WorkflowIcon: LucideIcon;
+  export const MoreHorizontalIcon: LucideIcon;
+  export const StoreIcon: LucideIcon;
+  export const MinusIcon: LucideIcon;
+  export const LocateFixedIcon: LucideIcon;
+  export const SquareIcon: LucideIcon;
+  export const PlayIcon: LucideIcon;
   export const PlugIcon: LucideIcon;
   export const PlusIcon: LucideIcon;
   export const RefreshCwIcon: LucideIcon;

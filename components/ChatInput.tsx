@@ -3,9 +3,12 @@
 import { dedupePlugins, retainedPluginSelection, splitPluginSelection, type ComposerPlugin, type SelectedPlugin } from "@/lib/plugin-selection";
 import { NotificationNotice } from "@/components/Notifications";
 import { OrganizationCapabilityIcon } from "./OrganizationCapabilityIcon";
+import { MessageCapabilityIcon } from "./MessageResourceTags";
+import { AutomationIcon } from "./AutomationIcon";
 import { invoke } from "@tauri-apps/api/core";
 import type { ComposerAttachments } from "@/lib/composer-attachments";
 import { getRelativeFilePath } from "@/lib/file-paths";
+import { bindNativeFileDrop, containsPhysicalDrop } from "@/lib/composer-drop";
 import { annotateSkillCommandCapabilities } from "@/lib/organization-capability";
 import { composerCommandLabel, parseComposerCommand, restoreComposerCommand } from "@/lib/composer-command";
 
@@ -106,6 +109,10 @@ interface Props {
   onToolPresetChange?: (preset: ToolPreset) => void;
   planMode?: EurekaPlanState;
   onPlanModeChange?: (planning: boolean) => void;
+  automationMode?: { enabled: boolean; ready: boolean; changing: boolean; error?: string | null };
+  automationPrompt?: { taskId: string; text: string };
+  onAutomationModeChange?: (enabled: boolean) => Promise<void> | void;
+  onAutomationRetry?: () => void;
   onCancelPlan?: () => Promise<unknown> | unknown;
   onOpenPlanReview?: () => void;
   thinkingLevel?: "auto" | "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
@@ -201,6 +208,7 @@ type SlashCommandPaletteItem = SlashCommandInfo | {
 type SlashCommandSource = SlashCommandPaletteItem["source"];
 
 const BUILTIN_SLASH_COMMANDS: SlashCommandPaletteItem[] = [
+  { name: "automation", description: "automation.command.description", source: "builtin" },
   { name: "compact", description: "chat.commandCompact", source: "builtin" },
   { name: "reload", description: "chat.commandReload", source: "builtin" },
   { name: "name", description: "chat.commandName", source: "builtin" },
@@ -298,6 +306,8 @@ function CommandPaletteIcon({ kind, commandName }: { kind: "add" | "plan" | Comm
 
   if (kind === "builtin") {
     switch (commandName) {
+      case "automation":
+        return <AutomationIcon size={16} />;
       case "compact":
         return <svg {...common}><path d="m4 4 5 5M4 9h5V4m11 16-5-5m5 0h-5v5" /></svg>;
       case "copy":
@@ -327,7 +337,7 @@ function CommandPaletteIcon({ kind, commandName }: { kind: "add" | "plan" | Comm
 }
 
 export function SlashCommandPaletteIcon({ command, source }: { command: SlashCommandPaletteItem; source: CommandPaletteSource }) {
-  if (command.source === "plugin") return <OrganizationCapabilityIcon capability={command.plugin} size={16} />;
+  if (command.source === "plugin") return command.plugin.capabilityId.startsWith("automation:") ? <AutomationIcon size={16} /> : <OrganizationCapabilityIcon capability={command.plugin} size={16} />;
   if ("organizationCapability" in command && command.organizationCapability)
     return <OrganizationCapabilityIcon capability={command.organizationCapability} size={16} type={command.source === "skill" ? "Skill" : "MCP"} />;
   return <CommandPaletteIcon kind={source} commandName={command.source === "builtin" ? command.name : undefined} />;
@@ -483,7 +493,7 @@ export const ChatInput = React.memo(forwardRef<ChatInputHandle, Props>(function 
   contextControl,
   onSend, onAbort, onSteer, onFollowUp, isStreaming, inputLocked = false, model, isAutoModelSelection, modelNames, modelList, modelError, modelScopeWarnings, onModelChange, modelSwitching,
   onAbortCompaction, isCompacting, compactError, compactResult,
-  planMode, onPlanModeChange, onCancelPlan, onOpenPlanReview,
+  planMode, onPlanModeChange, onCancelPlan, onOpenPlanReview, automationMode, automationPrompt, onAutomationModeChange, onAutomationRetry,
   thinkingLevel, onThinkingLevelChange, availableThinkingLevels, thinkingLevelMap,
   retryInfo, queuedMessages, inputHistory = [], onRecallQueue,
   slashCommands, slashCommandsLoading, onLoadSlashCommands,
@@ -522,6 +532,8 @@ export const ChatInput = React.memo(forwardRef<ChatInputHandle, Props>(function 
   const [attachmentJobs, setAttachmentJobs] = useState(0);
   const attachmentJobsRef = useRef(0);
   const nativePasteRef = useRef<Promise<boolean> | null>(null);
+  const nativeDropTarget = useRef<HTMLDivElement>(null);
+  const [nativeFileDrag, setNativeFileDrag] = useState(false);
   const [selectedPlugins, setSelectedPlugins] = useState<SelectedPlugin[]>(() => draftKey ? getDraft(draftKey)?.selectedPlugins ?? [] : []);
   const selectedPluginsRef = useRef(selectedPlugins);
   const removedPluginSelectionsRef = useRef(new Map<string, Set<string>>());
@@ -625,22 +637,25 @@ export const ChatInput = React.memo(forwardRef<ChatInputHandle, Props>(function 
     });
   }, [composerCommand]);
 
+  const fillEmptyComposer = useCallback((text: string, caretAtEnd = false) => {
+    text = restoreComposerCommand(text, composerCommandNames);
+    const ta = textareaRef.current;
+    const destination = draftKeyRef.current;
+    const current = valueRef.current;
+    if (current.trim()) return;
+    valueRef.current = text;
+    setValue(text);
+    setAtQuery(null);
+    requestAnimationFrame(() => {
+      if (!ta || !ta.isConnected || textareaRef.current !== ta || draftKeyRef.current !== destination) return;
+      ta.focus();
+      if (caretAtEnd && valueRef.current === text) ta.setSelectionRange(text.length, text.length);
+      ta.style.height = "auto";
+      ta.style.height = `${Math.min(ta.scrollHeight, 200)}px`;
+    });
+  }, [composerCommandNames]);
   useImperativeHandle(ref, () => ({
-    insertIfEmpty(text: string) {
-      text = restoreComposerCommand(text, composerCommandNames);
-      const ta = textareaRef.current;
-      const current = valueRef.current;
-      if (current.trim()) return;
-      valueRef.current = text;
-      setValue(text);
-      setAtQuery(null);
-      requestAnimationFrame(() => {
-        if (!ta) return;
-        ta.focus();
-        ta.style.height = "auto";
-        ta.style.height = `${Math.min(ta.scrollHeight, 200)}px`;
-      });
-    },
+    insertIfEmpty(text: string) { fillEmptyComposer(text); },
     replaceMessage(message: UserMessage) {
       const ta = textareaRef.current;
       const current = valueRef.current;
@@ -923,6 +938,28 @@ export const ChatInput = React.memo(forwardRef<ChatInputHandle, Props>(function 
     finally { attachmentJobsRef.current--; setAttachmentJobs(attachmentJobsRef.current); }
   }, [attachResponse, processImageFiles, t]);
 
+  useEffect(() => {
+    if (!("__TAURI_INTERNALS__" in window)) return;
+    let disposed = false, stop: (() => void) | undefined;
+    void import("@tauri-apps/api/webview").then(({ getCurrentWebview }) => {
+      if (disposed) return;
+      stop = bindNativeFileDrop(handler => getCurrentWebview().onDragDropEvent(handler), {
+        contains(position) {
+          const target = nativeDropTarget.current, scale = window.devicePixelRatio || 1;
+          if (inputLocked || !target || !containsPhysicalDrop(target.getBoundingClientRect(), position, scale)) return false;
+          const hit = document.elementFromPoint(position.x / scale, position.y / scale);
+          return Boolean(hit && target.contains(hit));
+        },
+        hover: setNativeFileDrag,
+        drop(paths) {
+          const destination = draftKeyRef.current;
+          void attachPaths(paths).catch(cause => { if (draftKeyRef.current === destination) setAttachmentError(cause instanceof Error ? cause.message : String(cause)); });
+        },
+      });
+    }).catch(() => { if (!disposed) setNativeFileDrag(false); });
+    return () => { disposed = true; stop?.(); setNativeFileDrag(false); };
+  }, [attachPaths, inputLocked]);
+
   const pasteDesktopFiles = useCallback(async () => {
     if (!("__TAURI_INTERNALS__" in window)) return false;
     const destination = draftKeyRef.current;
@@ -1041,6 +1078,15 @@ export const ChatInput = React.memo(forwardRef<ChatInputHandle, Props>(function 
     setSelectedPlugins(draft?.selectedPlugins ?? []);
   }, [draftKey]);
 
+  const seededAutomationTasks = useRef(new Set<string>());
+  useEffect(() => {
+    if (!automationPrompt || draftKeyRef.current !== draftKey || seededAutomationTasks.current.has(automationPrompt.taskId)) return;
+    seededAutomationTasks.current.add(automationPrompt.taskId);
+    // Seed once after normal draft recovery. Never replace user text, restore a
+    // deliberately cleared prefix, or reinsert it after sending/reloading state.
+    fillEmptyComposer(automationPrompt.text, true);
+  }, [automationPrompt, draftKey, fillEmptyComposer]);
+
   const resizeFrameRef = useRef<number | null>(null);
   const scheduleTextareaResize = useCallback(() => {
     if (resizeFrameRef.current !== null) return;
@@ -1086,18 +1132,22 @@ export const ChatInput = React.memo(forwardRef<ChatInputHandle, Props>(function 
   const handleSend = useCallback(async () => {
     const msg = value.trim();
     if (!msg && !attachedImages.length && !references.length) return;
-    if (isStreaming || inputLocked || attachmentJobsRef.current) return;
+    if (isStreaming || inputLocked || attachmentJobsRef.current || automationMode?.enabled && (!automationMode.ready || automationMode.changing || automationMode.error)) return;
     onAudioUnlock?.();
-    if (!attachedImages.length && !references.length && msg.startsWith("/") && onBuiltinCommand) {
+    if (msg.startsWith("/") && onBuiltinCommand && (!attachedImages.length && !references.length || /^\/(?:automation|自动化)(?:\s|$)/.test(msg))) {
       const result = await onBuiltinCommand(msg);
       if (result.handled) {
-        if (!result.error) clearInput();
+        if (!result.error) {
+          if (result.submission !== undefined) { clearInput(); onSend(result.submission, attachedImages.length ? attachedImages : undefined, references, selectedPlugins); }
+          else if (attachedImages.length || references.length) setValue("");
+          else clearInput();
+        }
         return;
       }
     }
     clearInput();
     onSend(msg, attachedImages.length ? attachedImages : undefined, references, selectedPlugins);
-  }, [value, attachedImages, references, selectedPlugins, isStreaming, inputLocked, onBuiltinCommand, onSend, clearInput, onAudioUnlock]);
+  }, [value, attachedImages, references, selectedPlugins, isStreaming, inputLocked, automationMode, onBuiltinCommand, onSend, clearInput, onAudioUnlock]);
 
   const slashQuery = value.startsWith("/") && !/\s/.test(value.slice(1))
     ? value.slice(1).toLowerCase()
@@ -1161,27 +1211,20 @@ export const ChatInput = React.memo(forwardRef<ChatInputHandle, Props>(function 
     commands: displayedSlashCommands,
     groups: groupedSlashCommands,
   } = buildSlashCommandLayout(filteredSlashCommands, skillDormancy);
-  const { groups: groupedAddMenuCommands } = buildSlashCommandLayout(filteredAddMenuCommands, skillDormancy);
+  const { groups: groupedAddMenuCommands } = buildSlashCommandLayout(filteredAddMenuCommands.filter(c => c.name !== "automation" || c.source !== "builtin"), skillDormancy);
   const addImageMatches = !addMenuQuery.trim() || [
     t("chat.addFiles"),
     t("chat.chooseAttachments"),
   ].join(" ").toLowerCase().includes(addMenuQuery.trim().toLowerCase());
   const planModeSearchText = `${t("plan.mode")} ${t("plan.enableDescription")} plan planning`;
-  const planModeMatches = Boolean(onPlanModeChange) && !planMode?.planModeActive && (!addMenuQuery.trim() || planModeSearchText.toLowerCase().includes(addMenuQuery.trim().toLowerCase()));
+  const planModeMatches = Boolean(onPlanModeChange) && !automationMode?.enabled && !planMode?.planModeActive && (!addMenuQuery.trim() || planModeSearchText.toLowerCase().includes(addMenuQuery.trim().toLowerCase()));
+  const automationMatches = Boolean(onAutomationModeChange) && !automationMode?.enabled && (!addMenuQuery.trim() || `${t("automation.command.label")} ${t("automation.command.description")} automation`.toLowerCase().includes(addMenuQuery.trim().toLowerCase()));
   const stopCompactionMatches = Boolean(isCompacting && onAbortCompaction) && `${t("chat.stopCompaction")} compact`.toLowerCase().includes(addMenuQuery.trim().toLowerCase());
-  const addMenuHasResults = addImageMatches || planModeMatches || stopCompactionMatches || filteredAddMenuCommands.length > 0;
+  const addMenuHasResults = addImageMatches || planModeMatches || automationMatches || stopCompactionMatches || groupedAddMenuCommands.length > 0;
   const commandPaletteBackground = isDark ? "var(--bg-panel)" : "#ffffff";
   const commandPaletteRadius = 8;
 
   const hasInputText = Boolean(value.trim());
-  const referenceNameCounts = React.useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const reference of references) {
-      const name = reference.path.replace(/\\/g, "/").split("/").at(-1) ?? reference.path;
-      counts.set(name, (counts.get(name) ?? 0) + 1);
-    }
-    return counts;
-  }, [references]);
   const canQueueStreamingMessage = !inputLocked && !attachmentJobs && Boolean(onSteer || onFollowUp)
     && (hasInputText || attachedImages.length > 0 || references.length > 0);
   // The execution stop action is wider than the normal send action. Reserve
@@ -1366,7 +1409,14 @@ export const ChatInput = React.memo(forwardRef<ChatInputHandle, Props>(function 
   }, [composerCommandNames]);
 
   const applySlashCommand = useCallback((command: SlashCommandPaletteItem) => {
+    if (command.source === "builtin" && command.name === "automation") {
+      void onAutomationModeChange?.(true); setValue(text => text.startsWith("/") && !/\s/.test(text) ? "" : text); setAddMenuOpen(false); setAddMenuQuery(""); setSlashMenuOpen(false); requestAnimationFrame(() => textareaRef.current?.focus()); return;
+    }
     if (command.source === "plugin") {
+      if (command.plugin.automation && (automationMode?.enabled || planMode?.planModeActive)) {
+        setAttachmentError("请先退出自动化创建或计划模式，再调用已保存的自动化应用。");
+        return;
+      }
       if (!["installed", "loaded"].includes(command.plugin.state)) {
         window.alert(`${command.name}（${command.plugin.state}）：请在组织插件详情检查认证、启用状态并重载会话。`);
         return;
@@ -1392,7 +1442,7 @@ export const ChatInput = React.memo(forwardRef<ChatInputHandle, Props>(function 
       ta.style.height = "auto";
       ta.style.height = `${Math.min(ta.scrollHeight, 200)}px`;
     });
-  }, []);
+  }, [onAutomationModeChange, automationMode?.enabled, planMode?.planModeActive]);
 
   const sendQueued = useCallback((mode: "steer" | "followup", pending?: { message: string; images: AttachedImage[]; references: ChatDraftReference[]; selectedPlugins?: SelectedPlugin[] }) => {
     if (attachmentJobsRef.current) return;
@@ -1995,7 +2045,7 @@ export const ChatInput = React.memo(forwardRef<ChatInputHandle, Props>(function 
                 />
                 <CommandList className="max-h-none flex-1 px-1.5 pb-1.5" style={{ maxHeight: isMobile ? 224 : 264 }}>
                   {!addMenuHasResults && <CommandEmpty>{t("chat.noMatchingCommands")}</CommandEmpty>}
-                  {(addImageMatches || planModeMatches || stopCompactionMatches) && (
+                  {(addImageMatches || planModeMatches || automationMatches || stopCompactionMatches) && (
                     <CommandGroup heading={t("chat.add")}>
                       {addImageMatches && <CommandPaletteItem
                         value="add-files"
@@ -2017,6 +2067,9 @@ export const ChatInput = React.memo(forwardRef<ChatInputHandle, Props>(function 
                         <span className={paletteStyles.icon}><CommandPaletteIcon kind="plan" /></span>
                         <span className={paletteStyles.text}><span data-command-label className={paletteStyles.label}>{t("plan.mode")}</span><span data-command-description className={paletteStyles.description}>{t("plan.enableDescription")}</span></span>
                       </CommandPaletteItem>}
+                      {automationMatches && <CommandPaletteItem value="automation-mode" disabled={isStreaming || inputLocked || !automationMode?.ready || automationMode?.changing} tooltip={t("automation.command.description")} onSelect={() => { setAddMenuOpen(false); setAddMenuQuery(""); void onAutomationModeChange?.(true); }} className={`${paletteStyles.row} cursor-pointer`}>
+                        <span className={paletteStyles.icon}><CommandPaletteIcon kind="builtin" commandName="automation" /></span><span className={paletteStyles.text}><span data-command-label className={paletteStyles.label}>{t("automation.command.label")}</span><span data-command-description className={paletteStyles.description}>{t("automation.command.description")}</span></span>
+                      </CommandPaletteItem>}
                       {stopCompactionMatches && <CommandPaletteItem value="stop-compaction" onSelect={() => { onAbortCompaction?.(); setAddMenuOpen(false); setAddMenuQuery(""); }} data-destructive className={`${paletteStyles.row} cursor-pointer text-red-500`}>
                         <span className="flex size-5 shrink-0 items-center justify-center"><svg width="14" height="14" viewBox="0 0 10 10" aria-hidden="true"><rect x="2" y="2" width="6" height="6" rx="1" fill="currentColor" /></svg></span>
                         <span className="text-[13px] font-normal">{t("chat.stopCompaction")}</span>
@@ -2031,7 +2084,7 @@ export const ChatInput = React.memo(forwardRef<ChatInputHandle, Props>(function 
                       {group.items.map(({ command }) => {
                         const dormant = isDormantSkillCommand(command, skillDormancy);
                         const description = getSlashDescription(command, t);
-                        const label = command.source === "plugin" ? command.name : composerCommandLabel(command.name);
+                        const label = command.source === "builtin" && command.name === "automation" ? t("automation.command.label") : command.source === "plugin" ? command.name : composerCommandLabel(command.name);
                         return (
                           <CommandPaletteItem
                             key={`${command.source}:${command.name}`}
@@ -2172,7 +2225,7 @@ export const ChatInput = React.memo(forwardRef<ChatInputHandle, Props>(function 
                         const active = index === slashActiveIndex;
                         const dormant = isDormantSkillCommand(command, skillDormancy);
                         const description = getSlashDescription(command, t);
-                        const label = command.source === "plugin" ? command.name : composerCommandLabel(command.name);
+                        const label = command.source === "builtin" && command.name === "automation" ? t("automation.command.label") : command.source === "plugin" ? command.name : composerCommandLabel(command.name);
                         return (
                           <CommandPaletteItem
                             key={`${command.source}:${command.name}`}
@@ -2310,6 +2363,8 @@ export const ChatInput = React.memo(forwardRef<ChatInputHandle, Props>(function 
             </div>
           )}
           <div
+            ref={nativeDropTarget}
+            data-native-file-drag={nativeFileDrag || undefined}
             className={planModeActive ? `plan-mode-composer${planModeGlowReady ? " plan-mode-composer-active" : ""}` : undefined}
             style={{
               position: "relative",
@@ -2324,7 +2379,7 @@ export const ChatInput = React.memo(forwardRef<ChatInputHandle, Props>(function 
               alignItems: "flex-start",
               background: "var(--input-bg)",
               border: `1px solid ${planModeActive && planModeGlowReady ? "color-mix(in srgb, #60a5fa 54%, var(--border))" : bashMode ? "var(--tool-bg)" : "color-mix(in srgb, var(--border) 70%, transparent)"}`,
-              borderRadius: 16,
+              borderRadius: "var(--radius-card)",
               padding: "10px 10px 10px 14px",
               boxShadow: planModeActive && planModeGlowReady
                 ? "0 9px 24px rgba(37, 99, 235, 0.16), 0 0 0 1px rgba(96, 165, 250, 0.3), 0 0 16px rgba(59, 130, 246, 0.16)"
@@ -2334,6 +2389,7 @@ export const ChatInput = React.memo(forwardRef<ChatInputHandle, Props>(function 
                 : "border-color var(--transition-ui), background var(--transition-ui), box-shadow var(--transition-ui)",
             } as React.CSSProperties}
           >
+          {automationMode?.error && <div role="alert" className="mb-2 flex w-full items-center gap-2 text-xs text-destructive"><span className="min-w-0 flex-1 break-words">{automationMode.error}</span><Button type="button" variant="outline" size="sm" onClick={onAutomationRetry} disabled={!onAutomationRetry || automationMode.changing}>{t("automation.command.retry")}</Button></div>}
           {attachedImages.length > 0 && (
             <div aria-label={t("chat.attachedImageCount", { count: attachedImages.length })} style={{ display: "flex", gap: 8, width: "100%", minWidth: 0, overflowX: "auto", padding: "2px 0", boxSizing: "border-box" }}>
               {attachedImages.map((img, i) => (
@@ -2359,12 +2415,13 @@ export const ChatInput = React.memo(forwardRef<ChatInputHandle, Props>(function 
               ))}
             </div>
           )}
-          {selectedPlugins.length > 0 && <div className="composer-plugin-tags">{selectedPlugins.map((plugin) => {
+          {(selectedPlugins.length > 0 || references.length > 0) && <div className="message-resource-tags composer-resource-tags">
+            {selectedPlugins.map((plugin) => {
             const actual = composerPlugins.find((item) => item.source === plugin.source && item.capabilityId === plugin.capabilityId);
             const unavailable = composerPluginsReady && (!actual || actual.digest !== plugin.digest || !["installed", "loaded"].includes(actual.state));
-            return <span key={`${plugin.source}:${plugin.capabilityId}`} className="plugin-tag" title={unavailable ? "插件状态已变化，请检查安装、重新选择并重载会话" : plugin.selectionMode === "persistent" ? "持续使用此插件，点击 × 移除" : undefined}>
-              <OrganizationCapabilityIcon capability={plugin} size={16} />{plugin.name}{unavailable && <span> · 待检查</span>}
-              <button type="button" aria-label={`移除 ${plugin.name}`} onClick={() => {
+            return <span key={`${plugin.source}:${plugin.capabilityId}`} className="message-resource-tag message-resource-capability" title={unavailable ? "插件状态已变化，请检查安装、重新选择并重载会话" : plugin.selectionMode === "persistent" ? "持续使用此插件，点击 × 移除" : undefined}>
+              <MessageCapabilityIcon plugin={plugin} cwd={cwd ?? undefined} /><span className="message-resource-label">{plugin.name}</span>{unavailable && <span> · 待检查</span>}
+              <button type="button" className="message-resource-remove" aria-label={`移除 ${plugin.name}`} onClick={() => {
                 const next = selectedPluginsRef.current.filter((p) => p.source !== plugin.source || p.capabilityId !== plugin.capabilityId);
                 const key = draftKeyRef.current ?? "";
                 const removed = removedPluginSelectionsRef.current.get(key) ?? new Set<string>();
@@ -2373,34 +2430,31 @@ export const ChatInput = React.memo(forwardRef<ChatInputHandle, Props>(function 
                 if (key) setDraft(key, { value: valueRef.current, images: attachedImagesRef.current.map(imageToDraftImage), references: referencesRef.current, selectedPlugins: next });
               }}>×</button>
             </span>;
-          })}</div>}
-          {references.length > 0 && (
-            <div aria-label={t("chat.referencedFiles")} style={{ display: "flex", flexWrap: "wrap", gap: 6, width: "100%" }}>
-              {references.map((reference) => {
+          })}
+            {references.map((reference) => {
                 const segments = reference.path.replace(/\\/g, "/").split("/");
                 const baseName = segments.at(-1) ?? reference.path;
-                const name = `${referenceNameCounts.get(baseName)! > 1 ? reference.path : baseName}${reference.isDir ? "/" : ""}`;
+                const name = `${baseName}${reference.isDir ? "/" : ""}`;
                 return (
-                  <div key={`${reference.isDir ? "dir" : "file"}:${reference.path}`} title={reference.path} style={{ display: "inline-flex", alignItems: "center", maxWidth: "100%", height: 26, border: "1px solid var(--border)", borderRadius: 7, background: "var(--bg-panel)", color: "var(--text-muted)", overflow: "hidden" }}>
-                    <button type="button" onClick={() => onOpenReference?.(reference)} aria-label={t("chat.openReference", { path: reference.path })} style={{ display: "inline-flex", alignItems: "center", gap: 5, minWidth: 0, height: "100%", border: 0, background: "transparent", color: "inherit", padding: "0 6px 0 8px", cursor: "pointer" }}>
-                      <span style={{ display: "inline-flex", flexShrink: 0 }}>{reference.isDir ? <FolderIcon size={14} /> : getFileIcon(name, 14)}</span>
-                      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 12 }}>{name}</span>
+                  <div key={`${reference.isDir ? "dir" : "file"}:${reference.path}`} title={reference.path} className="message-resource-tag">
+                    <button type="button" onClick={() => onOpenReference?.(reference)} aria-label={t("chat.openReference", { path: reference.path })} className="message-resource-open">
+                      <span className="message-resource-icon">{reference.isDir ? <FolderIcon size={16} /> : getFileIcon(baseName, 16)}</span>
+                      <span className="message-resource-label">{name}</span>
                     </button>
-                    <button type="button" onClick={() => setReferences((current) => { const next = current.filter((item) => item.path !== reference.path || item.isDir !== reference.isDir); referencesRef.current = next; return next; })} aria-label={t("chat.removeReference", { path: reference.path })} title={t("chat.removeReference", { path: reference.path })} style={{ width: 24, height: "100%", display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0, border: 0, borderLeft: "1px solid var(--border)", background: "transparent", color: "var(--text-dim)", cursor: "pointer" }}>
+                    <button type="button" onClick={() => setReferences((current) => { const next = current.filter((item) => item.path !== reference.path || item.isDir !== reference.isDir); referencesRef.current = next; return next; })} aria-label={t("chat.removeReference", { path: reference.path })} title={t("chat.removeReference", { path: reference.path })} className="message-resource-remove">
                       <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"><path d="m2 2 6 6M8 2 2 8" /></svg>
                     </button>
                   </div>
                 );
               })}
-            </div>
-          )}
+          </div>}
           {/* The controls below intentionally overlap the composer. Keep their
               reserved space outside the textarea so content sizing can never
               consume it. */}
           <div style={{ width: "100%", minWidth: 0, paddingBottom: 42 }}>
           <div className="composer-command-editor" style={{ position: "relative", minWidth: 0 }}>
           {composerCommand && activeComposerCommand ? <div style={{ position: "absolute", inset: 0, overflow: "hidden", pointerEvents: "none" }}>
-          <span ref={commandChipRef} className="composer-command-chip" title={composerCommand.label} style={{ display: "inline-flex", alignItems: "center", gap: 6, position: "absolute", top: 0, left: 0, zIndex: 1, pointerEvents: "auto", maxWidth: "calc(100% - 48px)", height: "max(26px, var(--message-line-height))", boxSizing: "border-box", padding: "2px 6px 2px 8px", border: "1px solid color-mix(in srgb, var(--accent) 22%, transparent)", borderRadius: 7, background: "color-mix(in srgb, var(--accent) 7%, var(--bg-panel))", color: "var(--accent)", fontSize: "var(--message-font-size)", lineHeight: "20px" }}>
+          <span ref={commandChipRef} className="composer-command-chip message-resource-tag message-resource-capability" title={composerCommand.label} style={{ display: "inline-flex", alignItems: "center", gap: 6, position: "absolute", top: 0, left: 0, zIndex: 1, pointerEvents: "auto", maxWidth: "calc(100% - 48px)", height: "max(28px, var(--message-line-height))", boxSizing: "border-box", padding: "2px 6px 2px 8px", border: "1px solid color-mix(in srgb, var(--accent) 12%, var(--border))", borderRadius: "var(--radius-card)", background: "color-mix(in srgb, var(--accent) 7%, var(--bg-panel))", color: "var(--accent)", fontWeight: 600, fontSize: "var(--message-font-size)", lineHeight: "20px" }}>
             <SlashCommandPaletteIcon command={activeComposerCommand} source={activeComposerCommand.source === "prompt" ? "builtin" : activeComposerCommand.source} />
             <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: 500 }}>{composerCommand.label}</span>
             <button type="button" disabled={inputLocked} onClick={removeComposerCommand} aria-label={t("chat.removeCommand", { name: composerCommand.label })} style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0, width: 20, height: 20, border: 0, borderRadius: 4, background: "transparent", color: "inherit", cursor: inputLocked ? "default" : "pointer" }}>×</button>
@@ -2539,7 +2593,7 @@ export const ChatInput = React.memo(forwardRef<ChatInputHandle, Props>(function 
             <button
               type="button"
               onClick={handleSend}
-              disabled={inputLocked || attachmentJobs > 0 || (!value.trim() && !attachedImages.length && !references.length)}
+              disabled={inputLocked || attachmentJobs > 0 || Boolean(automationMode?.enabled && (!automationMode.ready || automationMode.changing || automationMode.error)) || (!value.trim() && !attachedImages.length && !references.length)}
               style={{
                 pointerEvents: "auto",
                 flexShrink: 0,
@@ -2660,7 +2714,7 @@ export const ChatInput = React.memo(forwardRef<ChatInputHandle, Props>(function 
                     type="button"
                     disabled={modelSwitching}
                     aria-busy={modelSwitching || undefined}
-                    aria-label={currentName ? `Change model: ${currentName}` : "Change model"}
+                    aria-label={currentName ? t("chat.changeModelTo", { model: currentName }) : t("chat.changeModel")}
                     className={`${selectorStyles.trigger} ${selectorStyles.modelTrigger}`}
                     onKeyDown={(event) => {
                       if (event.key === "ArrowDown") {
@@ -2670,10 +2724,10 @@ export const ChatInput = React.memo(forwardRef<ChatInputHandle, Props>(function 
                     }}
                   >
                     {modelSwitching && <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" style={{ animation: "spin 0.8s linear infinite", flexShrink: 0 }} aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.64-6.36" /></svg>}
-                    <span className={selectorStyles.name}>{currentName ?? (modelOptions.length > 0 ? "Select model" : "No models")}</span>
+                    <span className={selectorStyles.name}>{currentName ?? t(modelOptions.length > 0 ? "chat.selectModel" : "chat.noModels")}</span>
                     <ChevronDownIcon size={13} aria-hidden="true" />
                   </button>} />} />
-                  <TooltipContent>{modelSwitching ? "Switching model" : modelOptions.length > 0 ? "Change model" : "No available models"}</TooltipContent>
+                  <TooltipContent>{t(modelSwitching ? "chat.switchingModel" : modelOptions.length > 0 ? "chat.changeModel" : "chat.noAvailableModels")}</TooltipContent>
                 </Tooltip>
                 <Popover.Portal>
                   <Popover.Positioner side="top" align="start" sideOffset={6} collisionPadding={8} style={{ zIndex: 1200 }}>
@@ -2691,7 +2745,7 @@ export const ChatInput = React.memo(forwardRef<ChatInputHandle, Props>(function 
                         <CommandList style={{ flex: 1, minHeight: 0, maxHeight: "none" }}>
                           {modelsByProvider.length === 0 ? (
                             <CommandEmpty style={{ display: "block", color: "var(--text-muted)", fontSize: 12 }}>
-                              {modelFilter.trim() ? t("chat.noMatchingModels") : "No available models"}
+                              {modelFilter.trim() ? t("chat.noMatchingModels") : t("chat.noAvailableModels")}
                             </CommandEmpty>
                           ) : modelsByProvider.map((group) => (
                             <CommandGroup key={group.provider} heading={group.provider} className={selectorStyles.modelGroup}>
@@ -2843,30 +2897,35 @@ export const ChatInput = React.memo(forwardRef<ChatInputHandle, Props>(function 
               </DropdownMenu>
             )}
 
-            {(planMode?.planModeActive || planMode?.phase === "executing") && (
+            {automationMode?.enabled && (
               <>
-              <span aria-hidden="true" style={{ width: 1, height: 16, margin: "0 4px", background: "var(--border)", flexShrink: 0 }} />
+              <span aria-hidden="true" className={selectorStyles.modeDivider} />
               <Tooltip>
                 <TooltipTrigger render={<button
                   type="button"
+                  className={selectorStyles.modeTag}
+                  disabled={automationMode.changing}
+                  onClick={() => void onAutomationModeChange?.(false)}
+                  aria-label={t("automation.command.exit")}
+                >
+                  <span className="flex size-4 shrink-0 items-center justify-center"><CommandPaletteIcon kind="builtin" commandName="automation" /></span>
+                  <span style={{ whiteSpace: "nowrap" }}>{t("automation.command.label")}</span>
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="m18 6-12 12M6 6l12 12" /></svg>
+                </button>} />
+                <TooltipContent>{t("automation.command.exit")}</TooltipContent>
+              </Tooltip>
+              </>
+            )}
+            {(planMode?.planModeActive || planMode?.phase === "executing") && (
+              <>
+              <span aria-hidden="true" className={selectorStyles.modeDivider} />
+              <Tooltip>
+                <TooltipTrigger render={<button
+                  type="button"
+                  className={selectorStyles.modeTag}
                   onClick={() => { if (planMode?.phase !== "executing") onPlanModeChange?.(false); }}
                   disabled={planMode?.phase === "reviewing" || planMode?.phase === "executing"}
                   aria-label={planMode?.phase === "executing" ? t("plan.mode") : t("plan.cancelMode")}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 5,
-                    height: 28,
-                    marginLeft: 2,
-                    padding: "0 7px",
-                    border: "none",
-                    borderRadius: 7,
-                    background: "transparent",
-                    color: "var(--text-muted)",
-                    cursor: planMode?.phase === "reviewing" || planMode?.phase === "executing" ? "default" : "pointer",
-                    fontSize: 12,
-                    opacity: planMode?.phase === "reviewing" || planMode?.phase === "executing" ? 0.55 : 1,
-                  }}
                 >
                   <span className="flex size-4 shrink-0 items-center justify-center"><CommandPaletteIcon kind="plan" /></span>
                   <span style={{ whiteSpace: "nowrap" }}>{t("plan.mode")}</span>

@@ -1,7 +1,7 @@
 # Settings page template
 
-Every settings page uses `components/SettingsLayout.tsx`. System, models and
-usage statistics are the reference consumers. Add future pages to the same
+Every settings page uses `components/SettingsLayout.tsx`. System, models, browser
+management, automation management and usage statistics are the reference consumers. Add future pages to the same
 template rather than copying page headers or defining another content width.
 
 | Element | Shared rule |
@@ -31,6 +31,6 @@ template rather than copying page headers or defining another content width.
   settings sidebar and separate dialogs are outside the content template.
 
 Validate title position, content width, section typography, card radius and
-scrolling on all three pages after changing the template. Also check a narrow
+scrolling on all settings pages after changing the template. Also check a narrow
 content area and both themes. Do not run `next build` while the development
 server is running.

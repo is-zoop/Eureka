@@ -1,10 +1,12 @@
 import type { SessionEntry } from "./types";
 import type { SelectedPlugin } from "./plugin-selection";
+import type { AutomationTaskRef } from "./automation-mode";
 import { userInputSummary, validateUserInputResponse, type UserInputQuestion, type UserInputResponse } from "./user-input";
 
 export const CLARIFICATION_ENTRY = "eureka_clarification";
 export interface ClarificationTask {
   id: string; clarificationEnabled: boolean; plugins: SelectedPlugin[];
+  automationTask?: AutomationTaskRef;
   owner?: { source: string; subject: string };
 }
 export interface ClarificationGroup {
@@ -19,6 +21,8 @@ export interface ClarificationQueuedInput {
   behavior: "steer" | "followUp";
   owner?: { source: string; subject: string };
   paused?: boolean;
+  automationTask?: AutomationTaskRef;
+  automationGeneration?: number;
 }
 export interface ClarificationState { version: 1; revision: number; groups: ClarificationGroup[]; queue: ClarificationQueuedInput[] }
 export const EMPTY_CLARIFICATION: ClarificationState = { version: 1, revision: 0, groups: [], queue: [] };

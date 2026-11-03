@@ -14,7 +14,7 @@ import {
 import { captureDesktopEditTarget, executeDesktopEdit, restoreDesktopEditTarget, type DesktopEditCommand, type DesktopEditTarget } from "@/lib/desktop-edit";
 import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogTitle } from "./ui/alert-dialog";
 import { LabelTooltip } from "./LabelTooltip";
-import { version } from "@/package.json";
+import packageInfo from "@/package.json";
 import styles from "./DesktopMenus.module.css";
 
 const EDIT_COMMANDS = new Set<DesktopMenuCommand>(["undo", "redo", "cut", "copy", "paste", "select-all"]);
@@ -221,7 +221,7 @@ export function DesktopMenus() {
       <AlertDialogContent className="gap-3 p-6">
         <div className={styles.aboutLogo} aria-hidden="true" />
         <AlertDialogTitle>{t("desktop.about")}</AlertDialogTitle>
-        <div className={styles.version}>Eureka {version}</div>
+        <div className={styles.version}>Eureka {packageInfo.version}</div>
         <AlertDialogDescription>{t("desktop.aboutDescription")}</AlertDialogDescription>
         <div className="mt-4 flex"><AlertDialogCancel>{t("i18n.close")}</AlertDialogCancel></div>
       </AlertDialogContent>

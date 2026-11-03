@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { authorizeCreationSessionId } from "@/lib/automation-creation-auth";
 import { getSessionEntries, resolveSessionPath } from "@/lib/session-reader";
 
 export async function GET(
@@ -6,6 +7,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string; entryId: string }> },
 ) {
   const { id, entryId } = await params;
+  try{await authorizeCreationSessionId(id);}catch{return NextResponse.json({error:"请登录创建该自动化的 Haze 账号"},{status:403});}
   const blockIndexParam = new URL(req.url).searchParams.get("blockIndex");
   const blockIndex = blockIndexParam === null ? Number.NaN : Number(blockIndexParam);
   if (!Number.isSafeInteger(blockIndex) || blockIndex < 0) {

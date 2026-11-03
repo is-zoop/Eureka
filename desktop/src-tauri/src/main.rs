@@ -7,8 +7,12 @@ mod desktop_tray;
 mod tray_dismissal;
 mod clipboard_files;
 mod attachment_dialog;
+mod save_file;
 mod webview_layout;
 mod window_preferences;
+mod automation_browser;
+mod browser_overlay;
+mod automation_accounts;
 
 use std::{
     fs::{create_dir_all, File, OpenOptions},
@@ -591,12 +595,27 @@ fn create_window(app: &tauri::AppHandle) -> Result<(), String> {
         }
         local
     };
+    let startup_dark = preferences.theme == "dark"
+        || (preferences.theme == "auto" && matches!(window.theme(), Ok(tauri::Theme::Dark)));
+    let startup_background = if startup_dark {
+        tauri::webview::Color(26, 26, 26, 255)
+    } else {
+        tauri::webview::Color(246, 246, 246, 255)
+    };
     let content = WebviewBuilder::new(CONTENT_LABEL, WebviewUrl::App("startup.html".into()))
+        .background_color(startup_background)
         .zoom_hotkeys_enabled(false)
         // Injected before the Next page renders, including a full reload.
-        .initialization_script(
+        .initialization_script(format!(
+            "window.__EUREKA_DESKTOP_THEME__ = {};\n{}",
+            serde_json::to_string(&preferences.theme).map_err(|error| error.to_string())?,
             "window.__EUREKA_NATIVE_TITLEBAR__ = true; document.addEventListener('DOMContentLoaded', function(){document.documentElement.classList.add('eureka-desktop','eureka-native-titlebar')}, {once:true});"
-        )
+        ))
+        .on_page_load(|view, payload| {
+            if payload.event() == tauri::webview::PageLoadEvent::Started {
+                  automation_browser::release_current(view.app_handle());
+            }
+        })
         .on_navigation(allowed_navigation)
         .on_new_window(|url, _| {
             if matches!(url.scheme(), "http" | "https") {
@@ -828,6 +847,11 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             open_external_url,
+            automation_browser::desktop_automation_browser,
+            automation_browser::desktop_automation_observe,
+            automation_browser::desktop_automation_control,
+            automation_browser::desktop_automation_app,
+            automation_browser::desktop_automation_accounts,
             desktop_window_action,
             set_desktop_navigation_state,
             set_desktop_menu_state,
@@ -839,6 +863,7 @@ fn main() {
             desktop_clipboard_files,
             desktop_select_attachments,
             desktop_select_directory,
+            save_file::desktop_save_file,
             set_desktop_tray_state,
             desktop_tray_snapshot,
             desktop_tray_action,
@@ -853,6 +878,8 @@ fn main() {
             let path = app.path().app_config_dir()?.join("window-state.json");
             let preferences = WindowPreferences::read(&path);
             app.manage(desktop_tray::TrayState::default());
+            app.manage(automation_browser::BrowserState::default());
+            automation_browser::start_expiry(app.handle().clone());
             app.manage(DesktopState {
                 preferences: Mutex::new(preferences),
                 navigation: Mutex::new((false, false)),
@@ -875,6 +902,7 @@ fn main() {
         .expect("error while building Eureka")
         .run(|app, event| {
             if matches!(event, RunEvent::Exit) {
+                automation_browser::close_all(app);
                 save_window_preferences(app);
                 stop_sidecar(app);
             }

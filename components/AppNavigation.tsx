@@ -3,9 +3,11 @@
 import { useLayoutEffect, useRef, type ReactNode } from "react";
 import { useI18n } from "@/hooks/useI18n";
 import { LabelTooltip } from "./LabelTooltip";
+import { AutomationIconPaths } from "./AutomationIcon";
 import styles from "./AppNavigation.module.css";
 
 const GRID_ORIGINS = [[2.5, 2.5], [11.5, 2.5], [11.5, 11.5], [2.5, 11.5]] as const;
+export type AppView = "chat" | "extensions" | "automation";
 
 function GridSquares() {
   const groupRef = useRef<SVGGElement>(null);
@@ -61,8 +63,8 @@ function GridSquares() {
 }
 
 export function AppNavigation({ view, onNavigate, extensionsEnabled, mobile = false, children }: {
-  view: "chat" | "extensions";
-  onNavigate: (view: "chat" | "extensions") => void;
+  view: AppView;
+  onNavigate: (view: AppView) => void;
   extensionsEnabled: boolean;
   mobile?: boolean;
   children?: ReactNode;
@@ -71,6 +73,7 @@ export function AppNavigation({ view, onNavigate, extensionsEnabled, mobile = fa
   const items = [
     { id: "chat" as const, label: t("sidebar.home"), disabled: false },
     { id: "extensions" as const, label: t("sidebar.extensionsCenter"), disabled: !extensionsEnabled },
+    { id: "automation" as const, label: t("automation.navigation"), disabled: false },
   ];
   return (
     <nav className={mobile ? styles.drawer : styles.rail} aria-label={t("sidebar.navigation")} data-app-navigation>
@@ -85,12 +88,14 @@ export function AppNavigation({ view, onNavigate, extensionsEnabled, mobile = fa
               aria-disabled={disabled || undefined}
               onClick={() => { if (!disabled) onNavigate(id); }}
             >
-              <svg className={styles.icon} xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox={id === "chat" ? "0 0 24 24" : "0 0 20 20"} fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <svg className={styles.icon} xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox={id === "extensions" ? "0 0 20 20" : "0 0 24 24"} fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                 {id === "chat" ? (
                   <>
                     <path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8" />
                     <path d="M3 10a2 2 0 0 1 .709-1.528l7-6a2 2 0 0 1 2.582 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
                   </>
+                ) : id === "automation" ? (
+                  <AutomationIconPaths />
                 ) : (
                   <GridSquares />
                 )}

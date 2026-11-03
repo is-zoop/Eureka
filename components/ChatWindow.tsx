@@ -1,5 +1,9 @@
 "use client";
 import { ClarificationGroupCard } from "./ClarificationGroupCard";
+import { AutomationAuthoringCard } from "./AutomationAuthoringCard";
+import { AutomationChatCard } from "./AutomationChatCard";
+import { useChatAutomations } from "@/hooks/useChatAutomations";
+import type { AutomationLaunchRequest } from "@/lib/automation-mode";
 import { blockingClarification } from "@/lib/clarification";
 import { clarificationContinuationIndices, clarificationToolResult } from "@/lib/clarification-display";
 import { splitPluginSelection } from "@/lib/plugin-selection";
@@ -33,6 +37,7 @@ import type { ContextControls } from "@/lib/context-details";
 import { useDragDrop } from "@/hooks/useDragDrop";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { Skeleton } from "./ui/skeleton";
+import { Button } from "./ui/button";
 import type { SessionStatsInfo } from "@/lib/pi-types";
 import type { ChatDraftReference } from "@/lib/draft-store";
 import { getPendingPlanQuestionGroup, getSessionPlans, isDraftPlanEntry, isReviewablePlan, type EurekaPlanAnnotation, type EurekaPlanQuestion, type EurekaPlanState } from "@/lib/plan-mode";
@@ -45,6 +50,9 @@ import {
 } from "@/lib/chat-lazy-load";
 
 interface Props {
+  automationLaunch?: AutomationLaunchRequest | null;
+  onAutomationLaunchHandled?: () => void;
+  automationCreation?:boolean;
   session: SessionInfo | null;
   sessionRunning?: boolean;
   newSessionCwd: string | null;
@@ -146,7 +154,7 @@ function withAssistantBlocks(
   return next;
 }
 
-export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionDraftKey, onAgentEnd, onAttentionNeeded, onSessionCreated, onSessionForked, modelsRefreshKey, chatInputRef, onBranchDataChange, onSystemPromptChange, onSystemPromptLoaderChange, onSessionStatsChange, onOpenFile, onOpenChanges, onOpenComposerReference, playDoneSound = () => {}, unlockAudio, onPlanStateChange, onOpenPlanReview, onContentLoadingChange, onToolPermissionsChange }: Props) {
+export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionDraftKey, automationLaunch, onAutomationLaunchHandled, onAgentEnd, onAttentionNeeded, onSessionCreated, onSessionForked, modelsRefreshKey, chatInputRef, onBranchDataChange, onSystemPromptChange, onSystemPromptLoaderChange, onSessionStatsChange, onOpenFile, onOpenChanges, onOpenComposerReference, playDoneSound = () => {}, unlockAudio, onPlanStateChange, onOpenPlanReview, onContentLoadingChange, onToolPermissionsChange,automationCreation=false }: Props) {
   const { t } = useI18n();
   const { isDark } = useTheme();
   const isMobile = useIsMobile();
@@ -171,26 +179,32 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
   }, [chatInputRef]);
 
   const {
-    loading, error, historyDisplay, historyHasMore, historyLoading, historyError, loadEarlierHistory, streamState, activeLeafId,
+    data, loading, error, historyDisplay, historyHasMore, historyLoading, historyError, loadEarlierHistory, streamState, activeLeafId,
     agentRunning, bashRunning, pendingBash, modelNames, modelList, modelError, modelScopeWarnings, modelThinkingLevels, modelThinkingLevelMaps, toolPreset, thinkingLevel,
     retryInfo, contextUsage, forkingEntryId,
     isCompacting, compactError, compactResult, displayModel: displayModelValue, modelSwitching, sessionStats,
-    slashCommands, slashCommandsLoading, queuedMessages, planMode, clarification, handleClarificationAction,
+    slashCommands, slashCommandsLoading, queuedMessages, planMode, clarification, handleClarificationAction, automation,
     extensionDialog, extensionCustomUi, extensionStatuses, extensionWidgets, respondToExtensionUi, sendExtensionCustomInput,
     isAutoModelSelection,
     agentPhase,
     isNew,
     sessionIdRef, messagesEndRef, scrollContainerRef, messageContentRef, followTail,
     handleSend, handleAbort, handleFork, handleNavigate, handleModelChange,
+    reloadSession,
     handleCompact, handleSteer, handleFollowUp, handlePromptWithStreamingBehavior, handleAbortCompaction,
     handleRecallQueue,
     handleBuiltinSlashCommand,
     handleToolPresetChange, loadToolPermissions, handleThinkingLevelChange, loadSlashCommands,
     handlePlanModeChange, handleSubmitPlan, handlePlanQuestionAnswer, handlePlanReviewUpdate, handleReturnPlanForRevision, handleApprovePlan, handleAbandonPlan,
   } = useAgentSession({
-    session, sessionRunning, newSessionCwd, newSessionDraftKey, onAgentEnd: wrappedOnAgentEnd, onAttentionNeeded, onSessionCreated, onSessionForked,
+    session, sessionRunning, newSessionCwd, newSessionDraftKey, automationLaunch, onAutomationLaunchHandled, onAgentEnd: wrappedOnAgentEnd, onAttentionNeeded, onSessionCreated, onSessionForked,
     modelsRefreshKey, chatInputRef, onBranchDataChange, onSystemPromptChange, onSystemPromptLoaderChange, onSessionStatsPanelOpen: openContextPanel,
   });
+  // A normal homepage conversation can inherit an old working directory. Only
+  // the persisted legacy binding makes it an archived creation conversation.
+  const legacyCreationHistory = data?.sessionId === session?.id && data?.legacyAutomationCreation === true;
+  const [authoringSeenSession,setAuthoringSeenSession]=useState<string|null>(null);
+  useEffect(()=>{if(session?.id&&(automation.enabled||data?.hasAutomationTask))setAuthoringSeenSession(session.id);},[session?.id,automation.enabled,data?.hasAutomationTask]);
 
   useEffect(() => {
     onContentLoadingChange?.(loading);
@@ -330,13 +344,14 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
 
 
   const onDrop = useCallback((files: File[]) => {
-    chatInputRef?.current?.addImages(files);
+    chatInputRef?.current?.addFiles(files);
   }, [chatInputRef]);
 
   const { isDragOver, handleDragEnter, handleDragOver, handleDragLeave, handleDrop } = useDragDrop(onDrop);
 
   const continuationIndices = useMemo(() => clarificationContinuationIndices(messages, clarification.groups), [messages, clarification.groups]);
   const presentationMessages = useMemo(() => messages.filter((_, index) => !continuationIndices.has(index)), [messages, continuationIndices]);
+  const chatAutomations = useChatAutomations(session?.id, messages);
   const clarificationGroups = useMemo(() => new Map(clarification.groups.map((group) => [group.id, group])), [clarification.groups]);
   const visibleMessages = presentationMessages.filter((m) => m.role === "user" || m.role === "assistant");
   // Only the newest assistant response can belong to the currently active
@@ -397,7 +412,7 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
   const pendingPlanQuestions = getPendingPlanQuestionGroup(planMode);
 
   const pendingQuestionGroup = blockingClarification(clarification);
-  const planQuestionElement = pendingQuestionGroup || pendingPlanQuestions.length > 0 ? (
+  const planQuestionElement = !legacyCreationHistory && (pendingQuestionGroup || pendingPlanQuestions.length > 0) ? (
     <div style={{ flexShrink: 0, padding: "0 16px 1px", paddingRight: isMobile ? 16 : CHAT_INPUT_RIGHT_PADDING }}>
       <div style={{ width: "100%", maxWidth: "var(--chat-content-width)", margin: "0 auto" }}>
         {pendingQuestionGroup ? <ClarificationGroupCard key={pendingQuestionGroup.id} group={pendingQuestionGroup} onAction={handleClarificationAction} /> : <PlanQuestionCard questions={pendingPlanQuestions} onAnswer={handlePlanQuestionAnswer} />}
@@ -409,13 +424,17 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
     <ChatInput
       ref={chatInputRef}
       onSend={handleSend}
-      onAbort={handleAbort}
+      onAbort={automationCreation||automation.enabled?()=>{window.dispatchEvent(new CustomEvent("eureka:automation-pause",{detail:{sessionId:session?.id,taskId:automation.task?.id}}));void handleAbort();}:handleAbort}
+      automationMode={automation}
+      automationPrompt={isEmptyNew && automation.ready && !automation.error && automation.task?.baseApp && automation.applicationName ? { taskId: automation.task.id, text: t("automation.command.modifyPrefill", { name: automation.applicationName, version: automation.task.baseApp.version }) } : undefined}
+      onAutomationRetry={automation.retry}
+      onAutomationModeChange={legacyCreationHistory ? undefined : automation.change}
       onSteer={agentRunning ? handleSteer : undefined}
       onFollowUp={agentRunning ? handleFollowUp : undefined}
       onPromptWithStreamingBehavior={agentRunning ? handlePromptWithStreamingBehavior : undefined}
       isStreaming={sessionBusy}
       contextControl={contextControl}
-      inputLocked={Boolean(pendingQuestionGroup) || planMode.questions.some((question) => question.status === "pending")}
+      inputLocked={legacyCreationHistory || Boolean(pendingQuestionGroup) || planMode.questions.some((question) => question.status === "pending")}
       model={displayModelValue}
       isAutoModelSelection={isAutoModelSelection}
       modelNames={modelNames}
@@ -430,7 +449,7 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
       compactError={compactError}
       compactResult={compactResult}
       planMode={planMode}
-      onPlanModeChange={session || isNew ? handlePlanModeChange : undefined}
+      onPlanModeChange={!automationCreation&&(session || isNew) ? handlePlanModeChange : undefined}
       onCancelPlan={session || isNew ? handleAbandonPlan : undefined}
       thinkingLevel={thinkingLevel}
       onThinkingLevelChange={session || isNew ? handleThinkingLevelChange : undefined}
@@ -464,9 +483,12 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
     );
   }
 
-  if (error) {
+  if (error || (!data && session && session.messageCount > 0 && historyDisplay.messages.length === 0 && !agentRunning)) {
     return (
-      <NotificationNotice message={error} type="error" />
+      <div className="flex h-full flex-col items-start gap-3 p-5" role="alert">
+        <NotificationNotice message={error ?? t("chat.historyNotLoaded")} type="error" />
+        <Button type="button" variant="outline" onClick={() => void reloadSession()}>{t("chat.retryHistory")}</Button>
+      </div>
     );
   }
 
@@ -479,6 +501,7 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
+      {legacyCreationHistory && <div className="border-b border-[var(--border)] px-5 py-3 text-xs text-[var(--text-muted)]">这是旧版创建会话，仅供查看。请在首页普通对话选择“自动化”命令，开始新的创建任务。</div>}
       {isDragOver && (
         <div className="pointer-events-none absolute inset-0 z-50 flex animate-[drop-zone-in_0.15s_ease_both] items-center justify-center bg-[rgba(37,99,235,0.06)] backdrop-blur-[1px]">
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
@@ -701,6 +724,10 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
                 const msg = messages[idx];
                 if (!isGroupAnchor(msg)) {
                   rendered.push(renderMessage(idx));
+                  for (const anchor of chatAutomations.anchors.filter(anchor => anchor.messageIndex === idx)) {
+                    rendered.push(<AutomationChatCard key={`automation-${anchor.id}`} anchor={anchor}
+                      snapshot={chatAutomations.snapshots.get(anchor.id)} latestId={chatAutomations.latestId} error={chatAutomations.error} />);
+                  }
                   idx += 1;
                   continue;
                 }
@@ -801,6 +828,11 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
                     </div>,
                   );
                 }
+                for (const anchor of chatAutomations.anchors) {
+                  if (anchor.messageIndex < userIdx || anchor.messageIndex >= endIdx) continue;
+                  rendered.push(<AutomationChatCard key={`automation-${anchor.id}`} anchor={anchor}
+                    snapshot={chatAutomations.snapshots.get(anchor.id)} latestId={chatAutomations.latestId} error={chatAutomations.error} />);
+                }
                 idx = endIdx;
               }
               const { startIndex, hasMore } = getVisibleRenderWindow(rendered.length, visibleCount);
@@ -841,6 +873,7 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
               />
             )}
 
+            {(automation.enabled||data?.hasAutomationTask||authoringSeenSession===session?.id)&&session?.id&&<AutomationAuthoringCard sessionId={session.id} onSaved={()=>void automation.change(false)}/>}
             <div ref={messagesEndRef} />
             </div>
           </div>

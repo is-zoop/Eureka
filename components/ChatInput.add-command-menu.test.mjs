@@ -52,7 +52,7 @@ test("keeps @ file filtering in the composer instead of adding a second search f
 
 
 test("both command menus display plain names while retaining canonical command selection", () => {
-  assert.equal(source.split('const label = command.source === "plugin" ? command.name : composerCommandLabel(command.name);').length - 1, 2);
+  assert.equal(source.split('const label = command.source === "builtin" && command.name === "automation" ? t("automation.command.label") : command.source === "plugin" ? command.name : composerCommandLabel(command.name);').length - 1, 2);
   assert.equal(source.split('onSelect={() => applySlashCommand(command)}').length - 1, 2);
   assert.doesNotMatch(source, /command\.source === "plugin" \? "" : "\/"/);
 });

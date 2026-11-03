@@ -49,7 +49,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   const { id } = await context.params;
   try {
     if (!validId(id)) return NextResponse.json({ error: "invalid capability id" }, { status: 400 });
-    const body = await request.json() as { cwd?: unknown; scope?: unknown; action?: unknown; type?: unknown; disabled?: unknown; lifecycle?: unknown; idleTimeout?: unknown; operation?: unknown; preparationToken?: unknown; approveAddresses?: unknown };
+    const body = await request.json() as { cwd?: unknown; scope?: unknown; action?: unknown; type?: unknown; disabled?: unknown; lifecycle?: unknown; idleTimeout?: unknown; operation?: unknown; preparationToken?: unknown; approveAddresses?: unknown; deleteData?: unknown; confirmCapabilityId?: unknown };
     const cwd = await assertCwd(body.cwd);
     const installScope = scope(body.scope);
     const capabilityType = type(body.type);
@@ -59,8 +59,10 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       const { accessToken, session } = await getHazeMarketplaceSession();
       if (body.action === "uninstall" || body.action === "set-disabled") {
         if (body.action === "set-disabled" && typeof body.disabled !== "boolean") return NextResponse.json({ error: "invalid disabled action" }, { status: 400 });
-        await mutateOrganizationPlugin(cwd, installScope, id, session, body.action, body.disabled as boolean | undefined);
-        return NextResponse.json({ success: true });
+        if (body.deleteData !== undefined && typeof body.deleteData !== "boolean") return NextResponse.json({ error: "invalid delete data option" }, { status: 400 });
+        if (body.deleteData === true && (body.action !== "uninstall" || body.confirmCapabilityId !== id)) return NextResponse.json({ error: "请确认要删除的插件数据" }, { status: 400 });
+        const result = await mutateOrganizationPlugin(cwd, installScope, id, session, body.action, body.disabled as boolean | undefined, body.deleteData === true);
+        return NextResponse.json({ success: true, ...(result?.warning ? { warning: result.warning } : {}) });
       }
       if (!["prepare", "install", "update"].includes(String(body.action))) return NextResponse.json({ error: "invalid plugin action" }, { status: 400 });
       if (installScope === "project" && !getProjectTrustStatus(cwd, getAgentDir()).trusted) return NextResponse.json({ error: "Project resources must be trusted before installing project plugins" }, { status: 403 });

@@ -41,7 +41,7 @@ export function applyOrganizationPluginSkills(cwd: string, base: SkillSet, sourc
   const names = new Set(skills.map((skill) => skill.name));
   if (!source) return base;
   for (const item of effectivePlugins(cwd, source)) {
-    if (item.disabled) continue;
+    if (item.disabled || item.plugin?.manifest.automation) continue;
     if (item.scope === "project" && !getProjectTrustStatus(cwd, getAgentDir()).trusted) {
       diagnostics.push({ type: "warning", path: item.plugin!.root, message: "项目资源尚未受信任，组织插件未加载" });
       continue;
@@ -69,6 +69,8 @@ export function pluginRootIsActive(root: string) { return [...snapshots.values()
 export function pluginPresentation(item: HazeManagedInstall, sessionId?: string | null, subject?: string | null) {
   const plugin = item.plugin;
   if (!plugin) return undefined;
+  // Applications run in the automation runtime, independently of Pi reloads.
+  if(plugin.manifest.automation)return {name:plugin.manifest.name,digest:plugin.digest,skills:[],servers:[],state:item.disabled?"disabled":"installed"};
   const loaded = sessionId ? snapshots.get(sessionId)?.plugins.find((entry) => entry.capabilityId === item.capabilityId && entry.source === plugin.source) : undefined;
   const servers = getMcpRuntime(sessionId ?? "")?.servers.filter((server) => loaded?.servers.includes(server.name)) ?? [];
   let state = "installed";

@@ -1,8 +1,10 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useI18n } from "@/hooks/useI18n";
 import { Button } from "./ui/button";
-import { ExtensionNotice as NotificationNotice } from "./ExtensionNotice";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogBody, DialogFooter } from "./ui/dialog";
+import { ExtensionErrorText } from "./ExtensionNotice";
+import { Alert, AlertDescription } from "./ui/alert";
 import { OrganizationCapabilityIcon } from "./OrganizationCapabilityIcon";
 import type { InstallScope, McpRuntimeOptions } from "./HazeCapabilityDialog";
 import type { OrganizationExtensionDetailItem } from "./OrganizationExtensionDetails";
@@ -18,51 +20,75 @@ export function OrganizationPluginDialog({ item, cwd, busy, onClose, onConfirm, 
   const [loading, setLoading] = useState(true);
   const [approved, setApproved] = useState(false);
   const [revision, setRevision] = useState(0);
+  const [submitting, setSubmitting] = useState(false);
+  const [retryRequired, setRetryRequired] = useState(false);
+  const mounted = useRef(false), inFlight = useRef(false), attemptedToken = useRef<string | null>(null);
   const [availability, setAvailability] = useState<{ trusted: boolean; global: boolean; project: boolean } | null>(null);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   useEffect(() => {
     const controller = new AbortController();
+    setAvailability(null); setPrepared(null); setApproved(false); setError(null); setRetryRequired(false); setLoading(true);
+    const read = async (response: Response) => { const payload = await response.json(); if (!response.ok) throw new Error(payload.error ?? t("extensions.pluginPrepareFailed")); return payload; };
     void Promise.all([
-      fetch(`/api/project-trust?cwd=${encodeURIComponent(cwd)}`, { signal: controller.signal }).then((response) => response.json()),
-      fetch(`/api/organization-extensions/${item.id}/installation?cwd=${encodeURIComponent(cwd)}`, { signal: controller.signal }).then((response) => response.json()),
+      fetch(`/api/project-trust?cwd=${encodeURIComponent(cwd)}`, { cache: "no-store", signal: controller.signal }).then(read),
+      fetch(`/api/organization-extensions/${item.id}/installation?cwd=${encodeURIComponent(cwd)}`, { cache: "no-store", signal: controller.signal }).then(read),
     ]).then(([trust, installed]) => {
       if (controller.signal.aborted) return;
       const next = { trusted: trust.trusted === true, global: installed.global?.some((entry: { type?: string }) => entry.type === "Plugin") === true, project: installed.project?.some((entry: { type?: string }) => entry.type === "Plugin") === true };
       setAvailability(next);
-      if (!fixedScope && (!next.trusted || next.project) && !next.global) setScope("global");
-    }).catch(() => { if (!controller.signal.aborted) { setError(t("extensions.pluginPrepareFailed")); setLoading(false); } });
+      if (fixedScope) setScope(fixedScope);
+      else if ((!next.trusted || next.project) && !next.global) setScope("global");
+    }).catch((cause) => { if (!controller.signal.aborted) { setError(cause instanceof Error ? cause.message : t("extensions.pluginPrepareFailed")); setLoading(false); } });
     return () => controller.abort();
   }, [cwd, item.id, fixedScope, revision, t]);
   useEffect(() => {
     if (!availability) return;
     const controller = new AbortController();
-    setPrepared(null); setApproved(false); setError(null); setLoading(true);
+    setPrepared(null); setApproved(false); setError(null); setRetryRequired(false); setLoading(true);
     if ((scope === "project" && !availability.trusted) || (operation === "install" && availability[scope])) { setLoading(false); setError(t("extensions.pluginScopeUnavailable")); return; }
     void fetch(`/api/organization-extensions/${item.id}/installation`, { method: "POST", signal: controller.signal, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ cwd, scope, type: "Plugin", action: "prepare", operation }) })
-      .then(async (response) => { const payload = await response.json(); if (!response.ok) throw new Error(payload.error ?? t("extensions.pluginPrepareFailed")); if (!controller.signal.aborted) setPrepared(payload); })
+      .then(async (response) => {
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error ?? t("extensions.pluginPrepareFailed"));
+        if (typeof payload.preparationToken !== "string" || !/^[a-f0-9]{64}$/.test(payload.preparationToken) || !Number.isFinite(payload.expiresAt) || typeof payload.requiresApproval !== "boolean" || !Array.isArray(payload.servers)) throw new Error(t("extensions.pluginPrepareFailed"));
+        if (!controller.signal.aborted) setPrepared(payload);
+      })
       .catch((cause) => { if (!controller.signal.aborted) setError(cause.message); })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
   }, [availability, cwd, item.id, operation, scope, t]);
+  const locked = busy || submitting;
+  const needsConfirmation = !fixedScope || prepared?.requiresApproval === true;
+  const confirm = useCallback(async (candidate: Prepared) => {
+    if (inFlight.current || busy) return;
+    if (candidate.expiresAt <= Date.now()) { setError(t("extensions.pluginPreparationExpired")); setPrepared(null); return; }
+    if (candidate.requiresApproval && !approved) return;
+    inFlight.current = true; setSubmitting(true);
+    try {
+      const success = await onConfirm(scope, undefined, { preparationToken: candidate.preparationToken, approveAddresses: candidate.requiresApproval && approved });
+      // The parent reports the actual install error; do not add a second error toast.
+      if (!success && mounted.current) { setPrepared(null); setRetryRequired(true); }
+    } catch (cause) {
+      if (mounted.current) { setPrepared(null); setError(cause instanceof Error ? cause.message : t("extensions.pluginPrepareFailed")); }
+    } finally { inFlight.current = false; if (mounted.current) setSubmitting(false); }
+  }, [approved, busy, onConfirm, scope, t]);
   useEffect(() => {
-    const close = (event: KeyboardEvent) => { if (event.key === "Escape" && !busy) onClose(); };
-    window.addEventListener("keydown", close);
-    return () => window.removeEventListener("keydown", close);
-  }, [busy, onClose]);
-  return <div className="fixed inset-0 z-[1200] flex items-center justify-center bg-black/40 p-4" onMouseDown={(event) => { if (event.target === event.currentTarget && !busy) onClose(); }}><section role="dialog" aria-modal="true" aria-label={t("extensions.installDialogTitle", { name: item.name })} className="w-full max-w-xl rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-panel)] shadow-[var(--shadow-soft)]">
-    <header className="flex items-center gap-3 border-b border-[var(--border)] p-4 font-semibold"><OrganizationCapabilityIcon capability={{ capabilityId: item.id }} iconUrl={item.iconUrl} size={32} /><span>{operation === "update" ? t("extensions.update") : t("extensions.install")} · {item.name}</span></header>
-    <div className="max-h-[65vh] space-y-4 overflow-y-auto p-4 text-sm">
-      {!fixedScope && <fieldset disabled={busy} className="flex gap-4"><legend className="mb-2 font-medium">{t("extensions.installScope")}</legend>{(["project", "global"] as const).map((value) => <label key={value} className="flex items-center gap-2"><input type="radio" name="plugin-scope" checked={scope === value} onChange={() => setScope(value)} />{t(`extensions.${value}`)}</label>)}</fieldset>}
-      {loading ? <p>{t("extensions.pluginPreparing")}</p> : null}
-      <NotificationNotice type="error" message={error} />
-      {prepared ? <>
+    if (!prepared || loading || locked || needsConfirmation || attemptedToken.current === prepared.preparationToken) return;
+    // One submission per prepared package, including effect replays/rerenders.
+    attemptedToken.current = prepared.preparationToken;
+    void confirm(prepared);
+  }, [confirm, loading, locked, needsConfirmation, prepared]);
+  return <Dialog open onOpenChange={value => { if (!value && !locked && !inFlight.current) onClose(); }}><DialogContent className="max-w-xl" aria-busy={loading || locked}>
+    <DialogHeader><DialogTitle className="flex items-center gap-3"><OrganizationCapabilityIcon capability={{ capabilityId: item.id }} iconUrl={item.iconUrl} size={32} /><span>{operation === "update" ? t("extensions.update") : t("extensions.install")} · {item.name}</span></DialogTitle></DialogHeader>
+    <DialogBody className="space-y-4 text-sm">
+      {!fixedScope && <fieldset disabled={locked} className="flex gap-4"><legend className="mb-2 font-medium">{t("extensions.installScope")}</legend>{(["project", "global"] as const).map((value) => <label key={value} className="flex items-center gap-2"><input type="radio" name="plugin-scope" checked={scope === value} onChange={() => setScope(value)} />{t(`extensions.${value}`)}</label>)}</fieldset>}
+      {loading || locked || (prepared && !needsConfirmation) ? <p role="status" className="flex items-center gap-2 text-[var(--text-muted)]"><span aria-hidden="true" className="size-4 shrink-0 animate-spin rounded-full border-2 border-current border-r-transparent" />{t(loading ? "extensions.pluginPreparing" : "extensions.installing")}</p> : null}
+      {error ? <Alert variant="destructive"><AlertDescription><ExtensionErrorText error={error} /></AlertDescription></Alert> : null}
+      {retryRequired ? <p className="text-[var(--text-muted)]">{t("extensions.pluginPrepareAgain")}</p> : null}
+      {prepared && needsConfirmation ? <>
         {prepared.servers.map((server) => <div key={server.name} className="rounded-[var(--radius-control)] border border-[var(--border)] p-3"><p className="font-medium">{t("extensions.mcp")} · {server.name}</p><p className="break-all text-[var(--text-muted)]">{server.url}</p><p className="mt-1 text-xs">{server.auth ? t("extensions.pluginCredentialNotice") : t("extensions.pluginAnonymous")}</p></div>)}
-        {prepared.requiresApproval ? <label className="flex items-center gap-2"><input type="checkbox" checked={approved} onChange={(event) => setApproved(event.target.checked)} className="shrink-0" /><span>{t("extensions.pluginApproveAddresses")}</span></label> : null}
+        {prepared.requiresApproval ? <label className="flex items-center gap-2"><input type="checkbox" disabled={locked} checked={approved} onChange={(event) => setApproved(event.target.checked)} className="shrink-0" /><span>{t("extensions.pluginApproveAddresses")}</span></label> : null}
       </> : null}
-    </div><footer className="flex justify-end gap-2 border-t border-[var(--border)] p-4"><Button variant="outline" disabled={busy} onClick={onClose}>{t("extensions.cancel")}</Button>{!loading && !prepared ? <Button variant="outline" onClick={() => setRevision((value) => value + 1)}>{t("extensions.reload")}</Button> : null}<Button disabled={busy || loading || !prepared || (prepared.requiresApproval && !approved)} onClick={async () => {
-      if (!prepared) return;
-      if (prepared.expiresAt <= Date.now()) { setError(t("extensions.pluginPreparationExpired")); setPrepared(null); return; }
-      const success = await onConfirm(scope, undefined, { preparationToken: prepared.preparationToken, approveAddresses: approved });
-      if (!success) { setPrepared(null); setError(t("extensions.pluginPrepareAgain")); }
-    }}>{busy ? t("extensions.installing") : t("extensions.confirmInstall")}</Button></footer>
-  </section></div>;
+    </DialogBody><DialogFooter><Button variant="outline" disabled={locked} onClick={() => { if (!inFlight.current) onClose(); }}>{t("extensions.cancel")}</Button>{!loading && !prepared ? <Button disabled={locked} variant="outline" onClick={() => setRevision((value) => value + 1)}>{t("extensions.reload")}</Button> : null}{needsConfirmation ? <Button disabled={locked || loading || !prepared || (prepared.requiresApproval && !approved)} onClick={() => { if (prepared) void confirm(prepared); }}>{locked ? t("extensions.installing") : t("extensions.confirmInstall")}</Button> : null}</DialogFooter>
+  </DialogContent></Dialog>;
 }

@@ -231,7 +231,7 @@ test("abandoned fresh-session drafts are cleared and cannot be recreated by late
     source.indexOf("  const sessionStats = useMemo"),
   );
   const mountSource = source.slice(
-    source.indexOf("  // Load session on mount"),
+    source.indexOf("  // Read when the selected identity changes"),
     source.indexOf("  useEffect(() => {\n    onSystemPromptChange"),
   );
 

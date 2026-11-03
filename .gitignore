@@ -42,3 +42,4 @@ next-env.d.ts
 .factory
 # Local dependency download cache
 .cache/
+测试浏览器-不连接Eureka.cmd

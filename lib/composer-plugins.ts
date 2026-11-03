@@ -29,14 +29,16 @@ export function taskAllowsClarification(cwd: string, sessionId: string, task: Cl
   if (task.owner && (!identity || process.env.EUREKA_AUTH_HAZE_ISSUER?.replace(/\/$/, "") !== task.owner.source || identity.principal.subject !== task.owner.subject)) throw new Error("当前身份已变化，请重新调用插件；澄清回答已保留");
   if (task.clarificationEnabled) return true;
   return task.plugins.some((ref) => {
+    if (/^automation:[a-f0-9-]{36}$/.test(ref.capabilityId) && ref.source === process.env.EUREKA_AUTH_HAZE_ISSUER?.replace(/\/$/, "")) return true;
     const install = effectivePlugins(cwd, ref.source).find((item) => item.capabilityId === ref.capabilityId);
+    if (install?.plugin?.manifest.automation) return !install.disabled && install.plugin.digest === ref.digest;
     const loaded = getPluginSnapshots(sessionId).find((p) => p.source === ref.source && p.capabilityId === ref.capabilityId);
     return Boolean(install && !install.disabled && install.plugin?.digest === ref.digest && loaded?.digest === ref.digest && !loaded.error && loaded.capabilities?.requestUserInput === true && install.plugin.manifest.capabilities?.requestUserInput === true);
   });
 }
 
 export function listComposerPlugins(cwd: string, source: string, subject: string, sessionId?: string): ComposerPlugin[] {
-  return effectivePlugins(cwd, source).map((item) => {
+  return effectivePlugins(cwd, source).filter(item=>!item.plugin?.manifest.automation).map((item) => {
     const p = item.plugin!;
     let state = pluginPresentation(item, sessionId, subject)!.state;
     const skills: string[] = [];

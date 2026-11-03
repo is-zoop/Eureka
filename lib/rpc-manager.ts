@@ -4,7 +4,14 @@ import { clarificationContinuationText, type ClarificationGroup, type Clarificat
 import { type UserInputResponse } from "./user-input";
 import { readRuntimeHazeSession } from "./auth/runtime-session";
 import { installPluginBrowserHandoff } from "./plugin-browser";
-import { prepareSelectedPlugins, taskPluginSelection, taskAllowsClarification } from "./composer-plugins";
+import { EUREKA_AUTOMATION_INTAKE_EXTENSION } from "./automation-intake-extension";
+import { AUTOMATION_INTAKE_TOOLS, parseAutomationTaskRef, sameAutomationTask } from "./automation-mode";
+import { activeAutomationTask, bindAutomationTask, changeAutomationTask, assertAutomationTaskIdentity, automationQueueGeneration } from "./automation-mode-store";
+import { creationBinding } from "./automation-creation";
+import { assertCreationIdentity } from "./automation-creation-runtime";
+import { taskPluginSelection, taskAllowsClarification } from "./composer-plugins";
+import { prepareComposerSelection, bindChatAutomations, stopChatTask, AUTOMATION_CHAT_TOOL } from "./automation-chat";
+import { EUREKA_AUTOMATION_CHAT_EXTENSION } from "./automation-chat-extension";
 import { annotateOrganizationSkills } from "./haze-capability-presentation";
 import type { OrganizationCapabilityRef } from "./organization-capability";
 import { applyHazeProjectSkillOverrides } from "./haze-skill-overrides";
@@ -475,7 +482,7 @@ function withExtensionTools(session: AgentSessionLike, toolNames: string[]): str
   const extensionToolNames = session
     .getAllTools()
     .map((t) => t.name)
-    .filter((name) => !codingToolNames.has(name) && name !== PLAN_MODE_QUESTION_TOOL && name !== PLAN_MODE_COMPLETE_TOOL);
+    .filter((name) => !codingToolNames.has(name) && name !== PLAN_MODE_QUESTION_TOOL && name !== PLAN_MODE_COMPLETE_TOOL && name !== AUTOMATION_CHAT_TOOL);
 
   return [...new Set([...toolNames, ...extensionToolNames])];
 }
@@ -626,7 +633,7 @@ export class AgentSessionWrapper {
     this.clarification.update({ ...group, continuation: "running", error: undefined });
     try {
       const skills = this.inner.resourceLoader.getSkills().skills;
-      prepareSelectedPlugins(this.cwd, this.sessionId, group.task.plugins, skills, "");
+      await prepareComposerSelection(this.cwd, this.sessionId, group.task.plugins, skills, "");
       if (this.forceEmptySystemPrompt || !taskAllowsClarification(this.cwd, this.sessionId, group.task)) throw new Error("当前权限或插件状态不允许继续，请重新授权后重试；回答已保留");
       await this.send({ type: "prompt", message: clarificationContinuationText(group) }, group);
     } catch (error) {
@@ -651,7 +658,7 @@ export class AgentSessionWrapper {
       }
       catch (error) {
         failed = true;
-        this.clarification.enqueue(queued);
+        this.clarification.enqueue(queued.automationTask ? { ...queued, paused: true } : queued);
         this.emit({ type: "prompt_error", errorMessage: `排队请求未执行：${error instanceof Error ? error.message : String(error)}。请求已保留，可从队列取回。` });
       }
     } finally {
@@ -926,6 +933,24 @@ export class AgentSessionWrapper {
   }
 
   async send(command: Record<string, unknown>, continuation?: ClarificationGroup): Promise<unknown> {
+    if (command.type === "pause_automation_task" || command.type === "exit_automation_task") {
+      const ref = parseAutomationTaskRef(command.automationTask);
+      assertAutomationTaskIdentity(ref); automationQueueGeneration(this.inner.sessionManager, ref, true);
+      const releaseAdmission = await this.acquirePromptAdmission();
+      try {
+      const runningTask = activeAutomationTask(this.inner.sessionManager);
+      await changeAutomationTask(this.inner.sessionManager, ref, command.type === "exit_automation_task" ? "exited" : "paused");
+      this.clarification.save({ ...this.clarification.state, queue: this.clarification.state.queue.map(q => sameAutomationTask(q.automationTask, ref) ? { ...q, paused: true } : q), groups: this.clarification.state.groups.map(g => sameAutomationTask(g.task.automationTask, ref) && g.continuation !== "completed" ? { ...g, status: "cancelled", continuation: "failed", error: "自动化创建已暂停或退出，请显式继续任务。" } : g) });
+      if (sameAutomationTask(runningTask?.task, ref)) await this.inner.abort();
+      return { paused: true };
+      } finally { releaseAdmission(); }
+    }
+    const creation=creationBinding(this.inner.sessionManager.getEntries());
+    if(creation){
+      assertCreationIdentity(creation);
+      if (["prompt", "steer", "follow_up", "execute_plan", "answer_clarification", "retry_clarification"].includes(String(command.type))) throw new Error("旧版创建会话仅供查看，请在首页普通对话选择自动化命令。");
+      if(["bash","execute_bash","set_tools","set_plan_mode","execute_plan","fork"].includes(String(command.type)))throw new Error("自动化创建会话使用固定能力，请在普通会话中使用代码或规划功能。");
+    }
     this.resetIdleTimer();
     const type = command.type as string;
     if (this.shouldWaitForExtensions(type)) await this.waitForExtensionsBound();
@@ -943,6 +968,9 @@ export class AgentSessionWrapper {
         this.clarification.refresh();
         if (this.clarification.blocked && !continuation) throw new Error("请先回答、重试继续或取消当前澄清问题");
         this.refreshPlanModeState();
+        const automationTask = continuation?.task.automationTask ?? (command.automationTask === undefined ? undefined : parseAutomationTaskRef(command.automationTask));
+        if (automationTask && /^[!/]/.test(String(command.message ?? "").trim())) throw new Error("自动化需求请直接描述，不执行其他斜杠或终端命令。");
+        if (automationTask && (isPlanExecution || this.planModeState.planModeActive || this.planModeState.phase === "executing")) throw new Error("请先结束计划模式，再创建自动化。");
         if (isPlanExecution) {
           if (this.planModeState.phase !== "executing" || !this.planModeState.approvedAt) {
             throw new Error("Only an approved plan can be executed");
@@ -961,6 +989,7 @@ export class AgentSessionWrapper {
         // plugin identity; only the promoted request configures model tools.
         const releaseAdmission = await this.acquirePromptAdmission();
         try {
+          if (automationTask && command.automationGeneration !== undefined && command.automationGeneration !== automationQueueGeneration(this.inner.sessionManager, automationTask)) throw new Error("排队中的自动化请求已暂停，请显式召回后再提交。");
           if (this.clarification.blocked && !continuation) throw new Error("请先完成或取消当前澄清");
           if (this.inner.isBashRunning) {
             throw new Error("Cannot send a prompt while a shell command is running");
@@ -969,17 +998,35 @@ export class AgentSessionWrapper {
             ? undefined
             : command.images as Array<{ type: "image"; data: string; mimeType: string }> | undefined;
           const skills = this.inner.resourceLoader.getSkills().skills;
-          const selectedPlugins = isPlanExecution ? [] : continuation?.task.plugins ?? taskPluginSelection(this.cwd, this.sessionId, command.selectedPlugins, skills, String(command.message ?? ""));
-          const promptMessage = isPlanExecution ? PLAN_EXECUTION_TRIGGER : prepareSelectedPlugins(this.cwd, this.inner.sessionId, selectedPlugins, this.inner.resourceLoader.getSkills().skills, command.message as string);
+          const selectedPlugins = isPlanExecution || automationTask ? [] : continuation?.task.plugins ?? taskPluginSelection(this.cwd, this.sessionId, command.selectedPlugins, skills, String(command.message ?? ""));
+          const selection = isPlanExecution ? { message: PLAN_EXECUTION_TRIGGER, automations: [] } : await prepareComposerSelection(this.cwd, this.inner.sessionId, selectedPlugins, this.inner.resourceLoader.getSkills().skills, command.message as string);
+          const promptMessage = selection.message;
           if (this.isRunning()) {
             if (!command.streamingBehavior || continuation) throw new Error("请等待当前运行结束");
             const queueIdentity = readRuntimeHazeSession();
-            this.clarification.enqueue({ ...(queueIdentity ? { owner: { source: process.env.EUREKA_AUTH_HAZE_ISSUER?.replace(/\/$/, "") ?? "", subject: queueIdentity.principal.subject } } : {}), id: randomUUID(), message: String(command.message ?? ""), selectedPlugins, clarificationEnabled: command.clarificationEnabled === true, images: command.images as ClarificationQueuedInput["images"], behavior: command.streamingBehavior === "steer" ? "steer" : "followUp" });
+            this.clarification.enqueue({ ...(queueIdentity ? { owner: { source: process.env.EUREKA_AUTH_HAZE_ISSUER?.replace(/\/$/, "") ?? "", subject: queueIdentity.principal.subject } } : {}), id: randomUUID(), message: String(command.message ?? ""), selectedPlugins, clarificationEnabled: command.clarificationEnabled === true || Boolean(automationTask), images: command.images as ClarificationQueuedInput["images"], behavior: command.streamingBehavior === "steer" ? "steer" : "followUp", automationTask, ...(automationTask ? { automationGeneration: automationQueueGeneration(this.inner.sessionManager, automationTask) } : {}) });
             this.emit({ type: "queue_update", steering: this.queuedInput("steer"), followUp: this.queuedInput("followUp") });
             return null;
           }
           const identity = readRuntimeHazeSession();
-          const task = continuation?.task ?? { id: randomUUID(), plugins: selectedPlugins, clarificationEnabled: command.clarificationEnabled === true, ...(identity ? { owner: { source: process.env.EUREKA_AUTH_HAZE_ISSUER?.replace(/\/$/, "") ?? "", subject: identity.principal.subject } } : {}) };
+          let restoreAutomationTools: (() => void) | undefined;
+          if (selection.automations.length) {
+            if (this.forceEmptySystemPrompt || !this.inner.getActiveToolNames().some(name => name !== AUTOMATION_CHAT_TOOL && name !== PLAN_MODE_QUESTION_TOOL)) throw new Error("全部工具已关闭，请先开启工具权限再调用自动化。");
+            if (this.planModeState.planModeActive || isPlanExecution) throw new Error("请先退出计划模式，再运行自动化应用。");
+            const originalTools = this.inner.getActiveToolNames(), unbind = bindChatAutomations(this.inner.sessionManager, selection.automations);
+            this.inner.setActiveToolsByName([...new Set([...originalTools, AUTOMATION_CHAT_TOOL])]);
+            restoreAutomationTools = () => { unbind(); this.inner.setActiveToolsByName(this.forceEmptySystemPrompt ? [] : this.inner.getActiveToolNames().filter(name => name !== AUTOMATION_CHAT_TOOL)); };
+          }
+          if (automationTask) {
+            if (this.forceEmptySystemPrompt || !this.inner.getActiveToolNames().some(name => !AUTOMATION_INTAKE_TOOLS.includes(name))) throw new Error("全部工具已关闭，请先开启工具权限再创建自动化。");
+            const document = await changeAutomationTask(this.inner.sessionManager, automationTask, "active", String(command.message ?? ""));
+            if (!document) throw new Error("自动化任务无法打开。");
+            const originalTools = this.inner.getActiveToolNames(), originalPrompt = this.inner.agent.state?.systemPrompt;
+            this.inner.setActiveToolsByName(AUTOMATION_INTAKE_TOOLS);
+            bindAutomationTask(this.inner.sessionManager, document);
+            restoreAutomationTools = () => { bindAutomationTask(this.inner.sessionManager, null); this.inner.setActiveToolsByName(originalTools); if (this.inner.agent.state) this.inner.agent.state.systemPrompt = originalPrompt; };
+          }
+          const task = continuation?.task ?? { id: randomUUID(), plugins: automationTask ? [] : selectedPlugins, clarificationEnabled: command.clarificationEnabled === true || Boolean(automationTask), automationTask, ...(identity ? { owner: { source: process.env.EUREKA_AUTH_HAZE_ISSUER?.replace(/\/$/, "") ?? "", subject: identity.principal.subject } } : {}) };
           this.clarification.task = task;
           this.clarification.allowed = !this.forceEmptySystemPrompt && this.inner.getActiveToolNames().some((name) => name !== PLAN_MODE_QUESTION_TOOL) && !this.planModeState.planModeActive && !isPlanExecution && taskAllowsClarification(this.cwd, this.sessionId, task);
           const tools = this.inner.getActiveToolNames().filter((name) => name !== PLAN_MODE_QUESTION_TOOL);
@@ -1006,6 +1053,7 @@ export class AgentSessionWrapper {
           const finishPrompt = () => {
             if (promptSettled) return;
             promptSettled = true;
+            restoreAutomationTools?.();
             this.pendingPromptCount = Math.max(0, this.pendingPromptCount - 1);
             this.resetIdleTimer();
             notifyRunningChange();
@@ -1095,12 +1143,15 @@ export class AgentSessionWrapper {
         }
       }
 
-      case "abort":
+      case "abort": {
+        const chatStop = stopChatTask(this.inner.sessionManager, this.sessionId, this.clarification.task?.id).catch(() => {});
         if (activePlanExecutionManagers.has(this.inner.sessionManager as object)) {
           abortedPlanExecutionManagers.add(this.inner.sessionManager as object);
         }
         await this.withFinalRunningNotification(() => this.inner.abort());
+        await chatStop;
         return null;
+      }
 
       case "cancel_plan": {
         this.refreshPlanModeState();
@@ -1352,6 +1403,7 @@ export class AgentSessionWrapper {
         if (this.inner.isBashRunning) {
           throw new Error("Cannot fork while a shell command is running");
         }
+        if(this.isRunning())throw new Error("会话仍在运行，请等待完成后再创建分支；原任务继续执行。");
         const entryId = command.entryId as string;
         const sessionManager = this.inner.sessionManager;
         const currentSessionFile = this.inner.sessionFile;
@@ -1389,6 +1441,7 @@ export class AgentSessionWrapper {
         if (this.inner.isBashRunning) {
           throw new Error("Cannot navigate while a shell command is running");
         }
+        if(this.isRunning())throw new Error("会话仍在运行，请等待完成后再切换历史分支；原任务继续执行。");
         const result = await this.inner.navigateTree(command.targetId as string, {});
         this.clarification.refresh();
         this.emit({ type: "clarification_state", state: this.clarification.state });
@@ -1409,6 +1462,7 @@ export class AgentSessionWrapper {
       }
 
       case "compact": {
+        if(this.isRunning())throw new Error("会话仍在运行，请等待完成后再手动压缩；原任务继续执行。");
         try {
           return await this.withFinalRunningNotification(() =>
             this.inner.compact(command.customInstructions as string | undefined)
@@ -1470,6 +1524,7 @@ export class AgentSessionWrapper {
       }
 
       case "set_tools": {
+        if (activeAutomationTask(this.inner.sessionManager)) throw new Error("请先停止当前自动化创建，再修改工具权限。");
         if (this.planModeState.planModeActive || this.planModeState.phase === "executing") {
           throw new Error("Tool permissions are fixed while a plan is active");
         }
@@ -1483,6 +1538,7 @@ export class AgentSessionWrapper {
       }
 
       case "reload": {
+        if(this.isRunning())throw new Error("会话仍在运行，请等待完成后再重新加载扩展；原任务继续执行。");
         await this.waitForExtensionsBound();
         this.extensionStatuses.clear();
         this.resetExtensionWidgetsForReload();
@@ -2212,6 +2268,7 @@ export async function sendSessionToolCommand(sessionId: string, sessionFile: str
   const existing = getRegistry().get(sessionId);
   if (existing?.isAlive()) return existing.send(command);
   const manager = SessionManager.open(sessionFile, undefined);
+  if(creationBinding(manager.getEntries())&&command.type==="set_tools")throw new Error("自动化创建会话使用固定的能力集合。");
   if (command.type === "get_tools") return sessionToolEntries(manager.getEntries());
   const plan = readPlanState(manager.getEntries() as SessionEntry[]);
   if (plan.planModeActive || plan.phase === "executing") throw new Error("Tool permissions are fixed while a plan is active");
@@ -2394,6 +2451,8 @@ export async function startRpcSession(
     sessionManager = SessionManager.create(cwd, undefined);
   }
   const sessionCwd = sessionManager.getCwd();
+  const creation=creationBinding(sessionManager.getEntries());
+  if(creation)assertCreationIdentity(creation);
   const toolNames = options.toolNames ?? readSessionToolNames(sessionManager.getEntries());
   const finishStartingSession = trackStartingSession(sessionCwd);
   const starting = (async () => {
@@ -2405,7 +2464,8 @@ export async function startRpcSession(
     // Determine which tools to pass based on requested toolNames.
     // Since v0.68.0, session creation expects string[] tool names instead of Tool[] instances.
     let toolsOption: string[] | undefined;
-    if (toolNames !== undefined) {
+    if(creation)toolsOption=[]; // Archived creation sessions do not regain executable tools.
+    if (toolNames !== undefined && !creation) {
       // toolNames === [] -> "all off" (an empty allow-list disables every tool).
       // Otherwise DO NOT pass a builtin-only allow-list: passing CODING_TOOL_NAMES
       // set allowedToolNames to coding builtins only, which filtered every
@@ -2425,7 +2485,8 @@ export async function startRpcSession(
       cwd: sessionCwd,
       agentDir,
       resourceLoaderOptions: {
-        extensionFactories: [EUREKA_NATIVE_PLAN_EXTENSION, installBuiltInMcpAdapter, installHazeManagedMcpRuntime, installPluginBrowserHandoff, EUREKA_MCP_EXTENSION, EUREKA_TASK_PROGRESS_EXTENSION, EUREKA_WRITE_DIFF_EXTENSION],
+        extensionFactories: creation?[]:[EUREKA_NATIVE_PLAN_EXTENSION, EUREKA_AUTOMATION_INTAKE_EXTENSION, EUREKA_AUTOMATION_CHAT_EXTENSION, installBuiltInMcpAdapter, installHazeManagedMcpRuntime, installPluginBrowserHandoff, EUREKA_MCP_EXTENSION, EUREKA_TASK_PROGRESS_EXTENSION, EUREKA_WRITE_DIFF_EXTENSION],
+        ...(creation?{noExtensions:true,noSkills:true,noPromptTemplates:true,noContextFiles:true}:{}),
         skillsOverride: (base) => applyOrganizationPluginSkills(sessionCwd, applyHazeProjectSkillOverrides(sessionCwd, base)),
       },
       ...(trustReloadOptions ? { resourceLoaderReloadOptions: trustReloadOptions } : {}),
@@ -2474,16 +2535,16 @@ export async function startRpcSession(
     // If specific tool names were requested (non-empty), set the active tools to the
     // requested builtin coding tools PLUS all extension/package tools, so installed
     // extensions stay usable in Eureka just like in the `pi` CLI.
-    if (toolNames && toolNames.length > 0) {
+    if (toolNames && toolNames.length > 0 && !creation) {
       inner.setActiveToolsByName(withExtensionTools(inner, toolNames));
     }
 
     const wrapper = new AgentSessionWrapper(inner);
-    if (toolNames !== undefined) saveSessionToolNames(sessionManager, toolNames);
+    if (toolNames !== undefined && !creation) saveSessionToolNames(sessionManager, toolNames);
     // When all tools are disabled, clear the system prompt entirely.
     // pi's buildSystemPrompt always produces a non-empty prompt even with no tools;
     // keep this forced after extension resource discovery and reloads as well.
-    if (toolNames?.length === 0) {
+    if (toolNames?.length === 0 && !creation) {
       wrapper.setForceEmptySystemPrompt(true);
     }
     wrapper.start();
@@ -2494,7 +2555,7 @@ export async function startRpcSession(
 
     wrapper.onDestroy(() => registry.delete(realSessionId));
     registry.set(realSessionId, wrapper);
-    wrapper.beginExtensionBinding({ forceEmptySystemPrompt: toolNames?.length === 0 });
+    wrapper.beginExtensionBinding({ forceEmptySystemPrompt: toolNames?.length === 0 && !creation });
 
     return { session: wrapper, realSessionId };
   })().finally(() => {

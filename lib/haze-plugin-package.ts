@@ -2,7 +2,7 @@ import { crc32, inflateRawSync } from "node:zlib";
 
 export type PluginServer = { name: string; url: string; auth?: "haze-personal-credential" };
 export type PluginComposer = { selectionMode: "once" | "persistent" };
-export type PluginManifest = { name: string; version: string; displayName: string; skillDirectories: string[]; servers: PluginServer[]; capabilities?: { requestUserInput?: boolean }; composer?: PluginComposer };
+export type PluginManifest = { name: string; version: string; displayName: string; skillDirectories: string[]; servers: PluginServer[]; capabilities?: { requestUserInput?: boolean }; composer?: PluginComposer; automation?:{id:string;digest:string;files:string[]} };
 export type PluginArchive = { manifest: PluginManifest; files: Map<string, Buffer> };
 
 const MAX_ARCHIVE = 100 * 1024 * 1024;
@@ -36,12 +36,12 @@ export function pluginServerUrl(value: unknown): string {
 }
 
 /** Bounded, non-executing ZIP reader shared by package validation and extraction. */
-export function readPluginZip(buffer: Buffer): Map<string, Buffer> {
-  if (buffer.length > MAX_ARCHIVE) invalid("ZIP 超过 100 MiB");
+export function readPluginZip(buffer: Buffer, limits: { archive?: number; expanded?: number; entries?: number } = {}): Map<string, Buffer> {
+  if (buffer.length > (limits.archive ?? MAX_ARCHIVE)) invalid("ZIP 大小超过限制");
   const end = buffer.lastIndexOf(Buffer.from([0x50, 0x4b, 0x05, 0x06]));
   if (end < 0 || end + 22 > buffer.length || end + 22 + buffer.readUInt16LE(end + 20) !== buffer.length) invalid("ZIP 结束记录损坏");
   const count = buffer.readUInt16LE(end + 10);
-  if (!count || count > 10_000 || buffer.readUInt16LE(end + 4) || buffer.readUInt16LE(end + 6) || buffer.readUInt16LE(end + 8) !== count) invalid("不支持多卷或空 ZIP");
+  if (!count || count > (limits.entries ?? 10_000) || buffer.readUInt16LE(end + 4) || buffer.readUInt16LE(end + 6) || buffer.readUInt16LE(end + 8) !== count) invalid("不支持多卷、空 ZIP 或过多条目");
   let cursor = buffer.readUInt32LE(end + 16);
   if (cursor + buffer.readUInt32LE(end + 12) !== end) invalid("ZIP 目录损坏");
   let expanded = 0;
@@ -65,7 +65,7 @@ export function readPluginZip(buffer: Buffer): Map<string, Buffer> {
     const start = local + 30 + localNameSize + localExtra;
     if (start + packed > end || buffer.subarray(local + 30, local + 30 + localNameSize).toString("utf8") !== raw) invalid("ZIP 条目路径不一致");
     expanded += size;
-    if (expanded > MAX_EXPANDED) invalid("解压后超过 200 MiB");
+    if (expanded > (limits.expanded ?? MAX_EXPANDED)) invalid("解压大小超过限制");
     if (raw.endsWith("/")) { if (size) invalid("ZIP 目录包含内容"); continue; }
     const data = buffer.subarray(start, start + packed);
     const content = method === 0 ? data : inflateRawSync(data, { maxOutputLength: Math.max(1, size) });

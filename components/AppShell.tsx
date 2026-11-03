@@ -1,6 +1,7 @@
 "use client";
 
 import { notify } from "@/lib/notification-store";
+import type { AutomationLaunchRequest } from "@/lib/automation-mode";
 import { NotificationNotice } from "@/components/Notifications";
 
 
@@ -8,9 +9,15 @@ import { useState, useCallback, useRef, useEffect, useLayoutEffect } from "react
 import { useRouter, useSearchParams } from "next/navigation";
 import { useGlobalKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { SessionSidebar } from "./SessionSidebar";
-import { AppNavigation } from "./AppNavigation";
+import { AppNavigation, type AppView } from "./AppNavigation";
+import { AutomationWorkspace } from "./AutomationWorkspace";
+import { AutomationAppDetails, type AutomationAppDetailsRequest } from "./AutomationAppDetails";
+import { AutomationAuthoringBrowserHost } from "./AutomationAuthoringBrowserHost";
 import { LabelTooltip } from "./LabelTooltip";
 import { BrowserPanel } from "./BrowserPanel";
+import { NativeBrowserPanel } from "./NativeBrowserPanel";
+import { sameNativeBrowser, type NativeBrowserSpec } from "@/lib/native-browser";
+import type { AutomationBrowserControls, AutomationTaskState } from "@/lib/automation-task-state";
 import type { BrowserEvent } from "@/lib/browser-types";
 import { ChatWindow } from "./ChatWindow";
 import type { PlanReviewControls } from "./ChatWindow";
@@ -85,7 +92,7 @@ type AppHistoryLocation = {
   session: SessionInfo | null;
   cwd: string | null;
   draftId: string;
-  view: "chat" | "extensions";
+  view: AppView;
   settings: SettingsSection | null;
 };
 
@@ -122,6 +129,7 @@ export function AppShell({ initialGuest = false }: { initialGuest?: boolean }) {
   // The temporary id distinguishes consecutive fresh composers in one cwd.
   const [newSessionCwd, setNewSessionCwd] = useState<string | null>(null);
   const [newSessionDraftId, setNewSessionDraftId] = useState("initial");
+  const [automationLaunch, setAutomationLaunch] = useState<AutomationLaunchRequest | null>(null);
   const activeNewSessionDraftKeyRef = useRef<string | null>(null);
   const [initialCwdStatus, setInitialCwdStatus] = useState<"idle" | "validating" | "ready" | "error">(
     () => initialNavigation.requestedCwd ? "validating" : "idle",
@@ -131,8 +139,10 @@ export function AppShell({ initialGuest = false }: { initialGuest?: boolean }) {
   const [sessionKey, setSessionKey] = useState(0);
   const [explorerRefreshKey, setExplorerRefreshKey] = useState(0);
   const [modelsRefreshKey, setModelsRefreshKey] = useState(0);
-  const [mainView, setMainView] = useState<"chat" | "extensions">("chat");
+  const [mainView, setMainView] = useState<AppView>("chat");
+  const [automationVisited, setAutomationVisited] = useState(false);
   const [extensionsVisited, setExtensionsVisited] = useState(false);
+  const [organizationPluginsRequest, setOrganizationPluginsRequest] = useState(0);
   const [extensionPanelOpen, setExtensionPanelOpen] = useState(false);
   const [installedCapabilitiesRevision, setInstalledCapabilitiesRevision] = useState(0);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -147,7 +157,15 @@ export function AppShell({ initialGuest = false }: { initialGuest?: boolean }) {
   const [projectTrustBusy, setProjectTrustBusy] = useState(false);
   const [projectTrustError, setProjectTrustError] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [automationBrowserId, setAutomationBrowserId] = useState<string | null>(null);
+  const [automationBrowserOpen, setAutomationBrowserOpen] = useState(false);
+  const [automationNativeBrowser, setAutomationNativeBrowser] = useState<NativeBrowserSpec | null>(null);
+  const [authoringSessionId,setAuthoringSessionId]=useState<string|null>(null);
+  const homeNativeBrowser=mainView==="chat"&&Boolean(automationNativeBrowser?.applicationTaskId||automationNativeBrowser?.applicationRunId)&&authoringSessionId===selectedSession?.id;
+  const [automationTaskState, setAutomationTaskState] = useState<AutomationTaskState>({ phase: "idle" });
+  const automationBrowserControls = useRef<AutomationBrowserControls>(null);
   const [rightPanelOpen, setRightPanelOpen] = useState(false);
+  const layoutRightPanelOpen = mainView === "automation"||homeNativeBrowser ? automationBrowserOpen : mainView === "chat" && rightPanelOpen;
   const [hoveredResizeHandle, setHoveredResizeHandle] = useState<"sidebar" | "right" | null>(null);
   const [mobileToolbarMoreOpen, setMobileToolbarMoreOpen] = useState(false);
   const [mobileSidebarReady, setMobileSidebarReady] = useState(false);
@@ -193,11 +211,11 @@ export function AppShell({ initialGuest = false }: { initialGuest?: boolean }) {
       ? SIDEBAR_MAX_WIDTH
       : getSidebarMaxWidth({
         viewportWidth: window.innerWidth,
-        rightPanelOpen,
+        rightPanelOpen: layoutRightPanelOpen,
         rightPanelWidth: rightPanelWidthRef.current,
         navigationWidth: isMobile ? 0 : NAVIGATION_WIDTH,
       }),
-    [isMobile, rightPanelOpen],
+    [isMobile, layoutRightPanelOpen],
   );
   const getResponsiveRightPanelMaxWidth = useCallback(
     () => typeof window === "undefined"
@@ -256,10 +274,10 @@ export function AppShell({ initialGuest = false }: { initialGuest?: boolean }) {
     setMobileSidebarReady(true);
   }, []);
   useEffect(() => {
-    if (!rightPanelOpen) return;
+    if (!layoutRightPanelOpen) return;
     reclampSidebarWidth();
     reclampRightPanelWidth();
-  }, [reclampRightPanelWidth, reclampSidebarWidth, rightPanelOpen]);
+  }, [reclampRightPanelWidth, reclampSidebarWidth, layoutRightPanelOpen]);
   const chatInputRef = useRef<ChatInputHandle | null>(null);
   const topBarRef = useRef<HTMLDivElement>(null);
   const mobileToolbarRef = useRef<HTMLDivElement>(null);
@@ -373,6 +391,7 @@ export function AppShell({ initialGuest = false }: { initialGuest?: boolean }) {
 
   const [turnChanges, setTurnChanges] = useState<(TurnChangesRequest & { revision: number }) | null>(null);
   const [extensionDetails, setExtensionDetails] = useState<{ cwd: string; item: OrganizationExtensionDetailItem; onFavoriteChange: (id: string, isFavorite: boolean) => void } | null>(null);
+  const [automationDetails, setAutomationDetails] = useState<AutomationAppDetailsRequest | null>(null);
   const [planReview, setPlanReview] = useState<{ plan: EurekaPlanState; controls: PlanReviewControls; readOnly: boolean } | null>(null);
 
   const handleRightPanelToggle = useCallback(() => {
@@ -611,6 +630,9 @@ export function AppShell({ initialGuest = false }: { initialGuest?: boolean }) {
       suppressCwdBumpRef.current = false;
       return;
     }
+    // Sidebar project-root hydration must not replace a fresh composer whose
+    // actual cwd is unchanged, losing its automation modification intent.
+    if (selectedSession === null && currentFreshCwd === cwd) return;
     // Existing sessions stay open when the worktree selector moves within the
     // same project. A fresh composer must remount when its effective cwd moves,
     // otherwise its already-created runtime would keep sending to the old cwd.
@@ -625,6 +647,8 @@ export function AppShell({ initialGuest = false }: { initialGuest?: boolean }) {
     const draftId = typeof crypto.randomUUID === "function"
       ? crypto.randomUUID()
       : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+    const previousDraftKey = activeNewSessionDraftKeyRef.current;
+    setAutomationLaunch(current => current?.draftKey === previousDraftKey ? { ...current, draftKey: `new:${draftId}:${cwd}` } : current);
     setNewSessionDraftId(draftId);
     activeNewSessionDraftKeyRef.current = `new:${draftId}:${cwd}`;
     setSelectedSession(null);
@@ -685,10 +709,12 @@ export function AppShell({ initialGuest = false }: { initialGuest?: boolean }) {
     }
   }, [invalidateWorkspaceRestore, router, isMobile, selectedSession]);
 
-  const handleNewSession = useCallback((sessionId: string, cwd: string) => {
+  const handleNewSession = useCallback((sessionId: string, cwd: string, automationRequest?: Omit<AutomationLaunchRequest, "draftKey">) => {
     invalidateWorkspaceRestore();
     setMainView("chat");
     const draftKey = `new:${sessionId}:${cwd}`;
+    setAutomationLaunch(automationRequest ? { ...automationRequest, draftKey } : null);
+    setActiveCwd(cwd);
     activeNewSessionDraftKeyRef.current = draftKey;
     setNewSessionDraftId(sessionId);
     setSessionContentLoading(false);
@@ -913,7 +939,7 @@ export function AppShell({ initialGuest = false }: { initialGuest?: boolean }) {
   }, [isMobile]);
 
   useEffect(() => {
-    if (!extensionPanelOpen || mainView !== "extensions") return;
+    if (!extensionPanelOpen || (mainView !== "extensions" && mainView !== "automation")) return;
     const closeOutside = (event: PointerEvent) => {
       const target = event.target;
       if (!(target instanceof Element) || document.getElementById("extension-panel")?.contains(target) || target.closest('[data-resize-handle="extension-panel"], [data-app-navigation], #session-sidebar, [data-extension-details-portal], [role="dialog"], [role="alertdialog"]')) return;
@@ -1039,29 +1065,79 @@ export function AppShell({ initialGuest = false }: { initialGuest?: boolean }) {
   useLayoutEffect(() => {
     activeNewSessionDraftKeyRef.current = newSessionDraftKey;
   }, [newSessionDraftKey]);
+  useEffect(() => {
+    if (!automationLaunch) return;
+    const { draftKey, ...request } = automationLaunch;
+    try { sessionStorage.setItem(`eureka:automation-request:${draftKey}`, JSON.stringify(request)); } catch {}
+  }, [automationLaunch]);
   const showChat = selectedSession !== null || effectiveNewSessionCwd !== null;
   const projectTrustCwd = selectedSession?.cwd ?? effectiveNewSessionCwd;
 
+  useEffect(() => {
+    let alive = true;
+    const create = async (event: Event) => {
+      if (guest || authenticatedUserLoading) return;
+      try {
+        // Do not place a fresh homepage task in an archived creation workspace.
+        // The path only selects a suitable cwd; read-only status uses session metadata.
+        let cwd = [projectTrustCwd, activeCwd].find(candidate => candidate && !/[\\/]eureka-automation-drafts[\\/]creation-workspace(?:[\\/]|$)/i.test(candidate));
+        if (!cwd) { const response = await fetch("/api/default-cwd", { method: "POST" }), data = await response.json(); if (!response.ok || typeof data.cwd !== "string") throw new Error(); cwd = data.cwd; }
+        if (typeof cwd !== "string" || !cwd.trim()) throw new Error("项目路径无效");
+        if (!alive) return;
+        const id = crypto.randomUUID(), detail = (event as CustomEvent<Omit<AutomationLaunchRequest, "draftKey">>).detail;
+        const request = detail?.baseApp ? { baseApp: detail.baseApp, displayName: detail.displayName, ownerKey: detail.ownerKey, runtimeId: detail.runtimeId } : {};
+        // React carries the intent across navigation; storage is only a refresh
+        // fallback and cannot prevent an explicitly requested modification.
+        try { sessionStorage.setItem(`eureka:automation-request:new:${id}:${cwd}`, JSON.stringify(request)); } catch {}
+        handleNewSession(id, cwd, request);
+      } catch { notify({ type: "error", message: translate("automationUi.createEntryFailed") }); }
+    };
+    const listener = (event: Event) => { void create(event); };
+    window.addEventListener("eureka:create-automation", listener);
+    return () => { alive = false; window.removeEventListener("eureka:create-automation", listener); };
+  }, [guest, authenticatedUserLoading, projectTrustCwd, activeCwd, handleNewSession, translate]);
+
   // Navigation only changes visibility. In particular, keep ChatWindow's key,
   // draft owner and SSE subscription unchanged while browsing extensions.
-  const handleNavigate = useCallback((view: "chat" | "extensions") => {
+  const handleNavigate = useCallback((view: AppView) => {
     if (view === "extensions" && !projectTrustCwd) return;
     if (view === "extensions") setExtensionsVisited(true);
+    if (view === "automation") setAutomationVisited(true);
     setActiveTopPanel(null);
     setMobileToolbarMoreOpen(false);
     setMainView(view);
     if (isMobile) setSidebarOpen(false);
   }, [isMobile, projectTrustCwd]);
+  const openingOrganizationMarket = useRef(false);
+  const openOrganizationPluginMarket = async () => {
+    if (openingOrganizationMarket.current || guest) return;
+    openingOrganizationMarket.current = true;
+    try {
+      if (!projectTrustCwd) {
+        const response = await fetch("/api/default-cwd", { method: "POST" }), data = await response.json();
+        if (!response.ok || typeof data.cwd !== "string" || !data.cwd.trim()) throw new Error(translate("automationUi.marketEntryProjectFailed"));
+        handleCwdChange(data.cwd);
+      }
+      setOrganizationPluginsRequest(value => value + 1); setExtensionsVisited(true);
+      setActiveTopPanel(null); setMobileToolbarMoreOpen(false); setMainView("extensions");
+      if (isMobile) setSidebarOpen(false);
+    } catch (error) { notify({ type: "error", message: error instanceof Error ? error.message : translate("automationUi.marketEntryFailed") }); }
+    finally { openingOrganizationMarket.current = false; }
+  };
+  useEffect(()=>{const open=(event:Event)=>{const id=(event as CustomEvent<{id:string}>).detail?.id;if(!/^[a-f0-9-]{36}$/.test(id??""))return;sessionStorage.setItem("eureka:open-automation-app",id);handleNavigate("automation");};const saved=()=>{if(automationNativeBrowser?.applicationTaskId){setAutomationNativeBrowser(null);setAutomationBrowserOpen(false);}};window.addEventListener("eureka:open-automation-app",open);window.addEventListener("eureka:authoring-saved",saved);return()=>{window.removeEventListener("eureka:open-automation-app",open);window.removeEventListener("eureka:authoring-saved",saved);};},[handleNavigate,automationNativeBrowser]);
 
   useEffect(() => {
     setExtensionDetails(null);
+    setAutomationDetails(null);
     setExtensionPanelOpen(false);
-    if (!projectTrustCwd) setMainView("chat");
+    if (!projectTrustCwd) setMainView((view) => view === "extensions" ? "chat" : view);
   }, [projectTrustCwd]);
 
   const visibleExtensionDetails = extensionDetails?.cwd === projectTrustCwd ? extensionDetails : null;
-  const homeRightPanelVisible = mainView === "chat" && rightPanelOpen;
-  const extensionPanelVisible = mainView === "extensions" && extensionPanelOpen && visibleExtensionDetails !== null;
+  const homeRightPanelVisible = mainView === "automation"||homeNativeBrowser ? automationBrowserOpen && Boolean(automationBrowserId) : mainView === "chat" && rightPanelOpen;
+  const hideVisibleRightPanel = () => mainView === "automation"||homeNativeBrowser ? setAutomationBrowserOpen(false) : setRightPanelOpen(false);
+  const extensionPanelVisible = extensionPanelOpen && !guest && !authenticatedUserLoading && (mainView === "extensions" && visibleExtensionDetails !== null || mainView === "automation" && automationDetails !== null);
+  useEffect(() => { if (mainView !== "automation" && automationDetails) { setAutomationDetails(null); setExtensionPanelOpen(false); } }, [mainView, automationDetails]);
 
   useEffect(() => {
     publishDesktopMenuContext({ ready: true, cwd: projectTrustCwd ?? activeCwd, authenticated: !guest && !authenticatedUserLoading && authenticatedUser !== null, projects: desktopRecentProjects });
@@ -1143,6 +1219,7 @@ export function AppShell({ initialGuest = false }: { initialGuest?: boolean }) {
       }
       setMainView(location.view);
       if (location.view === "extensions") setExtensionsVisited(true);
+      if (location.view === "automation") setAutomationVisited(true);
       setSettingsOpen(location.settings !== null);
       if (location.settings) setSettingsSection(location.settings);
       setActiveTopPanel(null);
@@ -1696,6 +1773,7 @@ export function AppShell({ initialGuest = false }: { initialGuest?: boolean }) {
 
   return (
     <>
+    <AutomationAuthoringBrowserHost active={!guest&&!authenticatedUserLoading&&mainView==="chat"} sessionId={selectedSession?.id??null} controls={automationBrowserControls} nativeSpec={automationNativeBrowser} visible={homeNativeBrowser&&automationBrowserOpen&&!settingsOpen&&!projectTrustDialogOpen} taskState={automationTaskState} onOpenBrowser={(id,native)=>{const reuse=sameNativeBrowser(native,automationNativeBrowser);if(reuse&&["stopped","error"].includes(automationTaskState.phase))automationBrowserControls.current?.restart();if(!reuse)setAutomationTaskState({phase:"opening"});setAuthoringSessionId(selectedSession?.id??null);setAutomationBrowserId(id);setAutomationNativeBrowser(current=>sameNativeBrowser(current,native)?current:native??null);setAutomationBrowserOpen(true);}}/>
     <style>{`
       @media (max-width: 640px) {
         .sidebar-overlay-backdrop.sidebar-mobile-pending {
@@ -1778,7 +1856,7 @@ export function AppShell({ initialGuest = false }: { initialGuest?: boolean }) {
       {/* Center: chat */}
       <div data-notification-boundary="10" className="eureka-main-column" style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0, background: "var(--chat-bg)" }}>
         {/* Top bar with sidebar toggle */}
-        <div ref={topBarRef} style={{ display: mainView === "extensions" || (!isMobile && mainView === "chat" && selectedSession === null) ? "none" : undefined, flexShrink: 0, background: "var(--chat-bg)" }}>
+        <div ref={topBarRef} style={{ display: mainView !== "chat" || (!isMobile && selectedSession === null) ? "none" : undefined, flexShrink: 0, background: "var(--chat-bg)" }}>
         <div style={{ display: "flex", alignItems: "center", position: "relative", background: "var(--chat-bg)", borderBottom: "1px solid var(--border)", height: `calc(${isMobile ? 48 : 38}px + env(safe-area-inset-top))`, paddingTop: "env(safe-area-inset-top)" }}>
           {!sidebarOpen && <button
             onClick={handleSidebarToggle}
@@ -1997,6 +2075,8 @@ export function AppShell({ initialGuest = false }: { initialGuest?: boolean }) {
               sessionRunning={Boolean(selectedSession && runningSessionIds.has(selectedSession.id))}
               newSessionCwd={effectiveNewSessionCwd}
               newSessionDraftKey={newSessionDraftKey}
+              automationLaunch={automationLaunch?.draftKey === newSessionDraftKey ? automationLaunch : null}
+              onAutomationLaunchHandled={() => setAutomationLaunch(current => current?.draftKey === newSessionDraftKey ? null : current)}
               onAgentEnd={handleAgentEnd}
               onAttentionNeeded={handleAttentionNeeded}
               onSessionCreated={handleSessionCreated}
@@ -2031,6 +2111,17 @@ export function AppShell({ initialGuest = false }: { initialGuest?: boolean }) {
             <NotificationNotice title={translate("workspace.unable")} message={initialCwdError ?? initialNavigation.requestedCwd} />
           ) : null}
         </div>
+        {automationVisited && (
+          <div data-app-page="automation" inert={mainView !== "automation"} style={{ display: mainView === "automation" ? "flex" : "none", flex: 1, minHeight: 0, overflow: "hidden" }}>
+            <AutomationWorkspace active={mainView === "automation" && !authenticatedUserLoading} guest={guest} cwd={projectTrustCwd??undefined} onOpenMarket={() => void openOrganizationPluginMarket()} onOpenDetails={request => { setAutomationDetails(request); setExtensionPanelOpen(true); if (isMobile) setSidebarOpen(false); }} onCloseDetails={() => setAutomationDetails(null)} taskState={automationTaskState} browserControls={automationBrowserControls} nativeSpec={automationNativeBrowser} nativeVisible={Boolean(automationNativeBrowser) && automationBrowserOpen && !settingsOpen && !projectTrustDialogOpen} onOpenBrowser={(id, native) => {
+              const reuseNative = sameNativeBrowser(native, automationNativeBrowser);
+              const needsRestart = ["stopped", "error"].includes(automationTaskState.phase);
+              if (reuseNative && needsRestart) automationBrowserControls.current?.restart();
+              if (!reuseNative || needsRestart) setAutomationTaskState({ phase: "opening" });
+              setAutomationBrowserId(id); setAutomationNativeBrowser(current => sameNativeBrowser(current, native) ? current : native ?? null); setAutomationBrowserOpen(true);
+            }} />
+          </div>
+        )}
         {extensionsVisited && projectTrustCwd && (
           <div data-app-page="extensions" inert={mainView !== "extensions"} style={{ display: mainView === "extensions" ? "flex" : "none", flexDirection: "column", flex: 1, minHeight: 0, overflow: "hidden" }}>
             <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
@@ -2040,7 +2131,7 @@ export function AppShell({ initialGuest = false }: { initialGuest?: boolean }) {
                 guest={guest}
                 active={mainView === "extensions"}
                 sidebarOpen={sidebarOpen}
-                installedRevision={installedCapabilitiesRevision}
+                installedRevision={installedCapabilitiesRevision} organizationPluginsRequest={organizationPluginsRequest}
                 sessionId={selectedSession?.id ?? null}
                 onReloaded={() => setSessionKey((key) => key + 1)}
                 onTrustProject={() => { setProjectTrustError(null); setProjectTrustDialogOpen(true); }}
@@ -2056,7 +2147,7 @@ export function AppShell({ initialGuest = false }: { initialGuest?: boolean }) {
       <div
         aria-hidden="true"
         className={`right-panel-overlay-backdrop${homeRightPanelVisible ? " is-open" : ""}`}
-        onClick={() => setRightPanelOpen(false)}
+        onClick={hideVisibleRightPanel}
       />
       {homeRightPanelVisible && (
         <Tooltip>
@@ -2081,16 +2172,19 @@ export function AppShell({ initialGuest = false }: { initialGuest?: boolean }) {
         ref={rightPanelResizer.panelRef}
         id="file-panel"
         inert={!homeRightPanelVisible}
-        className={`right-panel-container${rightPanelOpen ? " right-panel-open" : " right-panel-closed"}${rightPanelResizer.isResizing ? " right-panel-resizing" : ""}`}
+        className={`right-panel-container${homeRightPanelVisible ? " right-panel-open" : " right-panel-closed"}${rightPanelResizer.isResizing ? " right-panel-resizing" : ""}`}
         style={{
           "--right-panel-width": `${rightPanelResizer.width}px`,
-          display: mainView === "chat" ? "flex" : "none",
+          display: mainView === "chat" || mainView === "automation" ? "flex" : "none",
           flexDirection: "column",
           borderLeft: `1px solid ${(hoveredResizeHandle === "right" || rightPanelResizer.isResizing) ? "#b8b7b7" : "var(--border)"}`,
           background: "var(--chat-bg)",
         } as React.CSSProperties}
       >
-        {rightPanelMode === "browser" && browserSessionId && rightPanelOpen ? (
+        {automationNativeBrowser && !guest && <div style={{ display: (mainView === "automation"||homeNativeBrowser) && automationBrowserOpen ? "flex" : "none", flex: 1, minHeight: 0 }}>
+          <NativeBrowserPanel key={`${automationNativeBrowser.ownerKey}:${automationNativeBrowser.sessionId}:${automationNativeBrowser.websiteUrl}:${automationNativeBrowser.accountId ?? automationNativeBrowser.browserMode ?? "default"}:${automationNativeBrowser.applicationRunId??"manual"}:${automationNativeBrowser.applicationTaskId??""}`} spec={automationNativeBrowser} controlRef={automationBrowserControls} onTaskState={setAutomationTaskState} visible={(mainView === "automation"||homeNativeBrowser) && automationBrowserOpen && !settingsOpen && !projectTrustDialogOpen} onHide={() => setAutomationBrowserOpen(false)} onClose={() => { setAutomationNativeBrowser(null); setAutomationBrowserId(null); setAutomationBrowserOpen(false); setAutomationTaskState({ phase: "stopped" }); }} />
+        </div>}
+        {homeNativeBrowser?null:mainView === "automation" ? null : rightPanelMode === "browser" && browserSessionId && rightPanelOpen ? (
           <BrowserPanel key={browserSessionId} sessionId={browserSessionId} onHide={() => setRightPanelOpen(false)} />
         ) : rightPanelMode === "browser" ? null : rightPanelMode === "changes" && turnChanges ? (
           <TurnChangesPanel
@@ -2193,6 +2287,7 @@ export function AppShell({ initialGuest = false }: { initialGuest?: boolean }) {
               aria-controls="extension-panel"
               className={`panel-resize-handle right-panel-resize-handle organization-extension-resize-handle${extensionPanelResizer.isResizing ? " is-resizing" : ""}`}
               data-resize-handle="extension-panel"
+              data-native-browser-overlay
               style={{ "--right-panel-width": `${extensionPanelResizer.width}px` } as React.CSSProperties}
             />
           } />
@@ -2202,6 +2297,7 @@ export function AppShell({ initialGuest = false }: { initialGuest?: boolean }) {
       <div
         ref={extensionPanelResizer.panelRef}
         id="extension-panel"
+        data-native-browser-overlay
         inert={!extensionPanelVisible}
         className={`right-panel-container organization-extension-overlay${extensionPanelVisible ? " right-panel-open" : " right-panel-closed"}${extensionPanelResizer.isResizing ? " right-panel-resizing" : ""}`}
         style={{
@@ -2212,7 +2308,12 @@ export function AppShell({ initialGuest = false }: { initialGuest?: boolean }) {
           borderLeft: "1px solid var(--border)",
         } as React.CSSProperties}
       >
-        {visibleExtensionDetails && (
+        {mainView === "automation" && automationDetails ? <AutomationAppDetails
+          key={`${automationDetails.index.ownerKey}:${automationDetails.index.runtimeId}:${automationDetails.detail.install.id}:${automationDetails.detail.install.revision}`}
+          request={automationDetails}
+          onClose={() => setAutomationDetails(null)}
+          onInstalledChange={() => { automationDetails.onChanged(); setInstalledCapabilitiesRevision(value => value + 1); }}
+        /> : mainView === "extensions" && visibleExtensionDetails && (
           <OrganizationExtensionDetails
             key={visibleExtensionDetails.cwd}
             sessionId={selectedSession?.id ?? null}

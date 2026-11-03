@@ -3,7 +3,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import type { UserInputQuestion, UserInputResponse } from "@/lib/user-input";
 import { useI18n } from "@/hooks/useI18n";
-import { useTheme } from "@/hooks/useTheme";
+import { Input } from "./ui/input";
 
 type QuestionDraft = { optionIds: string[]; customAnswer: string; skipped: boolean };
 
@@ -26,14 +26,16 @@ function RollingCounter({ value }: { value: string }) {
   const [rolling, setRolling] = useState(false);
   useEffect(() => {
     if (value === previous) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) { setPrevious(value); setRolling(false); return; }
     setRolling(true);
     const timer = window.setTimeout(() => { setPrevious(value); setRolling(false); }, 320);
     return () => window.clearTimeout(timer);
   }, [previous, value]);
   return (
-    <span className="relative inline-grid h-[1em] overflow-hidden tabular-nums" aria-label={value}>
-      <span className="col-start-1 row-start-1">{previous}</span>
-      <span className="col-start-1 row-start-1 transition-transform duration-300 ease-out" style={{ transform: rolling ? "translateY(0)" : "translateY(110%)" }}>{value}</span>
+    <span className="relative inline-grid h-5 shrink-0 overflow-hidden whitespace-nowrap leading-5 tabular-nums">
+      <span aria-hidden="true" className="col-start-1 row-start-1 transition-transform duration-300 ease-out" style={{ transform: rolling ? "translateY(-110%)" : "translateY(0)" }}>{previous}</span>
+      <span aria-hidden="true" className="col-start-1 row-start-1 transition-transform duration-300 ease-out" style={{ transform: rolling ? "translateY(0)" : "translateY(110%)" }}>{value}</span>
+      <span className="sr-only">{value}</span>
     </span>
   );
 }
@@ -59,7 +61,6 @@ function answerLabel(question: UserInputQuestion, skippedLabel: string): string 
 
 export function UserInputCard({ questions, onAnswer, readOnly = false, title }: Props) {
   const { t } = useI18n();
-  const { isDark } = useTheme();
   const [activeIndex, setActiveIndex] = useState(0);
   const [drafts, setDrafts] = useState<Record<string, QuestionDraft>>({});
   const [submitting, setSubmitting] = useState(false);
@@ -69,6 +70,7 @@ export function UserInputCard({ questions, onAnswer, readOnly = false, title }: 
   const [animate, setAnimate] = useState(false);
   const measuredRef = useRef(false);
   const questionRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const trackRef = useRef<HTMLDivElement>(null);
   const advanceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const groupKey = questions.map((question) => question.id).join(":");
   const answered = readOnly || questions.every((question) => question.status === "answered");
@@ -86,19 +88,30 @@ export function UserInputCard({ questions, onAnswer, readOnly = false, title }: 
     const item = questionRefs.current[activeIndex];
     if (!item || answered) return;
     const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    setViewportHeight(item.offsetHeight); setTrackOffset(item.offsetTop); setAnimate(measuredRef.current && !reducedMotion);
+    const measure = () => {
+      setViewportHeight(Math.max(item.offsetHeight, item.scrollHeight));
+      setTrackOffset(item.offsetTop);
+    };
+    measure(); setAnimate(measuredRef.current && !reducedMotion);
     measuredRef.current = true; setReady(true);
+    // Width changes and late font/content layout can add wrapped lines without
+    // changing the question or draft. Keep the clipped slide viewport in sync.
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
+    observer?.observe(item);
+    if (trackRef.current) observer?.observe(trackRef.current);
+    window.addEventListener("resize", measure);
+    return () => { observer?.disconnect(); window.removeEventListener("resize", measure); };
   }, [activeIndex, activeDraft.customAnswer, selectedOptionKey, activeDraft.skipped, answered, groupKey]);
 
   if (questions.length === 0) return null;
   if (answered) {
     return (
-      <section aria-label={title ?? t("clarification.title")} className="my-3 w-full max-w-none rounded-2xl border border-[var(--border)] bg-[var(--bg-panel)] p-4 shadow-sm">
+      <section aria-label={title ?? t("clarification.title")} className="my-3 min-w-0 w-full max-w-none rounded-2xl border border-[var(--border)] bg-[var(--bg-panel)] p-4 shadow-sm [overflow-wrap:anywhere]">
         <div className="text-xs font-semibold text-[var(--text-muted)]">{title ?? t("clarification.title")}</div>
         <div className="mt-3 space-y-3">
           {questions.map((question, index) => <div key={question.id} className={index > 0 ? "border-t border-[var(--border)] pt-3" : ""}>
-            <div className="text-sm font-medium text-[var(--text)]">{question.question}</div>
-            <div className="mt-1 text-sm text-[var(--text-muted)]">{answerLabel(question, t("clarification.questionSkipped"))}</div>
+            <div className="whitespace-pre-wrap text-sm font-medium text-[var(--text)]">{question.question}</div>
+            <div className="mt-1 whitespace-pre-wrap text-sm text-[var(--text-muted)]">{answerLabel(question, t("clarification.questionSkipped"))}</div>
           </div>)}
         </div>
       </section>
@@ -134,50 +147,49 @@ export function UserInputCard({ questions, onAnswer, readOnly = false, title }: 
   const skip = () => { if (!submitting) advance({ optionIds: [], customAnswer: "", skipped: true }); };
 
   return (
-    <section aria-label={`${title ?? t("clarification.title")}: ${activeQuestion?.title ?? ""}`} className="my-3 w-full max-w-none overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--bg-panel)] shadow-[0_12px_32px_rgba(30,30,25,0.09)]">
-      <div className="p-3.5 sm:p-4">
+    <section aria-label={`${title ?? t("clarification.title")}: ${activeQuestion?.title ?? ""}`} className="my-3 min-w-0 w-full max-w-none overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--bg-panel)] shadow-[0_12px_32px_rgba(30,30,25,0.09)] [overflow-wrap:anywhere]">
+      <div className="min-w-0 p-3.5 sm:p-4">
         <div className="overflow-hidden" style={{ height: viewportHeight, transition: animate ? `height ${SLIDE}` : undefined }} aria-live="polite">
-          <div style={{ display: "flex", flexDirection: "column", gap: 24, transform: `translate3d(0, ${-trackOffset}px, 0)`, transition: animate ? `transform ${SLIDE}` : undefined, willChange: "transform" }}>
+          <div ref={trackRef} className="relative min-w-0" style={{ display: "flex", flexDirection: "column", gap: 24, transform: `translate3d(0, ${-trackOffset}px, 0)`, transition: animate ? `transform ${SLIDE}` : undefined, willChange: "transform" }}>
             {questions.map((question, questionIndex) => {
               const active = questionIndex === activeIndex;
               if (!ready && !active) return null;
               const draft = drafts[question.id] ?? emptyDraft();
               const questionStyle: CSSProperties = { opacity: active ? 1 : 0, transition: animate ? `opacity ${SLIDE}` : undefined, pointerEvents: active ? undefined : "none" };
               return <div key={question.id} ref={(element) => { questionRefs.current[questionIndex] = element; }} aria-hidden={active ? undefined : true} style={questionStyle}>
-                <div className="text-[14px] font-semibold leading-5 text-[var(--text)]">{question.title}</div>
-                <p className="mt-1 text-[13px] leading-5 text-[var(--text-muted)]">{question.question}</p>
+                <div className="whitespace-pre-wrap text-[14px] font-semibold leading-5 text-[var(--text)]">{question.title}</div>
+                <p className="mt-1 whitespace-pre-wrap text-[13px] leading-5 text-[var(--text-muted)]">{question.question}</p>
                 <div className="mt-2.5 space-y-1">
                   {question.options.map((option) => {
                     const selected = draft.optionIds.includes(option.id); const multi = question.selection === "multiple";
                     return <button key={option.id} type="button" aria-pressed={selected} tabIndex={active ? 0 : -1} disabled={submitting} onClick={() => selectOption(option.id)} className="flex w-full items-start gap-2 rounded-lg px-1 py-1.5 text-left transition-colors hover:bg-[var(--bg-hover)] disabled:cursor-default">
                       <span
                         data-selected={selected ? "true" : "false"}
-                        className={`plan-question-choice-control mt-0.5 flex size-4 shrink-0 items-center justify-center border-2 transition-colors ${multi ? "rounded-[4px]" : "rounded-full"} ${selected ? "border-[var(--text)] bg-[var(--text)] text-[var(--bg-panel)]" : "border-[var(--border)] text-transparent"}`}
-                        style={isDark && !selected ? { borderColor: "#c8c8c8" } : undefined}
+                        className={`plan-question-choice-control mt-0.5 flex size-4 shrink-0 items-center justify-center border-2 transition-colors ${multi ? "rounded-[4px]" : "rounded-full"} ${selected ? "border-[var(--accent)] bg-[var(--accent)] text-[var(--bg-panel)]" : "border-[var(--border)] text-transparent"}`}
                       >
                         {multi ? <Icon><path d="m5 12 4 4L19 6" /></Icon> : <span className={`size-1.5 rounded-full bg-[var(--bg-panel)] transition-transform ${selected ? "scale-100" : "scale-0"}`} />}
                       </span>
-                      <span className="min-w-0"><span className="block text-[13px] font-medium leading-5 text-[var(--text-dim)]">{option.label}</span><span className="block text-[11.5px] leading-4 text-[var(--text-muted)]">{option.description}</span></span>
+                      <span className="min-w-0 flex-1"><span className="block whitespace-pre-wrap text-[13px] font-medium leading-5 text-[var(--text)]">{option.label}</span><span className="block whitespace-pre-wrap text-[11.5px] leading-4 text-[var(--text-muted)]">{option.description}</span></span>
                     </button>;
                   })}
-                  <input value={draft.customAnswer} tabIndex={active ? 0 : -1} disabled={submitting} onChange={(event) => updateDraft(question.id, { optionIds: [], customAnswer: event.target.value, skipped: false })} onKeyDown={(event) => {
+                  <Input value={draft.customAnswer} tabIndex={active ? 0 : -1} disabled={submitting} onChange={(event) => updateDraft(question.id, { optionIds: [], customAnswer: event.target.value, skipped: false })} onKeyDown={(event) => {
                     if (event.key === "Enter" && isAnswered({ ...draft, customAnswer: event.currentTarget.value })) { event.preventDefault(); advance({ optionIds: [], customAnswer: event.currentTarget.value, skipped: false }); }
-                  }} placeholder={t("clarification.answerPlaceholder")} aria-label={t("clarification.customAnswer")} className="mt-1 w-full rounded-lg bg-[var(--bg-hover)] px-2.5 py-2 text-[13px] text-[var(--text)] outline-none placeholder:text-[var(--text-muted)] focus:ring-1 focus:ring-[var(--text-dim)] disabled:cursor-default" />
+                  }} placeholder={t("clarification.answerPlaceholder")} aria-label={t("clarification.customAnswer")} className="mt-1 h-9 bg-[var(--bg)] px-2.5 text-[13px] text-[var(--text)] focus-visible:border-[var(--border)] disabled:cursor-default" />
                 </div>
               </div>;
             })}
           </div>
         </div>
       </div>
-      <div className="flex items-center justify-between gap-3 border-t border-[var(--border)] px-3.5 py-2.5 sm:px-4">
-        <div className="flex items-center gap-1 text-[12px] font-medium text-[var(--text-muted)]">
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-t border-[var(--border)] px-3.5 py-2.5 sm:px-4">
+        <div className="flex shrink-0 items-center gap-1 text-[12px] font-medium leading-5 text-[var(--text-muted)]">
           <button type="button" aria-label={t("clarification.previousQuestion")} disabled={activeIndex === 0 || submitting} onClick={() => setActiveIndex((index) => Math.max(index - 1, 0))} className="flex size-5 items-center justify-center rounded-md transition-colors enabled:hover:bg-[var(--bg-hover)] disabled:opacity-30"><Icon><path d="m18 15-6-6-6 6" /></Icon></button>
           <RollingCounter value={`${activeIndex + 1}/${questions.length}`} />
           <button type="button" aria-label={t("clarification.nextQuestion")} disabled={last || submitting} onClick={() => setActiveIndex((index) => Math.min(index + 1, questions.length - 1))} className="flex size-5 items-center justify-center rounded-md transition-colors enabled:hover:bg-[var(--bg-hover)] disabled:opacity-30"><Icon><path d="m6 9 6 6 6-6" /></Icon></button>
         </div>
-        <div className="flex items-center gap-1.5">
-          <button type="button" disabled={submitting} onClick={skip} className="rounded-full bg-[var(--bg-hover)] px-3 py-1.5 text-[12px] font-medium text-[var(--text-muted)] transition-colors hover:text-[var(--text)] disabled:opacity-50">{t("clarification.skipQuestion")}</button>
-          <button type="button" disabled={!isAnswered(activeDraft) || submitting} onClick={() => advance()} className="rounded-full bg-[var(--accent)] px-3 py-1.5 text-[12px] font-semibold text-white transition-colors hover:bg-[var(--accent-hover)] disabled:cursor-not-allowed disabled:opacity-45">{last ? t("clarification.submitAnswers") : t("clarification.continueQuestion")}</button>
+        <div className="ml-auto flex flex-wrap items-center justify-end gap-1.5">
+          <button type="button" disabled={submitting} onClick={skip} className="whitespace-nowrap rounded-full bg-[var(--bg-hover)] px-3 py-1.5 text-[12px] font-medium leading-5 text-[var(--text-muted)] transition-colors hover:text-[var(--text)] disabled:opacity-50">{t("clarification.skipQuestion")}</button>
+          <button type="button" disabled={!isAnswered(activeDraft) || submitting} onClick={() => advance()} className="whitespace-nowrap rounded-full bg-[var(--accent)] px-3 py-1.5 text-[12px] font-semibold leading-5 text-white transition-colors hover:bg-[var(--accent-hover)] disabled:cursor-not-allowed disabled:opacity-45">{last ? t("clarification.submitAnswers") : t("clarification.continueQuestion")}</button>
         </div>
       </div>
     </section>

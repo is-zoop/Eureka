@@ -4,6 +4,11 @@ description = "Allows Eureka's local WebView to request opening an HTTP or HTTPS
 commands.allow = ["open_external_url"]
 
 [[permission]]
+identifier = "allow-desktop-automation-browser"
+description = "Allows only the Eureka content view to manage an isolated native website view."
+commands.allow = ["desktop_automation_browser", "desktop_automation_observe", "desktop_automation_control", "desktop_automation_app", "desktop_automation_accounts"]
+
+[[permission]]
 identifier = "allow-desktop-clipboard-files"
 description = "Allows the composer to read copied file paths when the user pastes."
 commands.allow = ["desktop_clipboard_files"]
@@ -17,6 +22,11 @@ commands.allow = ["desktop_select_attachments"]
 identifier = "allow-desktop-select-directory"
 description = "Allows the project selector to open the system folder picker at the current directory."
 commands.allow = ["desktop_select_directory"]
+
+[[permission]]
+identifier = "allow-desktop-save-file"
+description = "Allows only the Eureka content view to save supplied bytes to a path chosen in the system Save As dialog."
+commands.allow = ["desktop_save_file"]
 
 [[permission]]
 identifier = "allow-desktop-window-action"

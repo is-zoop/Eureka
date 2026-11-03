@@ -6,8 +6,9 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 export async function GET(request: Request) {
   try {
-    const access = await browserAccess(new URL(request.url).searchParams.get("sessionId"));
-    return NextResponse.json({ state: browserState(access.owner, access.sessionId), ready: await browserReady() });
+    const params = new URL(request.url).searchParams;
+    const access = await browserAccess(params.get("sessionId"));
+    return NextResponse.json({ state: browserState(access.owner, access.sessionId), ready: await browserReady() }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) { return NextResponse.json({ error: browserError(error) }, { status: 403 }); }
 }
 export async function POST(request: Request) {

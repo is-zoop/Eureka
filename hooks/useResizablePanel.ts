@@ -25,6 +25,7 @@ interface UseResizablePanelOptions {
   cssVariable: `--${string}`;
   defaultWidth: number;
   getDefaultWidth?: () => number;
+  followDefaultUntilResized?: boolean;
   getMaxWidth: () => number;
   growthDirection: "left" | "right";
   maxWidth: number;
@@ -64,6 +65,7 @@ export function useResizablePanel(options: UseResizablePanelOptions) {
     cssVariable,
     defaultWidth,
     getDefaultWidth,
+    followDefaultUntilResized = false,
     getMaxWidth,
     growthDirection,
     maxWidth,
@@ -75,6 +77,7 @@ export function useResizablePanel(options: UseResizablePanelOptions) {
   const panelRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<DragState | null>(null);
   const restoredRef = useRef(false);
+  const customWidthRef = useRef(false);
   const [width, setWidth] = useState(defaultWidth);
   const [isResizing, setIsResizing] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -117,6 +120,7 @@ export function useResizablePanel(options: UseResizablePanelOptions) {
     dragRef.current = null;
     restoreBodyState(drag);
     setIsResizing(false);
+    customWidthRef.current = true;
     commitWidth(widthRef.current, { forcePersist: true });
 
     try {
@@ -132,6 +136,7 @@ export function useResizablePanel(options: UseResizablePanelOptions) {
     if (event.pointerType === "mouse" && event.button !== 0) return;
     event.preventDefault();
     event.stopPropagation();
+    customWidthRef.current = true;
 
     const activeDrag = dragRef.current;
     if (activeDrag) finishResize(activeDrag.pointerId);
@@ -182,12 +187,14 @@ export function useResizablePanel(options: UseResizablePanelOptions) {
 
   const resetWidth = useCallback(() => {
     const nextDefault = getDefaultWidth?.() ?? defaultWidth;
-    commitWidth(nextDefault, { forcePersist: true });
-  }, [commitWidth, defaultWidth, getDefaultWidth]);
+    if(followDefaultUntilResized){customWidthRef.current=false;try{window.localStorage.removeItem(storageKey);}catch{/* The default still works without storage. */}commitWidth(nextDefault,{persist:false});}
+    else commitWidth(nextDefault, { forcePersist: true });
+  }, [commitWidth, defaultWidth, getDefaultWidth, followDefaultUntilResized, storageKey]);
 
   const reclampWidth = useCallback(() => {
-    commitWidth(widthRef.current);
-  }, [commitWidth, widthRef]);
+    const follow=followDefaultUntilResized&&!customWidthRef.current;
+    commitWidth(follow?(getDefaultWidth?.()??defaultWidth):widthRef.current,{persist:!follow});
+  }, [commitWidth, widthRef, followDefaultUntilResized, getDefaultWidth, defaultWidth]);
 
   const onKeyDown = useCallback((event: KeyboardEvent<HTMLDivElement>) => {
     const step = event.shiftKey ? 32 : 12;
@@ -196,15 +203,19 @@ export function useResizablePanel(options: UseResizablePanelOptions) {
 
     if (event.key === growKey) {
       event.preventDefault();
+      customWidthRef.current = true;
       commitWidth(widthRef.current + step, { forcePersist: true });
     } else if (event.key === shrinkKey) {
       event.preventDefault();
+      customWidthRef.current = true;
       commitWidth(widthRef.current - step, { forcePersist: true });
     } else if (event.key === "Home") {
       event.preventDefault();
+      customWidthRef.current = true;
       commitWidth(minWidth, { forcePersist: true });
     } else if (event.key === "End") {
       event.preventDefault();
+      customWidthRef.current = true;
       commitWidth(effectiveMaxWidth(), { forcePersist: true });
     } else if (event.key === "Enter") {
       event.preventDefault();
@@ -217,6 +228,7 @@ export function useResizablePanel(options: UseResizablePanelOptions) {
     restoredRef.current = true;
 
     const storedWidth = readStoredWidth(storageKey);
+    customWidthRef.current = storedWidth !== null;
     const candidate = storedWidth ?? getDefaultWidth?.() ?? defaultWidth;
     const restoredWidth = commitWidth(candidate, { persist: false });
     if (storedWidth !== null && storedWidth !== restoredWidth) {
@@ -226,14 +238,14 @@ export function useResizablePanel(options: UseResizablePanelOptions) {
 
   useEffect(() => {
     if (!restoredRef.current) return;
-    commitWidth(widthRef.current);
+    reclampWidth();
 
     const onResize = () => {
-      commitWidth(widthRef.current);
+      reclampWidth();
     };
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
-  }, [commitWidth, widthRef]);
+  }, [reclampWidth]);
 
   useEffect(() => {
     if (!isResizing) return;

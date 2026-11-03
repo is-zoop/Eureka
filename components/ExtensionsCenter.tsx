@@ -20,6 +20,7 @@ import { mergeInstalledCapabilities, type ManagedCapabilityInstall, type Install
 import { PluginsConfig } from "./PluginsConfig";
 import { McpConfig } from "./McpConfig";
 import { Button } from "./ui/button";
+import { RemovalDialog } from "./RemovalDialog";
 import { Card, CardContent } from "./ui/card";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "./ui/dropdown-menu";
 import { Input } from "./ui/input";
@@ -46,7 +47,7 @@ type LoadState = "loading" | "ready" | "empty" | "unauthenticated" | "forbidden"
 type OrganizationCache = Partial<Record<OrganizationSection, { items: OrganizationExtension[] }>>;
 type InstalledCapability = { capabilityId: string; name: string; type: "Skill" | "MCP" | "Plugin"; version: string; scope: InstallScope; installedAt: string; disabled: boolean; plugin?: { state: string }; lifecycle?: McpRuntimeOptions["lifecycle"]; idleTimeout?: number };
 type ListedCapability = OrganizationExtension & { installation?: InstalledCapability; marketUnavailable?: boolean; installedAt?: string; disabled?: boolean; marketVersion?: string; plugin?: { state: string }; lifecycle?: McpRuntimeOptions["lifecycle"]; idleTimeout?: number };
-type Props = { active?: boolean; sidebarOpen?: boolean; installedRevision?: number; cwd: string; sessionId: string | null; guest?: boolean; onReloaded?: () => void; onTrustProject?: () => void; onShowSidebar?: () => void; onCloseExtensionDetails?: () => void; onOpenExtensionDetails: (item: OrganizationExtensionDetailItem, onFavoriteChange: (id: string, isFavorite: boolean) => void) => void };
+type Props = { active?: boolean; sidebarOpen?: boolean; installedRevision?: number; organizationPluginsRequest?: number; cwd: string; sessionId: string | null; guest?: boolean; onReloaded?: () => void; onTrustProject?: () => void; onShowSidebar?: () => void; onCloseExtensionDetails?: () => void; onOpenExtensionDetails: (item: OrganizationExtensionDetailItem, onFavoriteChange: (id: string, isFavorite: boolean) => void) => void };
 
 function ExtensionIcon({ kind }: { kind: "skills" | "mcp" | "plugins" }) {
   const common = { width: 16, height: 16, "aria-hidden": true };
@@ -227,6 +228,8 @@ function OrganizationExtensionsPage({ kind, scope, onManage, cwd, sessionId, vie
   const [installBusyId, setInstallBusyId] = useState<string | null>(null);
   const [installSuccessId, setInstallSuccessId] = useState<string | null>(null);
   const [installedActionBusyId, setInstalledActionBusyId] = useState<string | null>(null);
+  const [uninstallTarget, setUninstallTarget] = useState<{ item: ListedCapability; scope: InstallScope } | null>(null);
+  const [uninstallError, setUninstallError] = useState("");
   const [installTarget, setInstallTarget] = useState<OrganizationExtension | null>(null);
   const [installTargetScope, setInstallTargetScope] = useState<InstallScope>(scope);
   const [pluginOperation, setPluginOperation] = useState<"install" | "update">("install");
@@ -268,23 +271,26 @@ function OrganizationExtensionsPage({ kind, scope, onManage, cwd, sessionId, vie
     setInstallTarget(item);
   };
 
-  const runInstalledAction = async (item: ListedCapability, action: Exclude<InstalledAction, "configure">) => {
-    if (!cwd || installedActionBusyId) return;
+  const runInstalledAction = async (item: ListedCapability, action: Exclude<InstalledAction, "configure">, deleteData = false, actionScope = installedScope) => {
+    if (!cwd || installedActionBusyId) return false;
     setInstalledActionBusyId(item.id);
     try {
       const response = await fetch(`/api/organization-extensions/${encodeURIComponent(item.id)}/installation`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ cwd, scope: installedScope, action, type: item.type }),
+        body: JSON.stringify({ cwd, scope: actionScope, action, type: item.type, ...(action === "uninstall" ? { deleteData, confirmCapabilityId: item.id } : {}) }),
       });
-      const payload = await response.json().catch(() => null) as { error?: string } | null;
+      const payload = await response.json().catch(() => null) as { error?: string; warning?: string } | null;
       if (!response.ok) throw new Error(payload?.error ?? "操作失败，请稍后重试。");
       const actionText = action === "update" ? "已更新" : "已卸载";
-      notify({ type: "success", title: actionText, message: `${item.name}${actionText}。重载会话后生效。` });
+      notify({ type: payload?.warning ? "warning" : "success", title: actionText, message: payload?.warning ?? `${item.name}${actionText}。重载会话后生效。` });
       setInstallationRevision((current) => current + 1);
       onInstalledChange?.();
+      return true;
     } catch (error) {
+      setUninstallError(error instanceof Error ? error.message : "卸载失败，请重试。");
       notify({ type: "error", title: action === "update" ? "更新失败" : "卸载失败", ...describeExtensionError(error, t) });
+      return false;
     } finally {
       setInstalledActionBusyId(null);
     }
@@ -309,6 +315,7 @@ function OrganizationExtensionsPage({ kind, scope, onManage, cwd, sessionId, vie
   };
 
   const handleInstalledAction = (item: ListedCapability, action: InstalledAction) => {
+    if (action === "uninstall") { setUninstallError(""); setUninstallTarget({ item, scope: installedScope }); return; }
     if (action === "configure") { setMcpConfigTarget(item); return; }
     if (action === "update" && item.type === "Plugin") { setPluginOperation("update"); setInstallTargetScope(installedScope); setInstallTarget(item); return; }
     void runInstalledAction(item, action);
@@ -411,9 +418,9 @@ function OrganizationExtensionsPage({ kind, scope, onManage, cwd, sessionId, vie
 
   if (!showInstalled && state !== "ready" && state !== "empty") return <div className="flex h-full min-h-0 flex-col items-center justify-center gap-3 px-6 text-center"><span className="grid h-12 w-12 place-items-center rounded-[var(--radius-card)] bg-[var(--bg-hover)] text-[var(--text-muted)]"><ExtensionIcon kind={kind} /></span><h2 className="text-lg font-semibold text-[var(--text)]">{state === "loading" ? t("extensions.marketLoading") : kind === "skills" ? t("extensions.skills") : kind === "plugins" ? t("extensions.plugins") : t("extensions.mcp")}</h2>{state !== "loading" ? <NotificationNotice message={statusText} type={state === "error" ? "error" : "warning"} /> : null}{state === "error" && <Button variant="outline" size="sm" onClick={() => void load()}><RefreshCwIcon className="mr-1.5 h-3.5 w-3.5" />{t("extensions.reload")}</Button>}</div>;
 
-  return <><div className="flex h-full min-h-0 flex-col bg-[var(--chat-bg)]">{!showInstalled && <div className="shrink-0 border-b border-[var(--border)] bg-[var(--bg-panel)] px-4 py-3"><div className="flex flex-col gap-3 sm:flex-row sm:items-center">{!showInstalled && <><FilterMenu filter={filter} categories={availableCategories} items={items} onChange={setFilter} /><div className="relative min-w-0 flex-1 sm:max-w-md"><SearchIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-muted)]" /><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("extensions.search")} className="h-8 bg-[var(--bg-panel)] pl-9 pr-3 text-[13px] text-[var(--text)] placeholder:text-[13px] focus-visible:border-[var(--border)]" /></div></>}<div className="flex items-center gap-2 sm:ml-auto"><ViewToggle viewMode={viewMode} onChange={setViewMode} /></div></div></div>}<div className={`min-h-0 flex-1 overflow-y-auto px-4 pt-4 ${showInstalled ? "pb-6" : "pb-4"}`}>{!showInstalled && installedState === "error" ? <div role="alert" className="mb-4 flex items-center gap-3"><p className="text-sm text-[var(--text-muted)]">{t("extensions.installedLoadFailed")}</p><Button variant="outline" size="sm" onClick={() => setInstallationRevision(current => current + 1)}>{t("context.retry")}</Button></div> : null}{showInstalled && installedState === "loading" ? <div className="grid min-h-72 place-items-center text-sm text-[var(--text-muted)]">{t("extensions.installedLoading")}</div> : showInstalled && installedState === "error" ? <NotificationNotice type="error" message={t("extensions.installedLoadFailed")} />  : showInstalled ? visibleItems[0] ? <InstalledCapabilityManagement item={visibleItems[0]} scope={installedScope} busy={installedActionBusyId === visibleItems[0].id || toggleBusyId === visibleItems[0].id || installBusyId === visibleItems[0].id} onAction={handleInstalledAction} onSetDisabled={setDisabled} /> : <div className="grid min-h-72 place-items-center text-sm text-[var(--text-muted)]">{emptyText}</div> : viewMode === "cards" ? <CapabilityCards items={visibleItems} onOpenDetails={item => onOpenDetails({ ...item, installScope: installedScope, ...(showInstalled ? { installedScope, isInstalled: true } : {}) })} installBusyId={installBusyId} installSuccessId={installSuccessId} onInstall={beginInstall} installationsReady={installedState === "ready"} onManage={onManage} /> : <CapabilityTable items={visibleItems} onOpenDetails={item => onOpenDetails({ ...item, installScope: installedScope, ...(showInstalled ? { installedScope, isInstalled: true } : {}) })} installBusyId={installBusyId} installSuccessId={installSuccessId} onInstall={beginInstall} installationsReady={installedState === "ready"} onManage={onManage} />}</div></div>{installTarget ? <HazeCapabilityInstallDialog operation={pluginOperation} fixedScope={installTargetScope} item={installTarget} cwd={cwd} busy={installBusyId === installTarget.id} onClose={() => setInstallTarget(null)} onConfirm={async (scope, runtime, plugin) => { const installed = await install(installTarget, scope, runtime, plugin); if (installed) setInstallTarget(null); return Boolean(installed); }} /> : null}{mcpConfigTarget ? <HazeMcpConfigDialog item={mcpConfigTarget} initial={{ lifecycle: mcpConfigTarget.lifecycle ?? "lazy", idleTimeout: mcpConfigTarget.idleTimeout ?? 10 }} busy={installedActionBusyId === mcpConfigTarget.id} onClose={() => setMcpConfigTarget(null)} onConfirm={async (runtime) => { const configured = await configureMcp(mcpConfigTarget, runtime); if (configured) setMcpConfigTarget(null); return configured; }} /> : null}</>;
+  return <><div className="flex h-full min-h-0 flex-col bg-[var(--chat-bg)]">{!showInstalled && <div className="shrink-0 border-b border-[var(--border)] bg-[var(--bg-panel)] px-4 py-3"><div className="flex flex-col gap-3 sm:flex-row sm:items-center">{!showInstalled && <><FilterMenu filter={filter} categories={availableCategories} items={items} onChange={setFilter} /><div className="relative min-w-0 flex-1 sm:max-w-md"><SearchIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-muted)]" /><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("extensions.search")} className="h-8 bg-[var(--bg-panel)] pl-9 pr-3 text-[13px] text-[var(--text)] placeholder:text-[13px] focus-visible:border-[var(--border)]" /></div></>}<div className="flex items-center gap-2 sm:ml-auto"><ViewToggle viewMode={viewMode} onChange={setViewMode} /></div></div></div>}<div className={`min-h-0 flex-1 overflow-y-auto px-4 pt-4 ${showInstalled ? "pb-6" : "pb-4"}`}>{!showInstalled && installedState === "error" ? <div role="alert" className="mb-4 flex items-center gap-3"><p className="text-sm text-[var(--text-muted)]">{t("extensions.installedLoadFailed")}</p><Button variant="outline" size="sm" onClick={() => setInstallationRevision(current => current + 1)}>{t("context.retry")}</Button></div> : null}{showInstalled && installedState === "loading" ? <div className="grid min-h-72 place-items-center text-sm text-[var(--text-muted)]">{t("extensions.installedLoading")}</div> : showInstalled && installedState === "error" ? <NotificationNotice type="error" message={t("extensions.installedLoadFailed")} />  : showInstalled ? visibleItems[0] ? <InstalledCapabilityManagement item={visibleItems[0]} scope={installedScope} busy={installedActionBusyId === visibleItems[0].id || toggleBusyId === visibleItems[0].id || installBusyId === visibleItems[0].id} onAction={handleInstalledAction} onSetDisabled={setDisabled} /> : <div className="grid min-h-72 place-items-center text-sm text-[var(--text-muted)]">{emptyText}</div> : viewMode === "cards" ? <CapabilityCards items={visibleItems} onOpenDetails={item => onOpenDetails({ ...item, installScope: installedScope, ...(showInstalled ? { installedScope, isInstalled: true } : {}) })} installBusyId={installBusyId} installSuccessId={installSuccessId} onInstall={beginInstall} installationsReady={installedState === "ready"} onManage={onManage} /> : <CapabilityTable items={visibleItems} onOpenDetails={item => onOpenDetails({ ...item, installScope: installedScope, ...(showInstalled ? { installedScope, isInstalled: true } : {}) })} installBusyId={installBusyId} installSuccessId={installSuccessId} onInstall={beginInstall} installationsReady={installedState === "ready"} onManage={onManage} />}</div></div><RemovalDialog open={Boolean(uninstallTarget)} name={uninstallTarget?.item.name ?? ""} allowDeleteData={uninstallTarget?.item.type === "Plugin"} busy={Boolean(installedActionBusyId)} error={uninstallError} onClose={() => { setUninstallTarget(null); setUninstallError(""); }} onConfirm={async deleteData => uninstallTarget ? Boolean(await runInstalledAction(uninstallTarget.item, "uninstall", deleteData, uninstallTarget.scope)) : false} />{installTarget ? <HazeCapabilityInstallDialog operation={pluginOperation} fixedScope={installTargetScope} item={installTarget} cwd={cwd} busy={installBusyId === installTarget.id} onClose={() => setInstallTarget(null)} onConfirm={async (scope, runtime, plugin) => { const installed = await install(installTarget, scope, runtime, plugin); if (installed) setInstallTarget(null); return Boolean(installed); }} /> : null}{mcpConfigTarget ? <HazeMcpConfigDialog item={mcpConfigTarget} initial={{ lifecycle: mcpConfigTarget.lifecycle ?? "lazy", idleTimeout: mcpConfigTarget.idleTimeout ?? 10 }} busy={installedActionBusyId === mcpConfigTarget.id} onClose={() => setMcpConfigTarget(null)} onConfirm={async (runtime) => { const configured = await configureMcp(mcpConfigTarget, runtime); if (configured) setMcpConfigTarget(null); return configured; }} /> : null}</>;
 }
-export function ExtensionsCenter({ active = true, sidebarOpen = true, installedRevision = 0, cwd, sessionId, guest = false, onReloaded, onTrustProject, onShowSidebar, onCloseExtensionDetails, onOpenExtensionDetails }: Props) {
+export function ExtensionsCenter({ active = true, sidebarOpen = true, installedRevision = 0, cwd, sessionId, guest = false, organizationPluginsRequest = 0, onReloaded, onTrustProject, onShowSidebar, onCloseExtensionDetails, onOpenExtensionDetails }: Props) {
   const { t } = useI18n();
   const [group, setGroup] = useState<ExtensionGroup>(guest ? "market" : "organization");
   const activeGroup = guest ? "market" : group;
@@ -421,6 +428,12 @@ export function ExtensionsCenter({ active = true, sidebarOpen = true, installedR
   const [marketSection, setMarketSection] = useState<OrganizationSection>("skills");
   const [view, setView] = useState<ExtensionView>("market");
   const [installedScope, setInstalledScope] = useState<InstallScope>("global");
+  const handledMarketRequest = useRef(0);
+  useEffect(() => {
+    if (guest || !organizationPluginsRequest || handledMarketRequest.current === organizationPluginsRequest) return;
+    handledMarketRequest.current = organizationPluginsRequest;
+    onCloseExtensionDetails?.(); setGroup("organization"); setOrganizationSection("plugins"); setView("market");
+  }, [organizationPluginsRequest, guest, onCloseExtensionDetails]);
   const section = activeGroup === "organization" ? organizationSection : marketSection;
   const pageKey = `${activeGroup}:${section}:${view}${view === "installed" ? `:${installedScope}` : ""}`;
   // Keep visited content mounted so searches, configuration drafts and scroll positions survive navigation.

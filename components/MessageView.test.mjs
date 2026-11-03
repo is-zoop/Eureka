@@ -287,6 +287,25 @@ test("renders a complete SDK skill expansion as a compact command", () => {
   assert.doesNotMatch(html, /Review the supplied files/);
 });
 
+test("plugin and Windows file references share a bold resource row above the original request", async () => {
+  const { selectionEnvelope } = await jiti.import("@/lib/plugin-selection");
+  const text = '@"C:/Users/Test/新建 XLSX 工作表 (2).xlsx" 使用这个表格查询销售';
+  const message = { role: "user", content: selectionEnvelope(text, [{ source: "https://haze.example", capabilityId: "42", digest: "a", name: "千牛商品查询" }]) };
+  const html = renderMessage(message);
+  assert.match(html, /message-resource-tags/); assert.match(html, /message-resource-capability/);
+  assert.match(html, /src="\/api\/organization-extensions\/42\/icon\?source=https%3A%2F%2Fhaze.example"/);
+  assert.match(html, /新建 XLSX 工作表 \(2\).xlsx<\/span>/);
+  assert.match(html, /使用这个表格查询销售/);
+  assert.doesNotMatch(html, /@&quot;C:|eureka-selected-plugins/);
+  assert.equal(message.content, selectionEnvelope(text, [{ source: "https://haze.example", capabilityId: "42", digest: "a", name: "千牛商品查询" }]));
+});
+
+test("file references preceding a skill remain visible as chips and do not leak skill instructions", () => {
+  const html = renderMessage({ role: "user", content: '@"C:/work/sheet.xlsx" ' + COMPLETE_SKILL_EXPANSION });
+  assert.match(html, /sheet.xlsx<\/span>/); assert.match(html, /aria-label="\/skill:review"/);
+  assert.match(html, />review<\/span>/); assert.doesNotMatch(html, /Review the supplied files/);
+});
+
 test("does not collapse incomplete skill-looking user text", () => {
   const html = renderMessage({
     role: "user",

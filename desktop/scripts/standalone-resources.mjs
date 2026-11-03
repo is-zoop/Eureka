@@ -1,4 +1,4 @@
-import { cpSync } from "node:fs";
+import { cpSync, readFileSync } from "node:fs";
 import { isAbsolute, relative, resolve, sep } from "node:path";
 
 // These are build inputs/outputs and local caches, never server runtime assets.
@@ -32,4 +32,13 @@ export function copyStandaloneResources(source, destination) {
   // Defense in depth for existing standalone output generated before tracing
   // exclusions were added. Skip directories before visiting their contents.
   cpSync(source, destination, { recursive: true, filter: standaloneResourceFilter(source) });
+}
+
+// Next's standalone trace can omit transitively loaded instrumentation chunks.
+// Include the complete server output from the same production build.
+export function copyStandaloneServerAssets(buildDirectory, appDirectory) {
+  const buildId = readFileSync(resolve(buildDirectory, "BUILD_ID"), "utf8").trim();
+  const standaloneId = readFileSync(resolve(appDirectory, ".next", "BUILD_ID"), "utf8").trim();
+  if (!buildId || buildId !== standaloneId) throw new Error("Standalone resources belong to a different Next build. Rebuild before packaging.");
+  cpSync(resolve(buildDirectory, "server"), resolve(appDirectory, ".next", "server"), { recursive: true });
 }

@@ -17,6 +17,34 @@
   transition: background 120ms ease;
 }
 
+.modeDivider {
+  width: 1px;
+  height: 16px;
+  margin: 0 4px;
+  background: var(--border);
+  flex-shrink: 0;
+}
+
+.modeTag {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 28px;
+  margin-left: 2px;
+  padding: 0 7px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.modeTag:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
 .trigger:hover,
 .trigger[aria-expanded="true"] {
   background: var(--bg-hover);

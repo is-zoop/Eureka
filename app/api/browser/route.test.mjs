@@ -40,6 +40,11 @@ test("browser APIs reject guests, bind identity and dispose streaming subscripti
   fixture.runtimeUser = "a";
   assert.equal((await routes.GET(new Request("http://localhost/api/browser?sessionId=missing"))).status, 403);
   assert.equal((await routes.GET(request())).status, 200);
+  assert.equal((await routes.GET(new Request("http://localhost/api/browser?sessionId=automation:owned"))).status, 403, "retired automation drafts cannot use the proxy browser API");
+  assert.equal((await routes.GET(new Request("http://localhost/api/browser?sessionId=automation:foreign"))).status, 403);
+  const stateResponse = await routes.GET(request());
+  assert.equal(stateResponse.headers.get("cache-control"), "no-store");
+  assert.deepEqual(await stateResponse.json(), { state: { sessionId: "chat", activeTabId: null, tabs: [] }, ready: true });
   const post = (action) => routes.POST(new Request("http://localhost/api/browser", { method: "POST", body: JSON.stringify({ sessionId: "chat", action }) }));
   assert.equal((await post("open")).status, 200);
   assert.equal(fixture.calls[0].owner, '["https://haze.example","a"]');

@@ -1,5 +1,7 @@
 # 组织插件
 
+自动化应用使用 `extensions.com.eureka.automation` 声明，现已接入同一个组织插件安装、更新、启停和卸载流程。扩展中统一显示“插件”；安装后登记到“自动化”目录，安装者使用自己的配置、登录和授权。详见[自动化组织分发与验收](./automation-organization-plugins.md)。普通 Skill／HTTP MCP 插件的格式和安装行为保持兼容，真实 Haze 分发等待用户验收。
+
 Eureka 从当前 Haze 能力市场获取 `Plugin`，复用现有列表、详情和 `access-prompt` 原包下载接口，不要求 Haze 增加接口。支持项目和全局安装；同一 Haze 来源和能力 ID 的项目安装覆盖全局安装，项目停用也覆盖全局启用。卸载项目安装后恢复全局配置。
 
 ## 包格式 v1
@@ -60,7 +62,7 @@ atlas-ask-eureka/
 
 首期 MCP 只接受 `type` 和 `url`。不接受 OpenAI 认证扩展、包内请求头、密钥或凭证读取命令。远程地址使用无用户信息、查询参数或片段的 HTTPS URL；本机 localhost/127.0.0.1/::1 的 HTTP 在开发和生产模式均允许，仍需确认服务地址。本机地址指 Eureka 服务端所在环境，容器或远程部署中不代表浏览器所在电脑。包内 `development_only` 是发行用途标记，不控制此地址校验，无需改为 false 才能测试。Skill-only 插件可以省略 `mcp.json`，但仍需 Eureka 清单和 `pi.skills`。
 
-不支持 Codex/Claude 专属清单、hooks、stdio、JS 扩展或其他 Pi 组件。ZIP 限制为 100 MiB、10,000 个条目、解压后 200 MiB；拒绝链接、重复路径、Windows 特殊路径和损坏内容。
+普通插件不支持 Codex/Claude 专属清单、hooks、stdio、JS 扩展或其他 Pi 组件。ZIP 限制为 100 MiB、10,000 个条目、解压后 200 MiB；拒绝链接、重复路径、Windows 特殊路径和损坏内容。声明了自动化的包使用通用运行器，执行其声明的 JavaScript ESM，不作为 Pi 扩展加载；另按自动化包的较小容量及发布清单限制校验。
 
 ## 安装和认证
 
@@ -97,7 +99,7 @@ Eureka 在连接层获取当前 Haze 用户的个人凭证。凭证钩子每次�
 离线包与安装测试覆盖准备绑定、地址授权、包校验、版本冲突、作用域、并发写入及资源清理。实际联调需 Atlas 生成 Eureka 包后上传 Haze，再在 Eureka 中完成安装、MCP 连接、当前对话选数和真实查询；离线测试不代表此项已通过。
 
 
-输入框插件选择和右侧真实浏览器的使用、部署及链接接管契约见 [组织插件选择与内置浏览器](./browser-workspace.md)。组织插件仍仅加载 Skill 与 HTTP MCP，不需要在包内增加 JS、hooks 或 CLI。
+输入框插件选择和右侧真实浏览器的使用、部署及链接接管契约见 [组织插件选择与内置浏览器](./browser-workspace.md)。普通对话插件仍只加载 Skill 与 HTTP MCP；自动化声明由独立应用运行器接管，不进入首页插件调用菜单。
 ## 输入框持续选择
 
 在 `plugin.json` 的 `extensions.com.eureka` 中增加：

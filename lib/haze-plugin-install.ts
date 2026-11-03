@@ -6,7 +6,9 @@ import { getAgentDir, ProjectTrustStore } from "@earendil-works/pi-coding-agent"
 import { getAuthConfig } from "./auth/config";
 import type { AuthSession } from "./auth/types";
 import { downloadHazePackage } from "./haze-managed-capabilities";
-import { parsePluginArchive, type PluginManifest } from "./haze-plugin-package";
+import type { PluginManifest } from "./haze-plugin-package";
+import { parseOrganizationPluginArchive } from "./haze-automation-package";
+import { readRuntimeHazeSession } from "./auth/runtime-session";
 import { pluginStorageRoot, readHazeRegistry, withHazeRegistryLock, writeHazeRegistry, type HazeManagedInstall, type HazeInstallScope } from "./haze-registry";
 import { cleanupPluginDirectories } from "./haze-plugin-resources";
 import { isPathWithinRoots } from "./path-security";
@@ -17,7 +19,7 @@ type Preparation = { source: string; subject: string; cwd: string; scope: HazeIn
 const TTL = 10 * 60_000;
 const hash = (value: string | Buffer) => createHash("sha256").update(value).digest("hex");
 function inspectArchive(archive: Buffer, version: string) {
-  try { return parsePluginArchive(archive, version); }
+  try { return parseOrganizationPluginArchive(archive, version); }
   catch (error) { throw new PluginInstallError(error instanceof Error ? error.message : "插件包无效"); }
 }
 function identity(session: AuthSession) {
@@ -26,6 +28,8 @@ function identity(session: AuthSession) {
   return { source, subject: session.principal.subject };
 }
 function isCurrent(item: HazeManagedInstall, id: string, source: string) { return item.type === "Plugin" && item.capabilityId === id && item.plugin?.source === source; }
+function automationUser(session:AuthSession){const owner=identity(session);return {...owner,check:()=>{const current=readRuntimeHazeSession();if(identity(session).source!==owner.source||session.runtimeId&&(!current||current.runtimeId!==session.runtimeId||current.principal.subject!==owner.subject))throw new PluginInstallError("登录身份已变化，请重新安装插件。",409);}};}
+async function syncAutomation(session:AuthSession,cwd:string,scope:HazeInstallScope,id:string,appId:string,deleteData=false){try{return await(await import("./haze-automation-install")).syncOrganizationAutomation(automationUser(session),cwd,scope,id,appId,deleteData);}catch(error){throw new PluginInstallError(error instanceof Error?error.message:"自动化目录登记失败",409);}}
 async function storage(cwd: string, scope: HazeInstallScope) {
   const root = pluginStorageRoot(cwd, scope);
   await mkdir(root, { recursive: true });
@@ -81,6 +85,7 @@ export async function commitOrganizationPlugin(input: { cwd: string; scope: Haze
     const registry = readHazeRegistry(input.cwd, input.scope);
     const previous = registry.installs.find((item) => isCurrent(item, input.capabilityId, owner.source));
     if ((input.operation === "install") === Boolean(previous)) throw new PluginInstallError("安装状态发生变化，请重新准备", 409);
+    if(previous&&(Boolean(previous.plugin?.manifest.automation)!==Boolean(parsed.automation)||previous.plugin?.manifest.automation&&previous.plugin.manifest.automation.id!==parsed.automation?.manifest.automation.id))throw new PluginInstallError("插件更新不能变更应用声明类型或应用 ID，请使用独立插件登记。",409);
     const needed = parsed.manifest.servers.filter((server) => server.auth).map((server) => server.url);
     const existingApproval = previous?.plugin?.subject === owner.subject ? previous.plugin.approvedUrls : [];
     if (needed.some((url) => !existingApproval.includes(url)) && input.approveAddresses !== true) throw new PluginInstallError("请确认插件的 MCP 服务地址", 409);
@@ -99,9 +104,11 @@ export async function commitOrganizationPlugin(input: { cwd: string; scope: Haze
       }
       await rename(extracted, target);
       const install: HazeManagedInstall = { capabilityId: input.capabilityId, name: prepared.name, type: "Plugin", version: prepared.version, scope: input.scope, installedAt: new Date().toISOString(), disabled: previous?.disabled, lifecycle: previous?.lifecycle ?? "lazy", idleTimeout: previous?.idleTimeout ?? 10, plugin: { ...owner, digest: prepared.digest, root: target, manifest: parsed.manifest, approvedUrls: needed } };
+      const previousInstalls=registry.installs;
       registry.installs = [...registry.installs.filter((item) => !isCurrent(item, input.capabilityId, owner.source)), install];
       if (input.scope === "project") new ProjectTrustStore(getAgentDir()).set(input.cwd, true);
       await writeHazeRegistry(input.cwd, input.scope, registry);
+      if(parsed.automation){try{await syncAutomation(input.session,input.cwd,input.scope,input.capabilityId,parsed.automation.manifest.automation.id);}catch(error){registry.installs=previousInstalls;await writeHazeRegistry(input.cwd,input.scope,registry);await syncAutomation(input.session,input.cwd,input.scope,input.capabilityId,parsed.automation.manifest.automation.id).catch(()=>{});throw error;}}
       await rm(stage, { recursive: true, force: true }).catch(() => {});
       await cleanupPluginDirectories(input.cwd, input.scope).catch(() => { /* Retry unused-directory cleanup on the next lifecycle event. */ });
       return install;
@@ -113,15 +120,20 @@ export async function commitOrganizationPlugin(input: { cwd: string; scope: Haze
   });
 }
 
-export async function mutateOrganizationPlugin(cwd: string, scope: HazeInstallScope, id: string, session: AuthSession, action: "uninstall" | "set-disabled", disabled?: boolean) {
+export async function mutateOrganizationPlugin(cwd: string, scope: HazeInstallScope, id: string, session: AuthSession, action: "uninstall" | "set-disabled", disabled?: boolean, deleteData = false) {
+  if (deleteData && action !== "uninstall") throw new PluginInstallError("只有卸载插件时可以删除用户数据");
   const owner = identity(session);
   await storage(cwd, scope);
   return withHazeRegistryLock(cwd, scope, async () => {
     const registry = readHazeRegistry(cwd, scope), item = registry.installs.find((record) => isCurrent(record, id, owner.source));
     if (!item) throw new PluginInstallError("找不到此插件", 404);
+    const previousInstalls=structuredClone(registry.installs);
     if (action === "uninstall") registry.installs = registry.installs.filter((record) => record !== item);
     else item.disabled = disabled;
     await writeHazeRegistry(cwd, scope, registry);
+    let result;
+    if(item.plugin?.manifest.automation){try{result=await syncAutomation(session,cwd,scope,id,item.plugin.manifest.automation.id,deleteData);}catch(error){registry.installs=previousInstalls;await writeHazeRegistry(cwd,scope,registry);await syncAutomation(session,cwd,scope,id,item.plugin.manifest.automation.id).catch(()=>{});throw error;}}
     await cleanupPluginDirectories(cwd, scope).catch(() => { /* Registration is committed; deferred cleanup must not undo a successful action. */ });
+    return result;
   });
 }

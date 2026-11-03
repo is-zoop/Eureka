@@ -48,7 +48,7 @@
   --navigation-item-bg: color-mix(in srgb, var(--text) 13%, var(--sidebar-bg));
 }
 .icon { flex-shrink: 0; }
-.icon :is(path, rect) { vector-effect: non-scaling-stroke; }
+.icon :is(path, rect, circle) { vector-effect: non-scaling-stroke; }
 .item[aria-disabled="true"] { opacity: .45; cursor: not-allowed; }
 .item:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { authorizeCreationSessionId } from "@/lib/automation-creation-auth";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import { generateSessionTitle } from "@/lib/session-title";
 import { getRpcSession, startRpcSession } from "@/lib/rpc-manager";
@@ -9,6 +10,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
+  try{await authorizeCreationSessionId(id);}catch{return NextResponse.json({error:"请登录创建该自动化的 Haze 账号"},{status:403});}
 
   try {
     const filePath = await resolveSessionPath(id);

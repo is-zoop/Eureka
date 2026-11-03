@@ -58,6 +58,29 @@ mod platform {
         unsafe { show(owner, cwd, true).map(|paths| paths.into_iter().next()).map_err(|error| error.to_string()) }
     }
 
+    pub fn save(owner: usize, filename: &str) -> std::result::Result<Option<String>, String> {
+        unsafe { show_save(owner, filename).map_err(|error| error.to_string()) }
+    }
+
+    unsafe fn show_save(owner: usize, filename: &str) -> Result<Option<String>> {
+        CoInitializeEx(None, COINIT_APARTMENTTHREADED).ok()?;
+        struct Apartment;
+        impl Drop for Apartment { fn drop(&mut self) { unsafe { CoUninitialize(); } } }
+        let _apartment = Apartment;
+        let dialog: IFileSaveDialog = CoCreateInstance(&FileSaveDialog, None, CLSCTX_INPROC_SERVER)?;
+        dialog.SetOptions(dialog.GetOptions()? | FOS_FORCEFILESYSTEM | FOS_PATHMUSTEXIST | FOS_NOCHANGEDIR | FOS_OVERWRITEPROMPT)?;
+        dialog.SetTitle(w!("另存为"))?;
+        dialog.SetFileName(&HSTRING::from(filename))?;
+        if let Some(extension) = std::path::Path::new(filename).extension().and_then(|value| value.to_str()) {
+            dialog.SetDefaultExtension(&HSTRING::from(extension))?;
+        }
+        if let Err(error) = dialog.Show(Some(HWND(owner as *mut _))) {
+            if error.code() == HRESULT::from_win32(ERROR_CANCELLED.0) { return Ok(None); }
+            return Err(error);
+        }
+        Ok(Some(item_path(&dialog.GetResult()?)?))
+    }
+
     unsafe fn show(owner: usize, cwd: Option<String>, directory_only: bool) -> Result<Vec<String>> {
         CoInitializeEx(None, COINIT_APARTMENTTHREADED).ok()?;
         struct Apartment;
@@ -93,7 +116,7 @@ mod platform {
 }
 
 #[cfg(windows)]
-pub use platform::{open, open_directory};
+pub use platform::{open, open_directory, save};
 
 #[cfg(not(windows))]
 pub fn open(_: usize, _: Option<String>) -> Result<Vec<String>, String> {
@@ -103,4 +126,9 @@ pub fn open(_: usize, _: Option<String>) -> Result<Vec<String>, String> {
 #[cfg(not(windows))]
 pub fn open_directory(_: usize, _: Option<String>) -> Result<Option<String>, String> {
     Err("Native directory selection is supported on Windows.".into())
+}
+
+#[cfg(not(windows))]
+pub fn save(_: usize, _: &str) -> Result<Option<String>, String> {
+    Err("Native file saving is supported on Windows.".into())
 }
