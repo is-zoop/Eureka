@@ -1,0 +1,75 @@
+name: Release Eureka Desktop
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - 'codex/desktop-release'
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: eureka-desktop-release
+  cancel-in-progress: false
+
+jobs:
+  windows:
+    name: Windows x64 signed installer
+    runs-on: windows-latest
+    timeout-minutes: 90
+    environment: TAURI_SIGNING_PRIVATE_KEY
+    permissions:
+      contents: write
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: '24.12.0'
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            desktop/package-lock.json
+      - name: Install dependencies
+        run: |
+          npm ci
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm ci --prefix desktop
+      - name: Check release identity and metadata
+        run: node desktop/scripts/release-artifacts.mjs --check
+      - name: Run release tests
+        run: node --test desktop/scripts/runtime-config.test.mjs desktop/scripts/release-artifacts.test.mjs desktop/scripts/publish-release.test.mjs desktop/scripts/standalone-resources.test.mjs desktop/scripts/verify-resources.test.mjs lib/release-version.test.mjs
+      - name: Install Chromium
+        run: npm run browser:install
+      - name: Set up Rust
+        run: |
+          rustup default stable
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          rustc --version
+      - name: Build signed installer
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ''
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:TAURI_SIGNING_PRIVATE_KEY)) { throw 'Signing secret unavailable. Check the TAURI_SIGNING_PRIVATE_KEY Environment secret.' }
+          npm run release
+      - name: Verify signature and generate updater manifest
+        run: node desktop/scripts/release-artifacts.mjs
+      - name: Retain verified artifacts
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: eureka-windows-x64-${{ github.sha }}
+          path: desktop/release/*
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload GitHub draft release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node desktop/scripts/publish-release.mjs

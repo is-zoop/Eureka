@@ -1,0 +1,6 @@
+{
+  "EUREKA_AUTH_PROVIDER": "haze-oidc",
+  "EUREKA_AUTH_HAZE_ISSUER": "https://skill.paiwo188.com",
+  "EUREKA_AUTH_CLIENT_ID": "eureka",
+  "EUREKA_AUTH_REDIRECT_URI": "http://127.0.0.1:8080/api/marketplace-auth/callback/haze"
+}

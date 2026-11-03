@@ -1,4 +1,9 @@
 [[permission]]
+identifier = "allow-desktop-updater"
+description = "Allows only the bundled content view to check, download and explicitly install signed application updates."
+commands.allow = ["desktop_update_state", "desktop_update_check", "desktop_update_download", "desktop_update_install"]
+
+[[permission]]
 identifier = "allow-open-external-url"
 description = "Allows Eureka's local WebView to request opening an HTTP or HTTPS link in the system browser."
 commands.allow = ["open_external_url"]

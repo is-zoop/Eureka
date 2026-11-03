@@ -1,4 +1,5 @@
 import { selectionEnvelope } from "./plugin-selection";
+import { assertDesktopUpdateIdle, withDesktopUpdateAdmission } from "./desktop-update-gate";
 import { ClarificationRuntime, clarificationRuntime } from "./clarification-runtime";
 import { clarificationContinuationText, type ClarificationGroup, type ClarificationQueuedInput } from "./clarification";
 import { type UserInputResponse } from "./user-input";
@@ -933,6 +934,11 @@ export class AgentSessionWrapper {
   }
 
   async send(command: Record<string, unknown>, continuation?: ClarificationGroup): Promise<unknown> {
+    return withDesktopUpdateAdmission(() => this.sendCommand(command, continuation));
+  }
+
+  private async sendCommand(command: Record<string, unknown>, continuation?: ClarificationGroup): Promise<unknown> {
+    assertDesktopUpdateIdle();
     if (command.type === "pause_automation_task" || command.type === "exit_automation_task") {
       const ref = parseAutomationTaskRef(command.automationTask);
       assertAutomationTaskIdentity(ref); automationQueueGeneration(this.inner.sessionManager, ref, true);
@@ -954,6 +960,7 @@ export class AgentSessionWrapper {
     this.resetIdleTimer();
     const type = command.type as string;
     if (this.shouldWaitForExtensions(type)) await this.waitForExtensionsBound();
+    assertDesktopUpdateIdle();
 
     if (type === "prompt" || type === "steer" || type === "follow_up") {
       const imageError = validateAgentImages(command.images);
@@ -1059,6 +1066,7 @@ export class AgentSessionWrapper {
             notifyRunningChange();
           };
 
+          assertDesktopUpdateIdle();
           this.pendingPromptCount += 1;
           notifyRunningChange();
           let prompt: Promise<void>;
@@ -2434,6 +2442,7 @@ export async function startRpcSession(
   options: RpcSessionStartOptions = {},
 ): Promise<{ session: AgentSessionWrapper; realSessionId: string }> {
   const { initialModel, thinkingLevel } = options;
+  assertDesktopUpdateIdle();
   const registry = getRegistry();
   const locks = getLocks();
 

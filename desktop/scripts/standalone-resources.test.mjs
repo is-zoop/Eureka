@@ -15,7 +15,7 @@ test("repeated packaging omits previous desktop outputs and caches while retaini
     const source = join(root, "standalone");
     const destination = join(root, "resources", "app");
     const included = ["server.js", "package.json", ".next/server/app/page.js", "node_modules/next/package.json", "lib/auth/runtime.mjs"];
-    const excluded = ["desktop/resources/app/desktop/src-tauri/target/release/old.exe", "desktop/src-tauri/target/debug/resources/app/.cache/missing.json", ".cache/atlas.json", ".tmp/test.txt", ".git/config", ".next/cache/webpack/data", ".next/dev/server.js", ".next/standalone/server.js"];
+    const excluded = ["desktop/resources/app/desktop/src-tauri/target/release/old.exe", "desktop/src-tauri/target/debug/resources/app/.cache/missing.json", ".env", ".env.local", ".env.production", "desktop/.signing/updater.key", ".signing/key", ".cache/atlas.json", ".tmp/test.txt", ".git/config", ".next/cache/webpack/data", ".next/dev/server.js", ".next/standalone/server.js"];
     for (const name of [...included, ...excluded]) {
       const file = join(source, name);
       mkdirSync(dirname(file), { recursive: true });

@@ -5,6 +5,10 @@ import { fileURLToPath } from "node:url";
 import { dirname, resolve, join } from "node:path";
 import { copyStandaloneResources, copyStandaloneServerAssets } from "./standalone-resources.mjs";
 import { verifyStandaloneResources } from "./verify-resources.mjs";
+import { syncVersions } from "../../scripts/sync-version.mjs";
+import { readPublicRuntimeConfig, writeRuntimeEnvironment, withoutSigningSecrets } from "./runtime-config.mjs";
+
+syncVersions();
 
 const desktopDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const rootDir = resolve(desktopDir, "..");
@@ -12,7 +16,7 @@ const resourcesDir = join(desktopDir, "resources");
 const appDir = join(resourcesDir, "app");
 const nodeDir = join(resourcesDir, "node");
 const nextBin = join(rootDir, "node_modules", "next", "dist", "bin", "next");
-const runtimeEnvFile = join(rootDir, ".env.local");
+const runtimeConfig = readPublicRuntimeConfig(rootDir);
 const mcpAdapterDir = join(rootDir, "node_modules", "pi-mcp-adapter");
 const piPackageNames = [
   "pi-agent-core",
@@ -50,7 +54,7 @@ if (!skipBuild) {
   const build = spawnSync(process.execPath, [nextBin, "build", "--webpack"], {
     cwd: rootDir,
     env: {
-      ...process.env,
+      ...withoutSigningSecrets(process.env),
       EUREKA_DESKTOP_BUILD: "1",
       HOME: buildHome,
       USERPROFILE: buildHome,
@@ -105,7 +109,7 @@ for (const name of ["@next/env", "proper-lockfile", "graceful-fs", "retry", "sig
 }
 cpSync(join(rootDir, "public"), join(appDir, "public"), { recursive: true });
 cpSync(join(rootDir, ".next", "static"), join(appDir, ".next", "static"), { recursive: true });
-if (existsSync(runtimeEnvFile)) copyFileSync(runtimeEnvFile, join(appDir, ".env.local"));
+writeRuntimeEnvironment(appDir, runtimeConfig);
 copyFileSync(process.execPath, join(nodeDir, process.platform === "win32" ? "node.exe" : "node"));
 
 // Playwright is imported dynamically by the server. Include its runtime and the

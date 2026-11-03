@@ -4,7 +4,7 @@ export const DESKTOP_MENU_COMMAND_EVENT = "eureka:desktop-menu-command";
 
 export const DESKTOP_MENU_IDS = ["file", "edit", "view", "help"] as const;
 export type DesktopMenuId = typeof DESKTOP_MENU_IDS[number];
-export type DesktopMenuCommand = "new-task" | "select-project" | "undo" | "redo" | "cut" | "copy" | "paste" | "select-all" | "settings" | "toggle-sidebar" | "toggle-files" | "zoom-in" | "zoom-out" | "zoom-reset" | "fullscreen" | "logout" | "quit" | "about";
+export type DesktopMenuCommand = "new-task" | "select-project" | "undo" | "redo" | "cut" | "copy" | "paste" | "select-all" | "settings" | "toggle-sidebar" | "toggle-files" | "zoom-in" | "zoom-out" | "zoom-reset" | "fullscreen" | "logout" | "quit" | "about" | "check-updates";
 export type DesktopMenuRequest = { command: DesktopMenuCommand; path?: string };
 export type DesktopMenuContext = { ready: boolean; cwd: string | null; authenticated: boolean; projects: string[] };
 

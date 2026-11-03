@@ -2,7 +2,72 @@
 
 The desktop application wraps the existing Eureka Next.js server in a Tauri 2 Windows shell. It shares the existing `~/.pi/agent` data directory with the Pi CLI.
 
-## Prerequisites
+The root `package.json` is the single version source (currently `0.8.8`). Run
+`npm run version:sync` to synchronize desktop/Cargo manifests and lock files, or
+`npm run version:check` to verify without writing. Desktop development and resource
+preparation synchronize automatically. Release identity is **Eureka** /
+`is-zoop/Eureka`, with production identifier `com.eureka.desktop`. See
+[the release checklist](../docs/release.md) for version bumps and distribution.
+
+## Native updater
+
+The Rust updater exposes `desktop_update_state`, `desktop_update_check`,
+`desktop_update_download` and `desktop_update_install`. The typed frontend bridge
+is `lib/desktop-updater.ts`; changes are emitted only to `eureka-content` as
+`desktop-update-state`. The updater is disabled in debug/development builds.
+Only the loopback content view has permission; website views and the titlebar do
+not receive updater access or general updater-plugin permissions.
+
+Updates use the static manifest at
+`https://github.com/is-zoop/Eureka/releases/latest/download/latest.json`.
+Downloads require HTTPS and a valid signature. Checking and downloading never
+trigger installation. Downloads remain in memory for the current app process;
+restarting requires another download. Concurrent operations and stale version
+requests are rejected.
+
+The local signing key is `desktop/.signing/updater.key` (not password-encrypted).
+Back up this key privately and restrict access. The whole directory is ignored
+by Git and excluded from desktop runtime resources. `npm --prefix desktop run
+updater:setup` generates the first pair and configures the public key; it refuses
+to rotate a configured key or overwrite a partial pair. On another machine,
+restore the pair instead of generating a different one. CI can supply
+`TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`.
+The desktop build reads this local key automatically unless an environment key
+is supplied and generates the installer `.sig` alongside the NSIS installer.
+
+The GitHub workflow uses the Environment named `TAURI_SIGNING_PRIVATE_KEY`,
+which contains the signing Secret with the same name. It runs on `v*` tag pushes
+or manual dispatch, checks the tag against the root version, builds on Windows
+x64, verifies the installer signature, and uploads a **draft** Release. It retains
+the installer, signature, `latest.json`, and checksums as Actions artifacts too.
+Review the installation before publishing the draft. Re-runs cannot overwrite a
+published release or reuse a draft from another commit.
+
+`npm run release:check` verifies release metadata and public runtime settings.
+After a signed build, `npm run release:artifacts` creates `desktop/release/` using
+the version-specific notes in `docs/releases/v<version>.md`. This verifies the
+signature against the app's actual public key before generating any manifest.
+
+Installation first authenticates with the bundled service using a per-launch
+native secret. Active agents, compaction/shell work, session startups, or live
+automation runs refuse installation. New agent/automation admission is blocked
+during preparation until cancellation or service exit. The Windows
+before-exit hook closes native browser views, saves preferences, and stops the
+bundled Node process tree. If installer launch fails after cleanup, the local
+service is restarted. User data and persistent browser profiles are retained.
+
+The desktop navigation rail has a blue update button directly above the account
+avatar. It opens a dialog with manual checks, release notes, download progress,
+and explicit installation/retry actions. **Help → Check for updates** opens the
+same dialog and checks immediately. Downloads continue when the dialog is
+closed. A silent check runs ten seconds after the first idle connection; a manual
+operation cancels that scheduled check. Available/downloaded updates show a badge.
+Web sessions do not show a native installer entry. The dialog is translated in
+Chinese and English, supports light/dark themes, and restores focus to its trigger.
+
+Never test real installation in a development instance or during active work.
+
+## Build prerequisites
 
 - Node.js 22.19 or newer
 - Rust stable (`rustup default stable`)
@@ -87,4 +152,12 @@ The composer opens the Windows file picker directly for attachments, starting in
 
 Custom project paths also use the Windows folder picker, starting at the selected project directory. Cancellation keeps the current project; selected directories still pass through `/api/cwd/validate` before switching. Browser-only sessions retain the in-app directory picker, starting at the current project path.
 
-Haze OAuth opens in the system browser and uses the configured loopback callback at `127.0.0.1:8080`; Eureka therefore reserves port 8080 while it is open. The callback retains a short-lived, single-use result on the local server, and only the initiating desktop can claim it and receive its own HttpOnly session cookie. The claim secret and Haze tokens never enter browser URLs. Closing the desktop login page cancels the request; pending requests expire after ten minutes. The build copies the repository `.env.local` into the bundled server resources so its server-only identity configuration is available after installation.
+Haze OAuth opens in the system browser and uses the configured loopback callback at `127.0.0.1:8080`; Eureka therefore reserves port 8080 while it is open. The callback retains a short-lived, single-use result on the local server, and only the initiating desktop can claim it and receive its own HttpOnly session cookie. The claim secret and Haze tokens never enter browser URLs. Closing the desktop login page cancels the request; pending requests expire after ten minutes.
+
+The build includes only four public login fields from `desktop/runtime-config.json`
+(with local/env overrides). Raw `.env*` files and signing keys are excluded from
+traces and resource copies. Each installed desktop creates a persistent
+`session-secret` in its app configuration directory and supplies it directly to
+Node. This secret survives upgrades; an invalid existing secret fails closed
+instead of being silently replaced. Migrating from the old shared-key installer
+may require signing in again once. Never delete this file during routine updates.

@@ -1,4 +1,6 @@
 node_modules/
+.signing/
 .build-home/
 resources/
+release/
 src-tauri/target/
