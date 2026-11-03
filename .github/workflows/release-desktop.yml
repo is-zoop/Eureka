@@ -23,6 +23,15 @@ jobs:
     environment: TAURI_SIGNING_PRIVATE_KEY
     permissions:
       contents: write
+    env:
+      # Replace only the mirror host in the lockfiles; preserve pinned pkg.pr.new URLs.
+      npm_config_registry: https://registry.npmjs.org/
+      npm_config_replace_registry_host: registry.npmmirror.com
+      npm_config_fetch_timeout: '60000'
+      npm_config_fetch_retries: '2'
+      npm_config_fetch_retry_mintimeout: '5000'
+      npm_config_fetch_retry_maxtimeout: '15000'
+      npm_config_logs_dir: ${{ runner.temp }}\npm-logs
     defaults:
       run:
         shell: pwsh
@@ -45,11 +54,20 @@ jobs:
           cache-dependency-path: |
             package-lock.json
             desktop/package-lock.json
-      - name: Install dependencies
-        run: |
-          npm ci
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          npm ci --prefix desktop
+      - name: Install application dependencies
+        timeout-minutes: 12
+        run: npm ci --no-audit --no-fund --foreground-scripts --loglevel=http
+      - name: Install desktop dependencies
+        timeout-minutes: 5
+        run: npm ci --prefix desktop --no-audit --no-fund --foreground-scripts --loglevel=http
+      - name: Retain dependency installation diagnostics on failure
+        if: ${{ failure() && !cancelled() }}
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: npm-install-logs-${{ github.sha }}
+          path: ${{ runner.temp }}\npm-logs\*.log
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Check release identity and metadata
         run: node desktop/scripts/release-artifacts.mjs --check
       - name: Run release tests
