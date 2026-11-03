@@ -40,6 +40,16 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 .factory
+
+# Local IDE configuration
+/.idea/
+
 # Local dependency download cache
 .cache/
-测试浏览器-不连接Eureka.cmd
+
+# Local screenshots, diagnostics and temporary QA artifacts
+/.tmp/
+
+# Local Windows preview launchers
+/测试浏览器-不连接Eureka.cmd
+/测试原生侧栏浏览器.cmd
