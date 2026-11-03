@@ -38,12 +38,13 @@ export function proxy(request: NextRequest) {
   const isPublicPage = pathname === "/login";
   // The native gate consumes a one-use exact-payload ticket, never a browser cookie.
   const isNativeBrowserGate = pathname === "/api/automation/browser-ticket" && request.method === "POST" && /^[a-f0-9]{64}$/.test(request.headers.get("x-eureka-browser-ticket") ?? "");
+  const isNativeUpdateGate = pathname === "/api/desktop-update" && request.method === "POST" && /^[a-f0-9]{32}$/.test(request.headers.get("x-eureka-update-token") ?? "");
   // Two exact synthetic fixtures are accessible from the independent WebView
   // profile during development. Host/origin checks above still apply.
   const isDevelopmentResearchFixture = process.env.NODE_ENV === "development"
     && (pathname === "/automation-research-demo.html" || pathname === "/api/automation/research-demo" || pathname === "/automation-app-demo.html");
   const isMarketplaceAuthRoute = pathname.startsWith("/api/marketplace-auth/");
-  if (!isPublicPage && !isMarketplaceAuthRoute && !isDevelopmentResearchFixture && !isNativeBrowserGate) {
+  if (!isPublicPage && !isMarketplaceAuthRoute && !isDevelopmentResearchFixture && !isNativeBrowserGate && !isNativeUpdateGate) {
     const guest = isGuestSessionValue(request.cookies.get(GUEST_SESSION_COOKIE)?.value);
     if (guest && (pathname === "/api/organization-extensions" || pathname.startsWith("/api/organization-extensions/"))) {
       return NextResponse.json({ error: "unauthenticated" }, { status: 401 });

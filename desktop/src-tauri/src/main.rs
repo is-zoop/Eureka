@@ -13,6 +13,8 @@ mod window_preferences;
 mod automation_browser;
 mod browser_overlay;
 mod automation_accounts;
+mod app_updater;
+mod session_secret;
 
 use std::{
     fs::{create_dir_all, File, OpenOptions},
@@ -733,6 +735,10 @@ fn start_eureka(app: tauri::AppHandle) {
     // requires an exact redirect URI, so the desktop server cannot use a
     // random port while Haze authentication is enabled.
     let port = 8080_u16;
+    let session_secret = match app.path().app_config_dir().map_err(|e| e.to_string()).and_then(|path| session_secret::load_or_create(&path)) {
+        Ok(secret) => secret,
+        Err(error) => { append_log(&log_path, &error); let _ = load_main_page(&app, WebviewUrl::App("error.html".into())); return; }
+    };
     let resources = match app.path().resource_dir() {
         Ok(path) => path.join("resources"),
         Err(error) => {
@@ -775,6 +781,8 @@ fn start_eureka(app: tauri::AppHandle) {
         .env("PORT", port.to_string())
         .env("PI_WEB_HOSTNAME", "127.0.0.1")
         .env("PI_WEB_NO_OPEN", "1")
+        .env("EUREKA_AUTH_SESSION_SECRET", session_secret)
+        .env("EUREKA_DESKTOP_UPDATE_TOKEN", &app.state::<app_updater::UpdaterState>().token)
         .stdout(Stdio::from(stdout))
         .stderr(Stdio::from(stderr));
     #[cfg(windows)]
@@ -846,6 +854,10 @@ fn main() {
             job: Mutex::new(None),
         })
         .invoke_handler(tauri::generate_handler![
+            app_updater::desktop_update_state,
+            app_updater::desktop_update_check,
+            app_updater::desktop_update_download,
+            app_updater::desktop_update_install,
             open_external_url,
             automation_browser::desktop_automation_browser,
             automation_browser::desktop_automation_observe,
@@ -874,7 +886,9 @@ fn main() {
                 eprintln!("Could not restore the existing Eureka window: {error}");
             }
         }))
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
+            app.manage(app_updater::UpdaterState::new(app.package_info().version.to_string()));
             let path = app.path().app_config_dir()?.join("window-state.json");
             let preferences = WindowPreferences::read(&path);
             app.manage(desktop_tray::TrayState::default());

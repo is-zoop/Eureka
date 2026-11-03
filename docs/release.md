@@ -1,177 +1,147 @@
-# Release Checklist
+# Eureka desktop releases
 
-This repo publishes two artifacts for each release:
+## Release identity
 
-- npm package: `@agegr/pi-web`
-- GitHub Release: `agegr/pi-web`
+- Product: **Eureka**.
+- Repository and GitHub Releases: `is-zoop/Eureka`.
+- Production identifier: `com.eureka.desktop`.
+- Development identifier: `com.eureka.desktop.dev` (separate single-instance identity).
+- Installer: NSIS, Windows x64, current-user installation.
+- Tag: `v<version>`, for example `v0.8.8`.
+- Installer filename: `Eureka_<version>_x64-setup.exe`.
 
-Use this checklist from a clean `main` checkout.
+The root `package.json` is the only version source. The current baseline is
+`0.8.8`. Its repository/homepage/bugs metadata also defines the desktop package's
+release identity. Do not independently bump desktop/Rust versions or change the
+application identifier or installation mode for a routine release.
 
-## 1. Preflight
+## Synchronize and verify
 
-```bash
-git status --short --branch
-git log --oneline --decorate -5
-gh auth status
-npm whoami
-node -e "const p=require('./package.json'); console.log(p.version)"
+From the repository root:
+
+```powershell
+npm run version:sync
+npm run version:check
 ```
 
-Expected:
+Synchronization updates application metadata in the root `package-lock.json`,
+`desktop/package.json`, `desktop/package-lock.json`,
+`desktop/src-tauri/tauri.conf.json`, `[package].version` in `Cargo.toml`, and the
+`eureka` package version in `Cargo.lock`. Dependency versions and resolutions are
+preserved. `version:check` is read-only and fails when metadata is out of sync.
+Web builds, desktop development and resource preparation synchronize automatically.
+Before invoking the Tauri CLI directly, synchronize manually.
 
-- `git status` is clean, or only contains changes you intentionally plan to release.
-- GitHub is authenticated as an account that can push and create releases.
-- npm is authenticated as an account that can publish `@agegr/pi-web`.
+For a future release, bump only the root version:
 
-## 2. Publish to npm
+```powershell
+npm version patch --no-git-tag-version
+npm run version:check
+```
 
-```bash
+The npm `version` lifecycle hook synchronizes desktop and Cargo metadata. After
+editing the root version directly, run `npm run version:sync`. This initial setup
+keeps `0.8.8`; it does not bump the version. Stable `major.minor.patch` versions
+are supported in this phase.
+
+## Prepare the installer
+
+Review the intended release changes and ensure the GitHub account can publish to
+`is-zoop/Eureka`:
+
+```powershell
+git status --short --branch
+gh auth status
+npm ci
+npm ci --prefix desktop
+npm run browser:install
+npm run version:check
 npm run release
 ```
 
-The release script runs:
+Build on Windows x64 with Node.js 22.19 or newer, Rust and Windows C++ Build Tools.
+`release` checks version consistency and builds the desktop installer. It does
+**not** bump the version, publish npm, create tags, push, or publish a Release.
+The build prepares Node/Next/Chromium resources, verifies the packaged server,
+then creates the NSIS installer under `desktop/src-tauri/target/release/bundle/nsis/`.
 
-```bash
-npm version patch --no-git-tag-version && npm run build && npm publish --access public
+This performs a production Next build: stop development first or build from an
+isolated checkout to avoid overwriting the dev server's `.next` directory. Review
+bundled runtime configuration before distribution: only four public login fields
+are included. Raw `.env*` files and signing keys are excluded from resources.
+The native shell creates and retains a per-installation session encryption key.
+See [desktop packaging notes](../desktop/README.md).
+
+## GitHub Actions draft release (preferred)
+
+The workflow is `.github/workflows/release-desktop.yml`. It references the GitHub
+Environment **`TAURI_SIGNING_PRIVATE_KEY`** and reads its Secret with the same
+name. The current key is unencrypted; no password Secret is required. The job
+requests only the repository content write permission needed for Release assets.
+The initial `codex/desktop-release` branch also triggers draft builds, so the
+first installer can be checked before creating a version tag. When no tag exists,
+the draft pins its exact source commit; publishing it creates the version tag.
+
+Add `docs/releases/v<version>.md`, run `npm run release:check`, and commit all
+release changes before pushing the version tag. The workflow can also be run
+manually from Actions on the intended committed ref. Both paths validate versions,
+install Node/Rust/Chromium, build and verify the packaged server, verify the signed
+installer against the embedded public key, then upload a draft Release. The
+version remains `0.8.8` for the first updater-enabled installer.
+
+Draft assets are the NSIS `.exe`, matching `.exe.sig`, `latest.json`, and
+`SHA256SUMS.txt`. The manifest is uploaded last and references the fixed version
+URL. All assets are also retained under the workflow's Actions artifacts.
+The workflow does not publish the draft. A published release cannot be overwritten
+on a retry, and an existing draft must point to the same commit.
+
+## Manual release fallback
+
+Commit intended release changes, including synchronized manifests and lock files.
+Substitute the root package version for `<version>` and prepare Chinese/English
+release notes from commits since the previous release:
+
+```powershell
+git tag -a v<version> -m "Eureka v<version>"
+git push origin v<version>
+npm run release:artifacts
+gh release create v<version> desktop/release/Eureka_<version>_x64-setup.exe desktop/release/Eureka_<version>_x64-setup.exe.sig desktop/release/latest.json desktop/release/SHA256SUMS.txt --repo is-zoop/Eureka --verify-tag --draft --title "Eureka v<version>" --notes-file desktop/release/release-notes.md
 ```
 
-Notes:
+Verify installation, application version, startup and retained user data, then
+publish the draft:
 
-- This bumps `package.json` and `package-lock.json`.
-- It intentionally runs a production build. Do not run `next build` during normal development; release work is the exception.
-- If `npm view @agegr/pi-web version` briefly shows the previous version, check the exact version instead:
-
-```bash
-npm view @agegr/pi-web@<version> version --registry https://registry.npmjs.org/
-npm view @agegr/pi-web versions --json --registry https://registry.npmjs.org/
+```powershell
+gh release edit v<version> --repo is-zoop/Eureka --draft=false
+gh release view v<version> --repo is-zoop/Eureka
+npm run version:check
 ```
 
-## 3. Commit the Version Bump
+## Update support status
 
-Replace `<version>` with the new package version, for example `0.7.5`.
+Use [the installation and upgrade acceptance checklist](upgrade-acceptance.md)
+before publishing a draft. `npm run desktop:verify -- before` and `-- after`
+provide local, read-only file-retention checks; they do not replace actual installer testing.
 
-```bash
-git diff -- package.json package-lock.json
-git add package.json package-lock.json
-git commit -m "Release v<version>"
-```
+`/api/app-update` checks this repository's latest stable GitHub Release instead
+of an unrelated npm package. It only reports a version and release-notes link.
+No accessible published release returns no available update; other upstream
+failures are reported as errors.
 
-## 4. Tag and Push
+The native updater is now connected through `lib/desktop-updater.ts`: separate
+check/download/install commands and progress events, signature verification, and
+installation preflight/cleanup. See [native updater setup](../desktop/README.md#native-updater)
+for private key backup and build configuration. Debug/development builds cannot
+check or install updates. The application version remains `0.8.8`.
 
-```bash
-git tag -a v<version> -m "v<version>"
-git push origin main --tags
-```
-
-Confirm the tag does not already exist before creating it when unsure:
-
-```bash
-git ls-remote --tags origin v<version>
-gh release view v<version> --repo agegr/pi-web
-```
-
-## 5. Generate Release Notes from Commits
-
-Use the previous release tag as the base.
-
-```bash
-git log --oneline --decorate v<previous>..v<version>
-git log --format='%h%x09%s%n%b' v<previous>..v<version>
-git diff --stat v<previous>..v<version>
-```
-
-Write the release notes from those commits, not from memory. Include both Chinese and English sections. Keep commit hashes next to each item when useful.
-
-Suggested structure:
-
-```markdown
-## 中文
-
-基于 `v<previous>..v<version>` 的提交整理。
-
-### 新增
-
-- ...
-
-### 修复
-
-- ...
-
-### 改进
-
-- ...
-
-### 内部调整
-
-- 发布 npm 包 `@agegr/pi-web@<version>`。
-
-## English
-
-Prepared from commits in `v<previous>..v<version>`.
-
-### Added
-
-- ...
-
-### Fixed
-
-- ...
-
-### Improved
-
-- ...
-
-### Internal
-
-- Published npm package `@agegr/pi-web@<version>`.
-```
-
-## 6. Create or Update the GitHub Release
-
-Create a new release:
-
-```bash
-gh release create v<version> \
-  --repo agegr/pi-web \
-  --verify-tag \
-  --title "v<version>" \
-  --notes-file release-notes.md
-```
-
-If the release already exists and only the notes need updating:
-
-```bash
-gh release edit v<version> \
-  --repo agegr/pi-web \
-  --notes-file release-notes.md
-```
-
-You can avoid a temporary file by passing notes through stdin:
-
-```bash
-gh release edit v<version> --repo agegr/pi-web --notes-file - <<'EOF'
-## 中文
-
-...
-
-## English
-
-...
-EOF
-```
-
-## 7. Final Verification
-
-```bash
-gh release view v<version> --repo agegr/pi-web
-npm view @agegr/pi-web@<version> version --registry https://registry.npmjs.org/
-git status --short --branch
-git log --oneline --decorate -3
-```
-
-Expected:
-
-- GitHub Release exists and is not a draft unless intentionally published as one.
-- npm exact version resolves.
-- `main` is aligned with `origin/main`.
-- `HEAD` points at the release commit and `v<version>` tag.
+The update dialog is available from the blue button above the navigation rail's
+account avatar, including manual checks, notes, background download progress,
+explicit installation and retries. It is not part of Settings. `latest.json`
+generation and the GitHub Actions draft publishing workflow are connected.
+Before distributing a signed release, upload its matching
+installer, `.sig`, and `latest.json`; the manifest's `signature` must contain the
+signature file contents, and `platforms.windows-x86_64.url` must reference the
+version-specific HTTPS installer URL. Do not publish a manifest before its
+installer is available. Test upgrade from `0.8.8` to a higher version in an
+isolated installed copy, including task-busy rejection, invalid signatures and
+process cleanup. Existing installers without an updater need manual replacement.

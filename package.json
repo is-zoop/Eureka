@@ -30,15 +30,22 @@
   "scripts": {
     "dev": "next dev -H 127.0.0.1 -p 8080",
     "dev:lan": "next dev -H 0.0.0.0 -p 8080",
+    "prebuild": "npm run version:sync",
     "build": "next build --webpack",
     "start": "next start -H 127.0.0.1 -p 8080",
     "start:lan": "next start -H 0.0.0.0 -p 8080",
     "desktop:dev": "npm --prefix desktop run dev",
     "desktop:build": "npm --prefix desktop run build",
     "desktop:bundle": "npm --prefix desktop run bundle",
+    "desktop:verify": "node desktop/scripts/verify-upgrade.mjs",
     "lint": "eslint .",
     "test": "node --experimental-strip-types --test \"app/**/*.test.mjs\" \"components/**/*.test.mjs\" \"hooks/**/*.test.mjs\" \"lib/**/*.test.mjs\" \"public/**/*.test.mjs\"",
-    "release": "npm version patch --no-git-tag-version && npm run build && npm publish --access public",
+    "version:sync": "node scripts/sync-version.mjs",
+    "version:check": "node scripts/sync-version.mjs --check",
+    "version": "npm run version:sync",
+    "release": "npm run version:check && npm run desktop:build",
+    "release:check": "node desktop/scripts/release-artifacts.mjs --check",
+    "release:artifacts": "node desktop/scripts/release-artifacts.mjs",
     "browser:install": "playwright install chromium --no-shell"
   },
   "dependencies": {

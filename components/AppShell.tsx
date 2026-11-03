@@ -10,6 +10,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useGlobalKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { SessionSidebar } from "./SessionSidebar";
 import { AppNavigation, type AppView } from "./AppNavigation";
+import { DesktopUpdateButton } from "./DesktopUpdateButton";
 import { AutomationWorkspace } from "./AutomationWorkspace";
 import { AutomationAppDetails, type AutomationAppDetailsRequest } from "./AutomationAppDetails";
 import { AutomationAuthoringBrowserHost } from "./AutomationAuthoringBrowserHost";
@@ -1313,6 +1314,8 @@ export function AppShell({ initialGuest = false }: { initialGuest?: boolean }) {
   }, [windowTitle]);
 
   const accountMenu = (
+    <div className="flex w-[52px] shrink-0 flex-col items-center">
+      <DesktopUpdateButton />
       <SidebarUserMenu
         user={authenticatedUser}
         guest={guest}
@@ -1321,6 +1324,7 @@ export function AppShell({ initialGuest = false }: { initialGuest?: boolean }) {
         onOpenSettings={() => { setSettingsSection("system"); setSettingsOpen(true); }}
         onOpenModels={() => { setSettingsSection("models"); setSettingsOpen(true); }}
       />
+    </div>
   );
 
   const sidebarContent = (

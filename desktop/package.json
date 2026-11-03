@@ -1,16 +1,25 @@
 {
   "name": "eureka-desktop",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.8.8",
   "description": "Windows desktop shell for Eureka",
   "type": "module",
   "scripts": {
     "dev": "node scripts/dev.mjs",
     "prepare-resources": "node scripts/prepare-resources.mjs",
-    "build": "npm run prepare-resources && tauri build --bundles nsis",
+    "build": "node scripts/build.mjs",
+    "updater:setup": "node scripts/setup-updater.mjs",
     "bundle": "npm run build"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.10.0"
+  },
+  "homepage": "https://github.com/is-zoop/Eureka#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/is-zoop/Eureka.git"
+  },
+  "bugs": {
+    "url": "https://github.com/is-zoop/Eureka/issues"
   }
 }

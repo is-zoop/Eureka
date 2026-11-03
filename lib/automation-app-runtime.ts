@@ -1,4 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process";
+import { assertDesktopUpdateIdle, withDesktopUpdateAdmission } from "./desktop-update-gate";
 import { createHash, randomUUID } from "node:crypto";
 import { appendFile, readdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
@@ -217,6 +218,10 @@ async function rpc(live: LiveRun, method: string, args: unknown[], context: { no
   throw new Error("本阶段不支持此 SDK 能力。");
 }
 export async function startAppRun(auth: Access, appId: string, revision: number, runId: string, values: unknown, configRevision: number, actionId?: string): Promise<AppRunRecord> {
+  return withDesktopUpdateAdmission(() => startAppRunInternal(auth, appId, revision, runId, values, configRevision, actionId));
+}
+async function startAppRunInternal(auth: Access, appId: string, revision: number, runId: string, values: unknown, configRevision: number, actionId?: string): Promise<AppRunRecord> {
+  assertDesktopUpdateIdle();
   auth.assertExecution?.();
   if (!isAppId(runId)) fail("运行 ID 无效", 400);
   const inputHash = rawHash({ values, actionId: actionId ?? null });
@@ -248,6 +253,7 @@ export async function startAppRun(auth: Access, appId: string, revision: number,
       const flags = ["--permission", "--max-old-space-size=256", ...automationFilePermissionFlags(readable, writable), "--input-type=module", "--eval", AUTOMATION_WORKER_SOURCE];
       auth.assertIdentity();auth.assertExecution?.(); if (leaseLost) fail("执行占用已失效，请重新启动运行。");
       const launch=await automationNodeLaunch(workspace);
+      assertDesktopUpdateIdle();
       const child = spawn(launch.executable, ["--max-old-space-size=256", "--input-type=module", "--eval", AUTOMATION_SUPERVISOR_SOURCE], { cwd: launch.directory, windowsHide: true, env: { NODE_ENV: process.env.NODE_ENV ?? "production", ...(process.env.SystemRoot ? { SystemRoot: process.env.SystemRoot } : {}), ...(process.env.WINDIR ? { WINDIR: process.env.WINDIR } : {}), TEMP: workspace, TMP: workspace, LANG: "zh_CN.UTF-8" }, stdio: ["ignore", "pipe", "pipe", "ipc"] });
       const closed = new Promise<void>(resolve => { child.once("close", () => resolve()); child.once("error", () => resolve()); });
       const live: LiveRun = { auth, detail, record, directory, child, closed, release, journal: Promise.resolve(), finishing: false, rpc: 0, executions: 0, open: new Map(), requests: new Set(), fileOps: new AppFileOperations(workspace, grants, detail.manifest.automation.capabilities, () => check(live)) };

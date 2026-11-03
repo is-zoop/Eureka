@@ -1,6 +1,8 @@
 import { spawn } from "node:child_process";
 import { createServer } from "node:net";
 import { setTimeout as delay } from "node:timers/promises";
+import { randomBytes } from "node:crypto";
+import { withoutSigningSecrets } from "./runtime-config.mjs";
 
 async function unusedLocalPort() {
   const server = createServer();
@@ -15,7 +17,7 @@ export async function verifyStandaloneResources(appDirectory, nodeExecutable, ti
   const port = await unusedLocalPort();
   const child = spawn(nodeExecutable, ["server.js"], {
     cwd: appDirectory, windowsHide: true,
-    env: { ...process.env, NODE_ENV: "production", HOSTNAME: "127.0.0.1", PORT: String(port), PI_WEB_NO_OPEN: "1" },
+    env: { ...withoutSigningSecrets(process.env), EUREKA_AUTH_SESSION_SECRET: randomBytes(32).toString("hex"), NODE_ENV: "production", HOSTNAME: "127.0.0.1", PORT: String(port), PI_WEB_NO_OPEN: "1" },
     stdio: ["ignore", "pipe", "pipe"],
   });
   let output = "", startupError;

@@ -1,3 +1,9 @@
+import packageInfo from "../package.json";
+
+export const APP_VERSION = packageInfo.version;
+export const APP_REPOSITORY_URL = packageInfo.repository.url.replace(/^git\+/, "").replace(/\.git$/, "");
+export const APP_LATEST_RELEASE_API = `https://api.github.com/repos/${new URL(APP_REPOSITORY_URL).pathname.slice(1)}/releases/latest`;
+
 const STABLE_VERSION_PATTERN = /^(\d+)\.(\d+)\.(\d+)$/;
 
 function parseStableVersion(version: string): [number, number, number] | null {
@@ -22,7 +28,7 @@ export function isNewerStableVersion(candidate: string, current: string): boolea
   return false;
 }
 
-export function getPiWebReleaseUrl(version: string): string | null {
+export function getEurekaReleaseUrl(version: string): string | null {
   if (!parseStableVersion(version)) return null;
-  return `https://github.com/agegr/pi-web/releases/tag/v${version}`;
+  return `${APP_REPOSITORY_URL}/releases/tag/v${version}`;
 }

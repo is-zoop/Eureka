@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import test from "node:test";
 import { createRequire } from "node:module";
-import { copyStandaloneResources, desktopTraceExcludes, standaloneResourceFilter } from "./standalone-resources.mjs";
+import { copyStandaloneResources, desktopTraceExcludes, standaloneResourceFilter, isRuntimeAsset } from "./standalone-resources.mjs";
 
 const require = createRequire(import.meta.url);
 const picomatch = require("next/dist/compiled/picomatch");
@@ -15,7 +15,7 @@ test("repeated packaging omits previous desktop outputs and caches while retaini
     const source = join(root, "standalone");
     const destination = join(root, "resources", "app");
     const included = ["server.js", "package.json", ".next/server/app/page.js", "node_modules/next/package.json", "lib/auth/runtime.mjs"];
-    const excluded = ["desktop/resources/app/desktop/src-tauri/target/release/old.exe", "desktop/src-tauri/target/debug/resources/app/.cache/missing.json", ".cache/atlas.json", ".tmp/test.txt", ".git/config", ".next/cache/webpack/data", ".next/dev/server.js", ".next/standalone/server.js"];
+    const excluded = ["desktop/resources/app/desktop/src-tauri/target/release/old.exe", "desktop/src-tauri/target/debug/resources/app/.cache/missing.json", ".env", ".env.local", ".env.production", "desktop/.signing/updater.key", ".signing/key", ".cache/atlas.json", ".tmp/test.txt", ".git/config", ".next/cache/webpack/data", ".next/dev/server.js", ".next/standalone/server.js"];
     for (const name of [...included, ...excluded]) {
       const file = join(source, name);
       mkdirSync(dirname(file), { recursive: true });
@@ -48,4 +48,9 @@ test("Next shared trace exclusions cover generated files in both Windows and nor
   }
   assert.equal(matches(join(root, "node_modules/next/package.json")), false);
   assert.equal(matches(join(root, "lib/auth/runtime.mjs")), false);
+});
+
+test("runtime packaging omits source maps while retaining executable and TypeScript resources", () => {
+  for (const name of ["operation.d.ts.map", "sdk.js.map", "sdk.mjs.map", "sdk.cjs.map", "style.css.map", "package.tsbuildinfo"]) assert.equal(isRuntimeAsset(name), false, name);
+  for (const name of ["operation.d.ts", "sdk.js", "extension.ts", "model.json", "node.exe"]) assert.equal(isRuntimeAsset(name), true, name);
 });

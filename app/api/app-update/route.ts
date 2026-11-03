@@ -1,11 +1,9 @@
 import { NextResponse } from "next/server";
 import type { AppUpdateResponse } from "@/lib/api-types";
-import { getPiWebReleaseUrl, isNewerStableVersion } from "@/lib/app-update";
+import { APP_LATEST_RELEASE_API, APP_REPOSITORY_URL, APP_VERSION, getEurekaReleaseUrl, isNewerStableVersion } from "@/lib/app-update";
 
 export const dynamic = "force-dynamic";
 
-const CURRENT_VERSION = process.env.NEXT_PUBLIC_APP_VERSION ?? "0.0.0";
-const NPM_LATEST_URL = "https://registry.npmjs.org/@agegr%2Fpi-web/latest";
 const CACHE_TTL_MS = 12 * 60 * 60 * 1000;
 const FETCH_TIMEOUT_MS = 5_000;
 
@@ -16,30 +14,34 @@ interface AppUpdateCache {
 }
 
 declare global {
-  var __piWebAppUpdateCache: AppUpdateCache | undefined;
+  var __eurekaAppUpdateCache: AppUpdateCache | undefined;
 }
 
 function getCache(): AppUpdateCache {
-  return globalThis.__piWebAppUpdateCache ??= { expiresAt: 0 };
+  return globalThis.__eurekaAppUpdateCache ??= { expiresAt: 0 };
 }
 
 async function fetchLatestVersion(): Promise<AppUpdateResponse> {
-  const response = await fetch(NPM_LATEST_URL, {
+  const response = await fetch(APP_LATEST_RELEASE_API, {
     cache: "no-store",
-    headers: { Accept: "application/json" },
+    headers: { Accept: "application/vnd.github+json" },
     signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
-  if (!response.ok) throw new Error(`npm registry returned HTTP ${response.status}`);
+  // A new release repository has no latest release yet.
+  if (response.status === 404) {
+    return { currentVersion: APP_VERSION, latestVersion: APP_VERSION, updateAvailable: false, releaseUrl: `${APP_REPOSITORY_URL}/releases` };
+  }
+  if (!response.ok) throw new Error(`GitHub Releases returned HTTP ${response.status}`);
 
-  const body = await response.json() as { version?: unknown };
-  const latestVersion = typeof body.version === "string" ? body.version : "";
-  const releaseUrl = getPiWebReleaseUrl(latestVersion);
-  if (!releaseUrl) throw new Error("npm registry returned an invalid version");
+  const body = await response.json() as { tag_name?: unknown; draft?: boolean; prerelease?: boolean };
+  const latestVersion = typeof body.tag_name === "string" ? body.tag_name.replace(/^v/, "") : "";
+  const releaseUrl = getEurekaReleaseUrl(latestVersion);
+  if (!releaseUrl || body.draft || body.prerelease) throw new Error("GitHub Releases returned an invalid stable release");
 
   return {
-    currentVersion: CURRENT_VERSION,
+    currentVersion: APP_VERSION,
     latestVersion,
-    updateAvailable: isNewerStableVersion(latestVersion, CURRENT_VERSION),
+    updateAvailable: isNewerStableVersion(latestVersion, APP_VERSION),
     releaseUrl,
   };
 }

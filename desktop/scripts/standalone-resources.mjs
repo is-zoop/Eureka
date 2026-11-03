@@ -7,10 +7,18 @@ export const desktopTraceExcludes = [
   "**/.cache/**",
   "**/.tmp/**",
   "**/.git/**",
+  "**/.env",
+  "**/.env.*",
+  "**/.signing/**",
   "**/.next/cache/**",
   "**/.next/dev/**",
   "**/.next/standalone/**",
 ];
+
+// Source maps are not used by the packaged runtime and may exceed NSIS MAX_PATH.
+export function isRuntimeAsset(source) {
+  return !/\.(?:[cm]?[jt]s|css)\.map$|\.tsbuildinfo$/i.test(source);
+}
 
 export function standaloneResourceFilter(root) {
   const sourceRoot = resolve(root);
@@ -19,6 +27,8 @@ export function standaloneResourceFilter(root) {
     if (!name) return true;
     if (isAbsolute(name) || name === ".." || name.startsWith(`..${sep}`)) return false;
     const parts = name.split(sep);
+    if (!isRuntimeAsset(source)) return false;
+    if (parts.some(part => part === ".env" || part.startsWith(".env.") || part === ".signing")) return false;
     if (["desktop", ".cache", ".tmp", ".git"].includes(parts[0])) return false;
     return !(parts[0] === ".next" && ["cache", "dev", "standalone"].includes(parts[1]));
   };

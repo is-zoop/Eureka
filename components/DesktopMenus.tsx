@@ -15,6 +15,7 @@ import { captureDesktopEditTarget, executeDesktopEdit, restoreDesktopEditTarget,
 import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogTitle } from "./ui/alert-dialog";
 import { LabelTooltip } from "./LabelTooltip";
 import packageInfo from "@/package.json";
+import { DESKTOP_UPDATE_OPEN_EVENT } from "@/lib/desktop-update-controller";
 import styles from "./DesktopMenus.module.css";
 
 const EDIT_COMMANDS = new Set<DesktopMenuCommand>(["undo", "redo", "cut", "copy", "paste", "select-all"]);
@@ -64,6 +65,10 @@ export function DesktopMenus() {
         }
       } else if (command === "about") {
         setAboutOpen(true);
+      } else if (command === "check-updates") {
+        // Close the menu before moving focus into the shared updater dialog.
+        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+        window.dispatchEvent(new Event(DESKTOP_UPDATE_OPEN_EVENT));
       } else if (command === "logout") {
         if (!context.authenticated || loggingOut) return;
         setLoggingOut(true);
@@ -212,7 +217,11 @@ export function DesktopMenus() {
               {separator("fullscreen")}
               {item("fullscreen", t("desktop.fullscreen"), "F11")}
             </>}
-            {location?.menu === "help" && item("about", t("desktop.about"))}
+            {location?.menu === "help" && <>
+              {item("check-updates", t("updates.check"), undefined, !context.ready)}
+              {separator("about")}
+              {item("about", t("desktop.about"))}
+            </>}
           </Menu.Popup>
         </Menu.Positioner>
       </Menu.Portal>
