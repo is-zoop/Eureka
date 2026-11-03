@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import test from "node:test";
 import { createRequire } from "node:module";
-import { copyStandaloneResources, desktopTraceExcludes, standaloneResourceFilter } from "./standalone-resources.mjs";
+import { copyStandaloneResources, desktopTraceExcludes, standaloneResourceFilter, isRuntimeAsset } from "./standalone-resources.mjs";
 
 const require = createRequire(import.meta.url);
 const picomatch = require("next/dist/compiled/picomatch");
@@ -48,4 +48,9 @@ test("Next shared trace exclusions cover generated files in both Windows and nor
   }
   assert.equal(matches(join(root, "node_modules/next/package.json")), false);
   assert.equal(matches(join(root, "lib/auth/runtime.mjs")), false);
+});
+
+test("runtime packaging omits source maps while retaining executable and TypeScript resources", () => {
+  for (const name of ["operation.d.ts.map", "sdk.js.map", "sdk.mjs.map", "sdk.cjs.map", "style.css.map", "package.tsbuildinfo"]) assert.equal(isRuntimeAsset(name), false, name);
+  for (const name of ["operation.d.ts", "sdk.js", "extension.ts", "model.json", "node.exe"]) assert.equal(isRuntimeAsset(name), true, name);
 });

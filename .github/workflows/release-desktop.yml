@@ -26,10 +26,18 @@ jobs:
     defaults:
       run:
         shell: pwsh
+        working-directory: C:\e
     steps:
       - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
+      - name: Use a short Windows build path
+        working-directory: ${{ github.workspace }}
+        run: |
+          $shortRoot = 'C:\e'
+          if (Test-Path -LiteralPath $shortRoot) { throw 'The short build directory already exists.' }
+          New-Item -ItemType Directory -Path $shortRoot | Out-Null
+          Get-ChildItem -LiteralPath $env:GITHUB_WORKSPACE -Force | Copy-Item -Destination $shortRoot -Recurse -Force
       - uses: actions/setup-node@v7.1.0
         with:
           node-version: '24.12.0'
@@ -66,7 +74,7 @@ jobs:
         uses: actions/upload-artifact@v7.0.2
         with:
           name: eureka-windows-x64-${{ github.sha }}
-          path: desktop/release/*
+          path: C:\e\desktop\release\*
           if-no-files-found: error
           retention-days: 14
       - name: Upload GitHub draft release

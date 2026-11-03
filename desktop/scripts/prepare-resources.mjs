@@ -3,7 +3,7 @@ import { spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, rmSync, copyFileSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve, join } from "node:path";
-import { copyStandaloneResources, copyStandaloneServerAssets } from "./standalone-resources.mjs";
+import { copyStandaloneResources, copyStandaloneServerAssets, isRuntimeAsset } from "./standalone-resources.mjs";
 import { verifyStandaloneResources } from "./verify-resources.mjs";
 import { syncVersions } from "../../scripts/sync-version.mjs";
 import { readPublicRuntimeConfig, writeRuntimeEnvironment, withoutSigningSecrets } from "./runtime-config.mjs";
@@ -91,13 +91,13 @@ for (const packageName of piPackageNames) {
   cpSync(
     join(piPackagesDir, packageName),
     join(appDir, "node_modules", "@earendil-works", packageName),
-    { recursive: true },
+    { recursive: true, filter: isRuntimeAsset },
   );
 }
 // The MCP adapter is loaded through jiti at runtime, which Next's standalone
 // output tracer cannot discover. Copy the package (and its nested production
 // dependencies) explicitly so AgentSession startup works after installation.
-cpSync(mcpAdapterDir, join(appDir, "node_modules", "pi-mcp-adapter"), { recursive: true });
+cpSync(mcpAdapterDir, join(appDir, "node_modules", "pi-mcp-adapter"), { recursive: true, filter: isRuntimeAsset });
 // Header hooks run as plain Node children, outside Next's bundled modules.
 mkdirSync(join(appDir, "lib", "auth"), { recursive: true });
 for (const file of ["haze-mcp-request-headers.mjs", "haze-plugin-auth.mjs", "auth/haze-runtime-store.mjs"]) {
@@ -105,7 +105,7 @@ for (const file of ["haze-mcp-request-headers.mjs", "haze-plugin-auth.mjs", "aut
 }
 // Include dependencies used by the unbundled hook even if Next inlines them.
 for (const name of ["@next/env", "proper-lockfile", "graceful-fs", "retry", "signal-exit"]) {
-  cpSync(join(rootDir, "node_modules", name), join(appDir, "node_modules", name), { recursive: true });
+  cpSync(join(rootDir, "node_modules", name), join(appDir, "node_modules", name), { recursive: true, filter: isRuntimeAsset });
 }
 cpSync(join(rootDir, "public"), join(appDir, "public"), { recursive: true });
 cpSync(join(rootDir, ".next", "static"), join(appDir, ".next", "static"), { recursive: true });
@@ -115,7 +115,7 @@ copyFileSync(process.execPath, join(nodeDir, process.platform === "win32" ? "nod
 // Playwright is imported dynamically by the server. Include its runtime and the
 // matching Chromium revision; never require a first-run browser download.
 for (const name of ["playwright", "playwright-core"]) {
-  cpSync(join(rootDir, "node_modules", name), join(appDir, "node_modules", name), { recursive: true });
+  cpSync(join(rootDir, "node_modules", name), join(appDir, "node_modules", name), { recursive: true, filter: isRuntimeAsset });
 }
 cpSync(chromiumRevisionDir, join(appDir, "browser", "chromium"), { recursive: true });
 const browserRelativeExecutable = chromiumExecutable.slice(chromiumRevisionDir.length + 1);
