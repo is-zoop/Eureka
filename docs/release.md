@@ -134,9 +134,12 @@ installation preflight/cleanup. See [native updater setup](../desktop/README.md#
 for private key backup and build configuration. Debug/development builds cannot
 check or install updates. The application version remains `0.8.8`.
 
-The update dialog is available from the blue button above the navigation rail's
-account avatar, including manual checks, notes, background download progress,
-explicit installation and retries. It is not part of Settings. `latest.json`
+The blue button above the navigation rail's account avatar appears only when a
+newer version is known. Its first click downloads in the background; a second
+click after verification quits Eureka and installs the update. Clicking during
+download opens the progress dialog, and failures open recovery guidance.
+Help → Check for updates always opens the dialog for manual checks, notes,
+progress and retries. It is not part of Settings. `latest.json`
 generation and the GitHub Actions draft publishing workflow are connected.
 Before distributing a signed release, upload its matching
 installer, `.sig`, and `latest.json`; the manifest's `signature` must contain the

@@ -1,5 +1,6 @@
 import * as native from "./desktop-updater";
 import type { DesktopUpdateState } from "./desktop-updater";
+import { isNewerStableVersion } from "./app-update";
 
 export type UpdateAction = "check" | "download" | "install";
 export const DESKTOP_UPDATE_OPEN_EVENT = "eureka:desktop-update-open";
@@ -14,6 +15,7 @@ export interface UpdateView {
 type Api = Pick<typeof native, "isDesktopUpdaterHost" | "getDesktopUpdateState" | "checkDesktopUpdate" | "downloadDesktopUpdate" | "installDesktopUpdate" | "subscribeDesktopUpdate">;
 const INITIAL: UpdateView = { host: false, state: null, loading: false, pending: null, error: null, failedAction: null };
 export const updateBusy = (view: UpdateView) => view.loading || Boolean(view.pending) || ["checking", "downloading", "installing"].includes(view.state?.phase ?? "");
+export const hasDesktopUpdate = (view: UpdateView) => Boolean(view.host && view.state?.enabled && view.state.version && isNewerStableVersion(view.state.version, view.state.currentVersion));
 
 export function updateErrorKey(error: string) {
   if (/正在运行|结束任务|tasks?.*still running/i.test(error)) return "updates.errorTasks";
@@ -90,6 +92,11 @@ export class DesktopUpdateController {
     if (this.value.loading) { this.checkRequested = true; return; }
     // A menu check must not discard an already verified download.
     if (!this.value.state?.readyToInstall) void this.run("check");
+  };
+  // Each click performs one action; completing a download never starts installation.
+  runPrimary = async () => {
+    if (!hasDesktopUpdate(this.value) || updateBusy(this.value)) return;
+    await this.run(this.value.state?.readyToInstall ? "install" : "download");
   };
   run = async (action: UpdateAction) => {
     if (!this.value.host || updateBusy(this.value) || this.value.state?.enabled === false) return;

@@ -24,6 +24,8 @@ jobs:
     permissions:
       contents: write
     env:
+      # Keep both extraction and the npm cache on the runner's faster workspace disk.
+      npm_config_cache: D:\npm-cache
       # Replace only the mirror host in the lockfiles; preserve pinned pkg.pr.new URLs.
       npm_config_registry: https://registry.npmjs.org/
       npm_config_replace_registry_host: registry.npmmirror.com
@@ -34,7 +36,7 @@ jobs:
     defaults:
       run:
         shell: pwsh
-        working-directory: C:\e
+        working-directory: D:\e
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -42,7 +44,7 @@ jobs:
       - name: Use a short Windows build path
         working-directory: ${{ github.workspace }}
         run: |
-          $shortRoot = 'C:\e'
+          $shortRoot = 'D:\e'
           if (Test-Path -LiteralPath $shortRoot) { throw 'The short build directory already exists.' }
           New-Item -ItemType Directory -Path $shortRoot | Out-Null
           Get-ChildItem -LiteralPath $env:GITHUB_WORKSPACE -Force | Copy-Item -Destination $shortRoot -Recurse -Force
@@ -95,7 +97,7 @@ jobs:
         uses: actions/upload-artifact@v7.0.2
         with:
           name: eureka-windows-x64-${{ github.sha }}
-          path: C:\e\desktop\release\*
+          path: D:\e\desktop\release\*
           if-no-files-found: error
           retention-days: 14
       - name: Upload GitHub draft release
