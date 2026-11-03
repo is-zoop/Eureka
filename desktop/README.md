@@ -39,7 +39,7 @@ The GitHub workflow uses the Environment named `TAURI_SIGNING_PRIVATE_KEY`,
 which contains the signing Secret with the same name. It runs on `v*` tag pushes
 or manual dispatch, checks the tag against the root version, builds on Windows
 x64, verifies the installer signature, and uploads a **draft** Release. The short
-build path `C:\e` keeps NSIS file references below Windows path limits. The workflow
+build path `D:\e` keeps NSIS file references below Windows path limits. The workflow
 retains the installer, signature, `latest.json`, and checksums as Actions artifacts too.
 Review the installation before publishing the draft. Re-runs cannot overwrite a
 published release or reuse a draft from another commit.
