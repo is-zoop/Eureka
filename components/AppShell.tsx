@@ -161,6 +161,8 @@ export function AppShell({ initialGuest = false }: { initialGuest?: boolean }) {
   const [automationBrowserId, setAutomationBrowserId] = useState<string | null>(null);
   const [automationBrowserOpen, setAutomationBrowserOpen] = useState(false);
   const [automationNativeBrowser, setAutomationNativeBrowser] = useState<NativeBrowserSpec | null>(null);
+  const automationNativeBrowserRef = useRef<NativeBrowserSpec | null>(null);
+  automationNativeBrowserRef.current = automationNativeBrowser;
   const [authoringSessionId,setAuthoringSessionId]=useState<string|null>(null);
   const homeNativeBrowser=mainView==="chat"&&Boolean(automationNativeBrowser?.applicationTaskId||automationNativeBrowser?.applicationRunId)&&authoringSessionId===selectedSession?.id;
   const [automationTaskState, setAutomationTaskState] = useState<AutomationTaskState>({ phase: "idle" });
@@ -2186,7 +2188,7 @@ export function AppShell({ initialGuest = false }: { initialGuest?: boolean }) {
         } as React.CSSProperties}
       >
         {automationNativeBrowser && !guest && <div style={{ display: (mainView === "automation"||homeNativeBrowser) && automationBrowserOpen ? "flex" : "none", flex: 1, minHeight: 0 }}>
-          <NativeBrowserPanel key={`${automationNativeBrowser.ownerKey}:${automationNativeBrowser.sessionId}:${automationNativeBrowser.websiteUrl}:${automationNativeBrowser.accountId ?? automationNativeBrowser.browserMode ?? "default"}:${automationNativeBrowser.applicationRunId??"manual"}:${automationNativeBrowser.applicationTaskId??""}`} spec={automationNativeBrowser} controlRef={automationBrowserControls} onTaskState={setAutomationTaskState} visible={(mainView === "automation"||homeNativeBrowser) && automationBrowserOpen && !settingsOpen && !projectTrustDialogOpen} onHide={() => setAutomationBrowserOpen(false)} onClose={() => { setAutomationNativeBrowser(null); setAutomationBrowserId(null); setAutomationBrowserOpen(false); setAutomationTaskState({ phase: "stopped" }); }} />
+          <NativeBrowserPanel key={`${automationNativeBrowser.ownerKey}:${automationNativeBrowser.sessionId}:${automationNativeBrowser.websiteUrl}:${automationNativeBrowser.accountId ?? automationNativeBrowser.browserMode ?? "default"}:${automationNativeBrowser.applicationRunId??"manual"}:${automationNativeBrowser.applicationTaskId??""}`} spec={automationNativeBrowser} controlRef={automationBrowserControls} onTaskState={setAutomationTaskState} visible={(mainView === "automation"||homeNativeBrowser) && automationBrowserOpen && !settingsOpen && !projectTrustDialogOpen} onHide={() => { if (sameNativeBrowser(automationNativeBrowserRef.current, automationNativeBrowser)) setAutomationBrowserOpen(false); }} onClose={() => { if (!sameNativeBrowser(automationNativeBrowserRef.current, automationNativeBrowser)) return; setAutomationNativeBrowser(null); setAutomationBrowserId(null); setAutomationBrowserOpen(false); setAutomationTaskState({ phase: "stopped" }); }} />
         </div>}
         {homeNativeBrowser?null:mainView === "automation" ? null : rightPanelMode === "browser" && browserSessionId && rightPanelOpen ? (
           <BrowserPanel key={browserSessionId} sessionId={browserSessionId} onHide={() => setRightPanelOpen(false)} />

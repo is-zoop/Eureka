@@ -1,6 +1,6 @@
 "use client";
-import { useEffect, useRef, useState, type RefObject } from "react";
-import { ChevronDownIcon, FolderIcon, MoreHorizontalIcon, PlusIcon, SearchIcon, StoreIcon, WorkflowIcon, XIcon } from "lucide-react";
+import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
+import { ChevronDownIcon, FolderIcon, MoreHorizontalIcon, PlusIcon, SearchIcon, StoreIcon, XIcon } from "lucide-react";
 import { AutomationAppManager, type AutomationAppManagerHandle, type AutomationAppMenuState } from "./AutomationAppManager";
 import { AutomationAppImport, type AutomationAppImportHandle } from "./AutomationAppImport";
 import { AutomationAppBrowserBridge } from "./AutomationAppBrowserBridge";
@@ -11,11 +11,11 @@ import { getFrequentAutomationApps, readAutomationAppUsage, recordAutomationAppO
 import type { AutomationBrowserControls, AutomationTaskState } from "@/lib/automation-task-state";
 import type { NativeBrowserSpec } from "@/lib/native-browser";
 import { Button } from "./ui/button";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "./ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger } from "./ui/dropdown-menu";
 import { Tabs, TabsList, TabsTrigger } from "./ui/tabs";
 import { useI18n } from "@/hooks/useI18n";
 import { LabelTooltip } from "./LabelTooltip";
-import { OrganizationCapabilityIcon } from "./OrganizationCapabilityIcon";
+import { AutomationAppIcon } from "./AutomationAppIcon";
 import sidebarStyles from "./InstalledCapabilitiesSidebar.module.css";
 import styles from "./AutomationConversation.module.css";
 
@@ -28,6 +28,7 @@ export function AutomationWorkspace(props: Props) {
   const [importBusy, setImportBusy] = useState(false);
   const [applicationBusy, setApplicationBusy] = useState(false);
   const [appMenu, setAppMenu] = useState<AutomationAppMenuState | null>(null);
+  const [browserRun, setBrowserRun] = useState<{appId:string;runId:string;ownerKey:string;runtimeId:string}|null>(null);
   const [appUsage, setAppUsage] = useState<{ ownerKey: string; entries: AutomationAppUsage }>({ ownerKey: "", entries: {} });
   const [source, setSource] = useState<"local" | "market">("local");
   const [query, setQuery] = useState(""), [searchOpen, setSearchOpen] = useState(false);
@@ -72,6 +73,11 @@ export function AutomationWorkspace(props: Props) {
   const requestedAppId = selected?.startsWith("app:") ? selected.slice(4) : null;
   const selectedAppId = appIndex && !appIndex.apps.some(app => app.id === requestedAppId) ? null : requestedAppId;
   const ownerKey = appIndex?.ownerKey ?? "";
+  const runtimeId = appIndex?.runtimeId ?? "";
+  const onRunChange = useCallback((appId: string, runId: string | null) => {
+    setBrowserRun(current => runId ? current?.appId === appId && current.runId === runId && current.ownerKey === ownerKey && current.runtimeId === runtimeId ? current : {appId,runId,ownerKey,runtimeId} : current?.appId === appId && current.ownerKey === ownerKey && current.runtimeId === runtimeId ? null : current);
+  }, [ownerKey, runtimeId]);
+  const selectedRunId = browserRun && browserRun.appId === selectedAppId && browserRun.ownerKey === ownerKey && browserRun.runtimeId === runtimeId ? browserRun.runId : undefined;
   useEffect(() => {
     if (!props.active || props.guest || !ownerKey) return;
     setAppUsage({ ownerKey, entries: selectedAppId ? recordAutomationAppOpen(ownerKey, selectedAppId) : readAutomationAppUsage(ownerKey) });
@@ -81,7 +87,7 @@ export function AutomationWorkspace(props: Props) {
   const visibleApps = inSource.filter(app => `${app.displayName} ${app.name}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
   const [emptyBefore, emptyAfter] = t(source === "local" ? "automationUi.emptyCreateHint" : "automationUi.emptyMarketHint").split("{action}");
   return <div className={styles.workspace}>
-    <AutomationAppBrowserBridge active={props.active && !props.guest} appId={selectedAppId} ownerKey={appIndex?.ownerKey ?? ""} runtimeId={appIndex?.runtimeId ?? ""} nativeSpec={props.nativeSpec} nativeVisible={props.nativeVisible} taskState={props.taskState} browserControls={props.browserControls} onOpenBrowser={props.onOpenBrowser} />
+    <AutomationAppBrowserBridge active={props.active && !props.guest && Boolean(selectedRunId)} appId={selectedAppId} runId={selectedRunId} ownerKey={ownerKey} runtimeId={runtimeId} nativeSpec={props.nativeSpec} nativeVisible={props.nativeVisible} taskState={props.taskState} browserControls={props.browserControls} onOpenBrowser={props.onOpenBrowser} />
     <aside className={`${sidebarStyles.sidebar} ${styles.sidebar}`} aria-label={t("automationUi.sidebar")}>
       <div className={sidebarStyles.header}>
         <h2 className={styles.sidebarTitle}>{t("automationUi.title")}</h2>
@@ -111,7 +117,7 @@ export function AutomationWorkspace(props: Props) {
         const current = selectedAppId === app.id;
         const blocked = !props.active || importBusy || applicationBusy || !current || appMenu?.id !== app.id || appMenu?.blocked !== false;
         return <li className={styles.appEntry} key={app.id} data-selected={current}>
-          <LabelTooltip content={app.displayName} side="right"><button type="button" className={`${sidebarStyles.item} ${styles.appSelect}`} aria-label={app.displayName} aria-current={current ? "page" : undefined} onClick={() => navigate(`app:${app.id}`)}>{app.managedPlugin ? <OrganizationCapabilityIcon capability={app.managedPlugin} size={17} /> : <WorkflowIcon size={17} aria-hidden="true" />}<span className={sidebarStyles.name}>{app.displayName}</span></button></LabelTooltip>
+          <LabelTooltip content={app.displayName} side="right"><button type="button" className={`${sidebarStyles.item} ${styles.appSelect}`} aria-label={app.displayName} aria-current={current ? "page" : undefined} onClick={() => navigate(`app:${app.id}`)}><AutomationAppIcon app={app} identity={appIndex ?? undefined} size={17} /><span className={sidebarStyles.name}>{app.displayName}</span></button></LabelTooltip>
           <DropdownMenu onOpenChange={open => { if (open && !current) navigate(`app:${app.id}`); }}>
             <DropdownMenuTrigger disabled={!props.active || importBusy || applicationBusy} render={<Button variant="ghost" size="icon" className={styles.appMenu} aria-label={t("automationUi.moreActions", { name: app.displayName })} />}><MoreHorizontalIcon size={15} /></DropdownMenuTrigger>
             <DropdownMenuContent align="start" side="right">
@@ -120,10 +126,28 @@ export function AutomationWorkspace(props: Props) {
               <DropdownMenuSeparator/>
               <DropdownMenuItem disabled={blocked} onClick={() => manager.current?.perform("info",app.id)}>{t("automationUi.details")}</DropdownMenuItem>
               {app.managedPlugin&&<DropdownMenuItem disabled={blocked} onClick={() => manager.current?.perform("save-as",app.id)}>{t("automationUi.saveAs")}</DropdownMenuItem>}
-              {!app.managedPlugin&&<><DropdownMenuItem disabled={blocked} onClick={() => manager.current?.perform("modify",app.id)}>{t("automationUi.modify")}</DropdownMenuItem><DropdownMenuItem disabled={blocked} onClick={() => manager.current?.perform("export",app.id)}>{t("automationUi.export")}</DropdownMenuItem></>}
-              <DropdownMenuSeparator/>
-              <DropdownMenuItem disabled={blocked} variant="destructive" onClick={() => manager.current?.perform("clear-data",app.id)}>{t("automationUi.clear")}</DropdownMenuItem>
-              {!app.managedPlugin&&<DropdownMenuItem disabled={blocked} variant="destructive" onClick={() => manager.current?.perform("uninstall",app.id)}>{t("automationUi.uninstallApp")}</DropdownMenuItem>}
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger disabled={blocked}>{t("automationUi.editApp")}</DropdownMenuSubTrigger>
+                <DropdownMenuSubContent>
+                  {!app.managedPlugin && <>
+                    <DropdownMenuItem disabled={blocked} onClick={() => manager.current?.perform("edit",app.id)}>{t("automationUi.editInfo")}</DropdownMenuItem>
+                    <DropdownMenuItem disabled={blocked} onClick={() => manager.current?.perform("modify",app.id)}>{t("automationUi.modify")}</DropdownMenuItem>
+                    <DropdownMenuSeparator/>
+                  </>}
+                  <DropdownMenuItem disabled={blocked} variant="destructive" onClick={() => manager.current?.perform("clear-data",app.id)}>{t("automationUi.clear")}</DropdownMenuItem>
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+              {!app.managedPlugin && <DropdownMenuSub>
+                <DropdownMenuSubTrigger disabled={blocked}>{t("automationUi.publishExport")}</DropdownMenuSubTrigger>
+                <DropdownMenuSubContent>
+                  <DropdownMenuItem disabled={blocked} onClick={() => manager.current?.perform("export",app.id)}>{t("automationUi.export")}</DropdownMenuItem>
+                  <DropdownMenuItem disabled={blocked} onClick={() => manager.current?.perform("publish",app.id)}>{t("publication.title")}</DropdownMenuItem>
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>}
+              {!app.managedPlugin && <>
+                <DropdownMenuSeparator/>
+                <DropdownMenuItem disabled={blocked} variant="destructive" onClick={() => manager.current?.perform("uninstall",app.id)}>{t("automationUi.uninstallApp")}</DropdownMenuItem>
+              </>}
             </DropdownMenuContent>
           </DropdownMenu>
         </li>;
@@ -131,8 +155,8 @@ export function AutomationWorkspace(props: Props) {
     </aside>
     <div className={styles.main}>
       {appError && <p className={styles.error} role="alert">{appError}</p>}{props.guest && <p className={styles.notice}>{t("automationUi.signIn")}</p>}
-      {selectedAppId && !props.guest && (appIndex ? <AutomationAppManager ref={manager} key={`${appIndex.ownerKey}:${appIndex.runtimeId}`} index={appIndex} selected={selectedAppId} active={props.active} cwd={props.cwd} onSelect={(id,reveal) => navigate(id ? `app:${id}` : null,reveal)} onChanged={() => setRefresh(n => n + 1)} onRunningChange={setApplicationBusy} onMenuStateChange={setAppMenu} onOpenDetails={props.onOpenDetails} /> : !appError && <p className={styles.notice}>{t("automationUi.loadingDirectory")}</p>)}
-      {!selectedAppId && !props.guest && <AutomationStartPage apps={frequentApps} loading={!appIndex && !appError} importDisabled={!appIndex || importBusy || applicationBusy} onCreate={create} onImport={() => importer.current?.open()} onOpen={id => navigate(`app:${id}`, true)} />}
+      {selectedAppId && !props.guest && (appIndex ? <AutomationAppManager ref={manager} key={`${appIndex.ownerKey}:${appIndex.runtimeId}`} index={appIndex} selected={selectedAppId} active={props.active} cwd={props.cwd} onSelect={(id,reveal) => navigate(id ? `app:${id}` : null,reveal)} onChanged={() => setRefresh(n => n + 1)} onRunningChange={setApplicationBusy} onRunChange={onRunChange} onMenuStateChange={setAppMenu} onOpenDetails={props.onOpenDetails} /> : !appError && <p className={styles.notice}>{t("automationUi.loadingDirectory")}</p>)}
+      {!selectedAppId && !props.guest && <AutomationStartPage apps={frequentApps} index={appIndex ?? undefined} loading={!appIndex && !appError} importDisabled={!appIndex || importBusy || applicationBusy} onCreate={create} onImport={() => importer.current?.open()} onOpen={id => navigate(`app:${id}`, true)} />}
     </div>
     {appIndex && !props.guest && <AutomationAppImport key={`${appIndex.ownerKey}:${appIndex.runtimeId}`} ref={importer} index={appIndex} active={props.active} onBusyChange={setImportBusy} onInstalled={id => navigate(`app:${id}`, true)} />}
   </div>;

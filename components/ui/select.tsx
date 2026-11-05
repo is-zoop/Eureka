@@ -13,7 +13,7 @@ function SelectValue({ className, ...props }: StyledProps<SelectPrimitive.Value.
 
 function SelectTrigger({ className, children, ...props }: StyledProps<SelectPrimitive.Trigger.Props>) {
   return <SelectPrimitive.Trigger data-slot="select-trigger" className={cn(
-    "inline-flex h-10 w-full min-w-0 items-center justify-between gap-2 rounded-[var(--radius-control)] border border-[var(--border)] bg-transparent px-3 text-sm text-[var(--text)] outline-none focus-visible:outline-1 focus-visible:outline-[var(--border)] disabled:cursor-not-allowed disabled:opacity-50",
+    "inline-flex h-10 w-full min-w-0 items-center justify-between gap-2 rounded-[var(--radius-control)] border border-[var(--border)] bg-transparent px-3 text-sm text-[var(--text)] outline-none transition-[border-color,box-shadow] focus-visible:border-[var(--input-focus-border)] focus-visible:ring-2 focus-visible:ring-[var(--input-focus-ring)] data-popup-open:border-[var(--input-focus-border)] data-popup-open:ring-2 data-popup-open:ring-[var(--input-focus-ring)] disabled:cursor-not-allowed disabled:opacity-50",
     className,
   )} {...props}>{children}<SelectPrimitive.Icon><ChevronDownIcon size={15} aria-hidden="true" className="shrink-0 text-[var(--text-muted)]" /></SelectPrimitive.Icon></SelectPrimitive.Trigger>;
 }

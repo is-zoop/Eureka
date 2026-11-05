@@ -1,7 +1,7 @@
 "use client";
 import { ClarificationGroupCard } from "./ClarificationGroupCard";
 import { AutomationAuthoringCard } from "./AutomationAuthoringCard";
-import { AutomationChatCard } from "./AutomationChatCard";
+import { AutomationChatFilePicker } from "./AutomationChatFilePicker";
 import { useChatAutomations } from "@/hooks/useChatAutomations";
 import type { AutomationLaunchRequest } from "@/lib/automation-mode";
 import { blockingClarification } from "@/lib/clarification";
@@ -412,10 +412,11 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
   const pendingPlanQuestions = getPendingPlanQuestionGroup(planMode);
 
   const pendingQuestionGroup = blockingClarification(clarification);
+  const automationFileRequest = [...chatAutomations.snapshots.values()].find(snapshot => snapshot.invocation.interaction?.kind === "file" && snapshot.invocation.interaction.groupId === pendingQuestionGroup?.id);
   const planQuestionElement = !legacyCreationHistory && (pendingQuestionGroup || pendingPlanQuestions.length > 0) ? (
     <div style={{ flexShrink: 0, padding: "0 16px 1px", paddingRight: isMobile ? 16 : CHAT_INPUT_RIGHT_PADDING }}>
       <div style={{ width: "100%", maxWidth: "var(--chat-content-width)", margin: "0 auto" }}>
-        {pendingQuestionGroup ? <ClarificationGroupCard key={pendingQuestionGroup.id} group={pendingQuestionGroup} onAction={handleClarificationAction} /> : <PlanQuestionCard questions={pendingPlanQuestions} onAnswer={handlePlanQuestionAnswer} />}
+        {pendingQuestionGroup ? automationFileRequest ? <AutomationChatFilePicker key={pendingQuestionGroup.id} snapshot={automationFileRequest} group={pendingQuestionGroup} onAction={handleClarificationAction} /> : <ClarificationGroupCard key={pendingQuestionGroup.id} group={pendingQuestionGroup} onAction={handleClarificationAction} /> : <PlanQuestionCard questions={pendingPlanQuestions} onAnswer={handlePlanQuestionAnswer} />}
       </div>
     </div>
   ) : null;
@@ -724,10 +725,6 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
                 const msg = messages[idx];
                 if (!isGroupAnchor(msg)) {
                   rendered.push(renderMessage(idx));
-                  for (const anchor of chatAutomations.anchors.filter(anchor => anchor.messageIndex === idx)) {
-                    rendered.push(<AutomationChatCard key={`automation-${anchor.id}`} anchor={anchor}
-                      snapshot={chatAutomations.snapshots.get(anchor.id)} latestId={chatAutomations.latestId} error={chatAutomations.error} />);
-                  }
                   idx += 1;
                   continue;
                 }
@@ -827,11 +824,6 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
                       <TurnWrittenFiles files={writtenFiles} cwd={messageCwd} sessionId={session?.id ?? sessionIdRef.current ?? undefined} onOpenFile={onOpenFile} onOpenChanges={onOpenChanges} />
                     </div>,
                   );
-                }
-                for (const anchor of chatAutomations.anchors) {
-                  if (anchor.messageIndex < userIdx || anchor.messageIndex >= endIdx) continue;
-                  rendered.push(<AutomationChatCard key={`automation-${anchor.id}`} anchor={anchor}
-                    snapshot={chatAutomations.snapshots.get(anchor.id)} latestId={chatAutomations.latestId} error={chatAutomations.error} />);
                 }
                 idx = endIdx;
               }

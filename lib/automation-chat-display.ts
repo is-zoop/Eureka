@@ -21,6 +21,3 @@ export function chatAutomationAnchors(messages: AgentMessage[]): ChatAutomationA
   return anchors;
 }
 
-export function chatAutomationExpanded(id: string, latestId: string | undefined, choice?: { latestId: string | undefined; open: boolean }) {
-  return choice && choice.latestId === latestId ? choice.open : id === latestId;
-}

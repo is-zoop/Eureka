@@ -55,6 +55,8 @@
   --text-muted: #636261;
   --text-dim: #838280;
   --text-placeholder: #aaa9a8;
+  --input-focus-border: color-mix(in srgb, var(--text-muted) 55%, var(--border));
+  --input-focus-ring: color-mix(in srgb, var(--text) 8%, transparent);
   --tooltip-bg: #000000;
   --tooltip-text: #ffffff;
   --desktop-menu-bg: #fafafa;
@@ -127,13 +129,17 @@
   box-shadow: var(--shadow-soft);
 }
 
-.mcp-config-form input:focus,
-.mcp-config-form input:focus-visible,
-.mcp-config-form textarea:focus,
-.mcp-config-form textarea:focus-visible {
-  border-color: var(--border) !important;
-  box-shadow: none !important;
-  outline: none !important;
+/* Text-entry controls share focus colors, including native inputs and local overrides. */
+:is(
+  input:not(:where([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"], [type="button"], [type="submit"], [type="reset"], [type="hidden"])),
+  textarea,
+  select,
+  [data-slot="select-trigger"]
+):not([aria-invalid="true"]):is(:focus, :focus-visible),
+[data-slot="select-trigger"][data-popup-open]:not([aria-invalid="true"]) {
+  border-color: var(--input-focus-border) !important;
+  outline-color: var(--input-focus-border) !important;
+  --tw-ring-color: var(--input-focus-ring) !important;
 }
 
 html.dark {
@@ -1709,8 +1715,8 @@ a {
 }
 
 .directory-picker-path:focus-visible {
-  border-color: var(--accent) !important;
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
+  border-color: var(--input-focus-border) !important;
+  box-shadow: 0 0 0 3px var(--input-focus-ring);
 }
 
 @media (max-width: 640px) {

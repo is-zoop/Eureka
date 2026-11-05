@@ -2,7 +2,7 @@ export interface NativeBrowserSpec { sessionId: string; ownerKey: string; websit
 export function sameNativeBrowser(a: NativeBrowserSpec | null | undefined, b: NativeBrowserSpec | null | undefined) {
   return Boolean(a && b && a.sessionId === b.sessionId && a.ownerKey === b.ownerKey && a.websiteUrl === b.websiteUrl && a.accountId === b.accountId && a.browserMode === b.browserMode && a.applicationId === b.applicationId && a.applicationRunId === b.applicationRunId && a.applicationSiteId === b.applicationSiteId && a.applicationTaskId === b.applicationTaskId);
 }
-export interface NativeBrowserSnapshot { opened: boolean; title: string; url: string; loading: boolean; controlled?: boolean; notice?: string | null; zoomPercent?: number }
+export interface NativeBrowserSnapshot { opened: boolean; active?: boolean; title: string; url: string; loading: boolean; controlled?: boolean; notice?: string | null; zoomPercent?: number }
 export interface NativeBrowserBounds { x: number; y: number; width: number; height: number; viewportWidth: number; viewportHeight: number }
 export interface NativeBrowserOverlay { blockInput: boolean; dimAlpha: number; cutouts: Array<{ x: number; y: number; width: number; height: number; radius: number }> }
 export function isDesktopBrowserHost() { return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window; }

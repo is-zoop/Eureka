@@ -49,5 +49,6 @@ declare module "lucide-react" {
   export const SaveIcon: LucideIcon;
   export const Settings2Icon: LucideIcon;
   export const StarIcon: LucideIcon;
+  export const SparklesIcon: LucideIcon;
   export const Trash2Icon: LucideIcon;
 }

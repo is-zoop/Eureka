@@ -7,6 +7,8 @@ import { encodeFilePathForApi } from "@/lib/file-paths";
 import { markdownRehypePlugins, markdownRemarkPlugins, normalizeDisplayMath } from "@/lib/markdown";
 import { MermaidBlock, CodeBlock } from "./MermaidBlock";
 import { advanceStreamReveal, rehypeStreamReveal } from "@/lib/stream-reveal";
+import { saveFileAs } from "@/lib/save-file";
+import { notify } from "@/lib/notification-store";
 
 interface MarkdownBodyProps {
   children: string;
@@ -68,6 +70,21 @@ export const MarkdownBody = memo(function MarkdownBody({ children, className, is
     a({ href, children, ...props }) {
       // `node` is react-markdown metadata, not a DOM attribute.
       delete props.node;
+      if (href && /^\/api\/automation\/apps\/[a-f0-9-]{36}\/runtime\?/.test(href)) {
+        const artifactHref = href;
+        const query = new URLSearchParams(href.split("?", 2)[1]);
+        if (query.get("mode") === "artifact") {
+          const name = query.get("filename") ?? "artifact";
+          return <a href={href} {...props} onClick={event => {
+            event.preventDefault();
+            void saveFileAs(name, async () => {
+              const response = await fetch(artifactHref, { cache: "no-store", signal: AbortSignal.timeout(30000) });
+              if (!response.ok) { const data = await response.json(); throw new Error(data.error ?? "下载未完成。"); }
+              return response.blob();
+            }).catch(cause => notify({ id: `automation-download:${href}`, type: "error", message: cause instanceof Error ? cause.message : "下载未完成。" }));
+          }}>{children}</a>;
+        }
+      }
       const filePath = onOpenFile ? resolveLocalFileHref(href, cwd) : null;
       const openFile = onOpenFile;
       if (!filePath || !openFile) {

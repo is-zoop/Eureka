@@ -2,7 +2,7 @@
 //! input events travel through Eureka's Node server. Explicit observation uses
 //! a fixed read-only collector, and only sends its preview to a model on request.
 use serde::{Deserialize, Serialize};
-use std::{path::PathBuf, sync::{atomic::{AtomicU64, Ordering}, Mutex}, time::{Duration, Instant}};
+use std::{path::PathBuf, sync::{atomic::{AtomicU64, Ordering}, Arc, Mutex}, time::{Duration, Instant}};
 use tauri::{webview::{NewWindowResponse, PageLoadEvent, WebviewBuilder}, LogicalPosition, LogicalSize, Manager, Rect, WebviewUrl};
 use crate::automation_accounts as accounts;
 use crate::browser_overlay::Overlay;
@@ -11,15 +11,17 @@ use crate::browser_overlay::Overlay;
 pub struct BrowserState {
     operation: tauri::async_runtime::Mutex<()>,
     session: Mutex<Option<Session>>,
-    // Browser-owned session cookies survive between runs. Parked views have
-    // no task identity or control token and cannot be used by IPC commands.
+    // Only `session` is presented. Inactive task pages retain their document
+    // and identity; blank environment keepers have an empty identity. Neither
+    // kind can execute IPC commands until explicitly presented and re-claimed.
     parked: Mutex<Vec<Session>>,
     next: AtomicU64,
 }
 struct Session {
     account_id: Option<String>,
     account_generation: u64,
-    _account_lease: Option<std::fs::File>,
+    // One OS lease per environment, shared by its independent page controllers.
+    _account_lease: Option<Arc<std::fs::File>>,
     control_token: Option<String>,
     control_sequence: u64,
     revision: u64,
@@ -32,11 +34,18 @@ struct Session {
     snapshot: Snapshot,
     ui_blocked: bool,
 }
+impl Session {
+    fn matches_task_page(&self, owner: &str, id: &str, account: &Option<String>, generation: u64, entry: &str) -> bool {
+        !self.id.is_empty() && self.owner == owner && self.id == id && &self.account_id == account
+            && self.account_generation == generation && self.initial_url == entry
+    }
+}
 #[derive(Clone, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Snapshot {
     controlled: bool,
     opened: bool,
+    active: bool,
     title: String,
     url: String,
     loading: bool,
@@ -109,7 +118,10 @@ fn rect(bounds: &Bounds, width: f64, height: f64) -> Result<Rect, String> {
 fn update(app: &tauri::AppHandle, label: &str, change: impl FnOnce(&mut Snapshot)) {
     let state = app.state::<BrowserState>();
     let mut guard = state.session.lock().unwrap();
-    if let Some(session) = guard.as_mut().filter(|s| s.label == label) { session.revision += 1; change(&mut session.snapshot); }
+    if let Some(session) = guard.as_mut().filter(|s| s.label == label) { session.revision += 1; change(&mut session.snapshot); return; }
+    drop(guard);
+    let mut pages = state.parked.lock().unwrap();
+    if let Some(session) = pages.iter_mut().find(|s| s.label == label) { session.revision += 1; change(&mut session.snapshot); }
 }
 fn dispose(app: &tauri::AppHandle, session: Session) {
     if let Some(view) = app.get_webview(&session.label) {
@@ -137,16 +149,15 @@ pub fn close_all(app: &tauri::AppHandle) {
 }
 fn park(app: &tauri::AppHandle, mut session: Session) {
     session.control_token = None;
-    session.control_sequence = 0;
     session.snapshot.controlled = false;
+    session.snapshot.active = false;
     session.ui_blocked = true;
-    session.id.clear();
     session.revision += 1;
-    if session.account_id.is_some() {
+    if !session.id.is_empty() || session.account_id.is_some() {
         if let Some(view) = app.get_webview(&session.label) {
             if view.hide().is_ok() {
-                // Only the verified Wry child is disabled. A hidden view keeps
-                // native cookies; it never keeps an automation's authority.
+                // Hidden pages keep their document and cookies, but never keep
+                // automation authority or intercept another page's input.
                 let main = view.window().hwnd().ok().map(|h| h.0 as usize);
                 let callback_app = app.clone(); let label = session.label.clone();
                 let _ = view.with_webview(move |platform| unsafe {
@@ -163,7 +174,7 @@ fn park(app: &tauri::AppHandle, mut session: Session) {
             }
         }
     }
-    dispose(app, session); // Explicit temporary environments still close/clear.
+    dispose(app, session);
 }
 pub fn release_current(app: &tauri::AppHandle) {
     let old = app.state::<BrowserState>().session.lock().unwrap().take();
@@ -172,6 +183,38 @@ pub fn release_current(app: &tauri::AppHandle) {
 fn close_current(app: &tauri::AppHandle) {
     let old = app.state::<BrowserState>().session.lock().unwrap().take();
     if let Some(session) = old { dispose(app, session); }
+}
+fn page_snapshot(app: &tauri::AppHandle, owner: &str, id: &str) -> Snapshot {
+    let state = app.state::<BrowserState>();
+    if let Some(session) = state.session.lock().unwrap().as_ref().filter(|s| s.owner == owner && s.id == id && !s.id.is_empty()) {
+        return if app.get_webview(&session.label).is_some() { session.snapshot.clone() } else { Snapshot::default() };
+    }
+    let snapshot = state.parked.lock().unwrap().iter().find(|s| s.owner == owner && s.id == id && !s.id.is_empty() && app.get_webview(&s.label).is_some())
+        .map(|s| s.snapshot.clone()).unwrap_or_default();
+    snapshot
+}
+fn close_page(app: &tauri::AppHandle, owner: &str, id: &str) {
+    let state = app.state::<BrowserState>();
+    let mut removed = {
+        let mut current = state.session.lock().unwrap();
+        if current.as_ref().is_some_and(|s| s.owner == owner && s.id == id) { current.take() } else { None }
+    };
+    if removed.is_none() {
+        let mut pages = state.parked.lock().unwrap();
+        removed = pages.iter().position(|s| s.owner == owner && s.id == id && !s.id.is_empty()).map(|index| pages.remove(index));
+    }
+    let Some(mut session) = removed else { return; };
+    let same_environment = |s: &Session| s.owner == session.owner && s.account_id == session.account_id && s.account_generation == session.account_generation && app.get_webview(&s.label).is_some();
+    let another_current = state.session.lock().unwrap().as_ref().is_some_and(&same_environment);
+    let another = another_current || state.parked.lock().unwrap().iter().any(same_environment);
+    let valid_profile = session.account_id.as_ref().is_some_and(|account| accounts::active(app, owner, account).is_ok_and(|(_, profile)| profile.generation == session.account_generation));
+    if valid_profile && !another {
+        // The last page becomes a blank environment keeper so session cookies
+        // survive closing all tabs. A future task still gets a NEW page.
+        session.id.clear(); session.initial_url.clear(); session.snapshot.opened = false;
+        if let Some(view) = app.get_webview(&session.label) { let _ = view.navigate(tauri::Url::parse("about:blank").unwrap()); }
+        park(app, session);
+    } else { dispose(app, session); }
 }
 fn discard_parked(app: &tauri::AppHandle, predicate: impl Fn(&Session) -> bool) {
     let state = app.state::<BrowserState>();
@@ -189,12 +232,15 @@ fn discard_parked(app: &tauri::AppHandle, predicate: impl Fn(&Session) -> bool) 
 fn account_items(app: &tauri::AppHandle, owner: &str) -> Result<Vec<serde_json::Value>, String> {
     let mut items = accounts::list(app, owner)?;
     let state = app.state::<BrowserState>();
+    let current = state.session.lock().unwrap();
     let parked = state.parked.lock().unwrap();
-    // The profile lease remains held while its WebView exists. Our own dormant
-    // profiles can be managed under the operation lock using our lease; another
-    // process's lease must still be reported busy.
+    // Blank keepers are browser-owned, not an active task. Retained task pages
+    // still count as users of the environment for reset/delete management.
     for item in &mut items {
-        if parked.iter().any(|s| s.owner == owner && s.account_id.as_deref() == item["id"].as_str()) {
+        let matches = |s: &Session| s.owner == owner && s.account_id.as_deref() == item["id"].as_str();
+        let owned = current.as_ref().is_some_and(&matches) || parked.iter().any(&matches);
+        let task_page = current.as_ref().is_some_and(|s| matches(s) && !s.id.is_empty()) || parked.iter().any(|s| matches(s) && !s.id.is_empty());
+        if owned && !task_page {
             item["inUse"] = false.into();
         }
     }
@@ -242,6 +288,16 @@ pub async fn desktop_automation_browser(
     let _operation = state.operation.lock().await;
     if temporary.unwrap_or(false) && account_id.is_some() { return Err("accountInvalid".into()); }
     let account_id = if temporary.unwrap_or(false) { None } else { Some(account_id.unwrap_or_else(|| accounts::DEFAULT_ID.into())) };
+    if action == "close" { close_page(&app, &owner, &session_id); return Ok(Snapshot::default()); }
+    let is_current = state.session.lock().unwrap().as_ref().is_some_and(|s| s.owner == owner && s.id == session_id);
+    if !is_current && matches!(action.as_str(), "status" | "hide" | "renew" | "bounds") {
+        // A late hide/renew from an old React component must never act on the
+        // newly selected task page. Status can discover a retained page.
+        if action == "renew" {
+            if let Some(page) = state.parked.lock().unwrap().iter_mut().find(|s| s.owner == owner && s.id == session_id) { page.touched = Instant::now(); }
+        }
+        return Ok(page_snapshot(&app, &owner, &session_id));
+    }
     let window = webview.window();
     // Windows can report a zero/tiny client area during minimization. Retain
     // the last valid child rectangle instead of failing the frontend layout loop.
@@ -266,44 +322,35 @@ pub async fn desktop_automation_browser(
             Some((dir, account))
         } else { None };
         let account_generation = account.as_ref().map(|(_, a)| a.generation).unwrap_or(0);
-        if state.session.lock().unwrap().as_ref().is_some_and(|s| s.owner == owner && account_id.as_deref().is_some_and(|id| id != accounts::DEFAULT_ID) && s.account_id == account_id && s.id != session_id) {
-            return Err("accountBusy".into());
-        }
-        let reuse = state.session.lock().unwrap().as_ref().is_some_and(|s| s.owner == owner && s.id == session_id && s.initial_url == raw && s.account_id == account_id && s.account_generation == account_generation && app.get_webview(&s.label).is_some());
+        let reuse = state.session.lock().unwrap().as_ref().is_some_and(|s| s.matches_task_page(&owner, &session_id, &account_id, account_generation, &raw) && app.get_webview(&s.label).is_some());
         if !reuse {
             release_current(&app);
             // Never transfer a live profile to another signed-in Eureka user,
             // nor revive a generation retired by clear-login/delete.
             discard_parked(&app, |s| s.owner != owner || app.get_webview(&s.label).is_none()
-                || s.account_id == account_id && s.account_generation != account_generation);
+                || s.account_id == account_id && s.account_generation != account_generation
+                || s.owner == owner && s.id == session_id && !s.matches_task_page(&owner, &session_id, &account_id, account_generation, &raw));
             let cached = {
                 let mut parked = state.parked.lock().unwrap();
-                parked.iter().position(|s| s.owner == owner && account_id.is_some() && s.account_id == account_id
-                    && s.account_generation == account_generation && app.get_webview(&s.label).is_some()).map(|i| parked.remove(i))
+                parked.iter().position(|s| s.matches_task_page(&owner, &session_id, &account_id, account_generation, &raw)
+                    && app.get_webview(&s.label).is_some()).map(|i| parked.remove(i))
             };
             if let Some(mut session) = cached {
-                let (dir, _) = account.as_ref().ok_or("accountMissing")?;
-                let mut latest = match accounts::read(dir) { Ok(account) => account, Err(error) => { dispose(&app, session); return Err(error); } };
-                if latest.deleted || latest.generation != account_generation { dispose(&app, session); return Err("accountMissing".into()); }
-                latest.last_used_at = Some(accounts::now());
-                if let Err(error) = accounts::write(dir, &latest) { park(&app, session); return Err(error); }
-                session.id = session_id.clone();
-                session.initial_url = raw;
                 session.touched = Instant::now();
                 session.ui_blocked = overlay.as_ref().is_some_and(Overlay::blocks_input);
                 session.snapshot.notice = None;
-                session.snapshot.loading = true;
-                session.snapshot.url = display_url(&target);
-                let label = session.label.clone();
+                session.snapshot.active = true;
                 *state.session.lock().unwrap() = Some(session);
-                let view = app.get_webview(&label).ok_or("accountNotOpen")?;
-                if view.navigate(target).is_err() { release_current(&app); return Err("无法打开网站入口，请重试".into()); }
+                // Re-present the existing document; do not navigate or repeat
+                // a query just because the user returned to this task.
             } else {
             let n = state.next.fetch_add(1, Ordering::Relaxed);
             let label = format!("automation-browser-{}-{n}", std::process::id());
             let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos();
             let (profile, account_lease) = if let Some((dir, mut account)) = account {
-                let lease = accounts::lease(&dir)?;
+                let shared_lease = state.parked.lock().unwrap().iter().find(|s| s.owner == owner && s.account_id == account_id && s.account_generation == account_generation)
+                    .and_then(|s| s._account_lease.clone());
+                let lease = if let Some(lease) = shared_lease { lease } else { Arc::new(accounts::lease(&dir)?) };
                 // Re-read under the cross-process lease: reset/delete may have won the race.
                 let latest = accounts::read(&dir)?;
                 if latest.deleted || latest.generation != account.generation { return Err("accountMissing".into()); }
@@ -322,7 +369,7 @@ pub async fn desktop_automation_browser(
                 revision: 0,
                 owner: owner.clone(), id: session_id.clone(), label: label.clone(), initial_url: raw,
                 profile: profile.clone(), touched: Instant::now(),
-                snapshot: Snapshot { controlled: false, opened: true, title: "网页".into(), url: display_url(&target), loading: true, notice: None, zoom_percent: 100 },
+                snapshot: Snapshot { controlled: false, opened: true, active: true, title: "网页".into(), url: display_url(&target), loading: true, notice: None, zoom_percent: 100 },
             });
             let nav_app = app.clone(); let nav_label = label.clone();
             let popup_app = app.clone(); let popup_label = label.clone();
@@ -360,13 +407,13 @@ pub async fn desktop_automation_browser(
                     NewWindowResponse::Deny
                 });
             if window.add_child(builder, area.position, area.size).is_err() {
-                close_all(&app); return Err("原生网站视图创建失败，请检查 WebView2 运行时".into());
+                close_current(&app); return Err("原生网站视图创建失败，请检查 WebView2 运行时".into());
             }
             }
             let enabled = account_id.as_deref().map(|id| accounts::active(&app, &owner, id).map(|(_, a)| a.password_autosave)).transpose()?.unwrap_or(false);
             let label = state.session.lock().unwrap().as_ref().ok_or("accountNotOpen")?.label.clone();
             let view = app.get_webview(&label).ok_or("accountNotOpen")?;
-            if let Err(error) = set_password_autosave(&view, enabled).await { close_all(&app); return Err(error); }
+            if let Err(error) = set_password_autosave(&view, enabled).await { close_current(&app); return Err(error); }
         }
     }
     let label = {
@@ -379,8 +426,7 @@ pub async fn desktop_automation_browser(
         if action == "open" && session.snapshot.controlled && zoom_percent.is_some_and(|percent| percent != session.snapshot.zoom_percent) { return Err("请先暂停 AI 再调整网页缩放".into()); }
         session.label.clone()
     };
-    if action == "close" { release_current(&app); return Ok(Snapshot::default()); }
-    if validate_account_session(&app, false).is_err() { close_all(&app); return Err("accountMissing".into()); }
+    if validate_account_session(&app, false).is_err() { close_current(&app); return Err("accountMissing".into()); }
     if matches!(action.as_str(), "navigate" | "back" | "forward" | "reload" | "zoom") && state.session.lock().unwrap().as_ref().is_some_and(|s| s.snapshot.controlled) {
         return Err("请先暂停 AI 并接管网页".into());
     }
@@ -637,7 +683,7 @@ pub async fn desktop_automation_control(webview: tauri::Webview, owner: String, 
     };
     let view = app.get_webview(&label).ok_or("browserClosed")?;
     if set_manual_input(&view, mode == "pause").await.is_err() {
-        close_all(&app); return Err("inputLockFailed".into());
+        close_current(&app); return Err("inputLockFailed".into());
     }
     let mut guard = state.session.lock().unwrap();
     let s = guard.as_mut().filter(|s| s.label == label && s.control_sequence == sequence).ok_or("staleControl")?;
@@ -686,7 +732,7 @@ pub async fn desktop_automation_accounts(webview: tauri::Webview, owner: String,
         let current_label = state.session.lock().unwrap().as_ref().filter(|s| s.owner == owner && s.account_id.as_deref() == Some(id.as_str())).map(|s| s.label.clone());
         let parked_label = state.parked.lock().unwrap().iter().find(|s| s.owner == owner && s.account_id.as_deref() == Some(id.as_str())).map(|s| s.label.clone());
         if action == "update" {
-            if current_label.is_some() { return Err("accountBusy".into()); }
+            if current_label.is_some() || state.parked.lock().unwrap().iter().any(|s| s.owner == owner && s.account_id.as_deref() == Some(id.as_str()) && !s.id.is_empty()) { return Err("accountBusy".into()); }
             let name = name.ok_or("accountInvalid")?; let origin = origin.ok_or("accountInvalid")?;
             if parked_label.is_some() { accounts::update_leased(&dir, &id, &name, &origin)?; }
             else { accounts::update(&app, &owner, &id, &name, &origin)?; }
@@ -695,15 +741,20 @@ pub async fn desktop_automation_accounts(webview: tauri::Webview, owner: String,
             let _lease = if current_label.is_some() || parked_label.is_some() { None } else { Some(accounts::lease(&dir)?) };
             let mut account = accounts::read(&dir)?;
             if account.deleted { return Err("accountMissing".into()); }
-            let view = current_label.as_ref().or(parked_label.as_ref()).and_then(|label| app.get_webview(label));
-            if let Some(view) = &view {
-                if state.session.lock().unwrap().as_ref().is_some_and(|s| s.snapshot.controlled) { return Err("accountBusy".into()); }
-                set_password_autosave(view, enabled).await?;
-            }
             let previous = account.password_autosave;
+            if state.session.lock().unwrap().as_ref().is_some_and(|s| s.owner == owner && s.account_id.as_deref() == Some(id.as_str()) && s.snapshot.controlled) { return Err("accountBusy".into()); }
+            let mut labels = state.parked.lock().unwrap().iter().filter(|s| s.owner == owner && s.account_id.as_deref() == Some(id.as_str())).map(|s| s.label.clone()).collect::<Vec<_>>();
+            if let Some(label) = &current_label { labels.push(label.clone()); }
+            let views = labels.iter().filter_map(|label| app.get_webview(label)).collect::<Vec<_>>();
+            for view in &views {
+                if let Err(error) = set_password_autosave(view, enabled).await {
+                    for old in &views { let _ = set_password_autosave(old, previous).await; }
+                    return Err(error);
+                }
+            }
             account.password_autosave = enabled;
             if let Err(error) = accounts::write(&dir, &account) {
-                if let Some(view) = &view { let _ = set_password_autosave(view, previous).await; }
+                for view in &views { let _ = set_password_autosave(view, previous).await; }
                 return Err(error);
             }
         } else if matches!(action.as_str(), "reset" | "delete") {
@@ -735,6 +786,19 @@ pub async fn desktop_automation_accounts(webview: tauri::Webview, owner: String,
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn task_pages_are_not_retargeted_by_environment_or_empty_keeper_identity() {
+        let mut page = Session { account_id: Some("profile-a".into()), account_generation: 1, _account_lease: None,
+            control_token: None, control_sequence: 7, revision: 0, owner: "owner-a".into(), id: "task-a".into(),
+            label: "page-a".into(), initial_url: "https://example.com/start".into(), profile: PathBuf::from("fixture"),
+            touched: Instant::now(), snapshot: Snapshot::default(), ui_blocked: true };
+        assert!(page.matches_task_page("owner-a", "task-a", &Some("profile-a".into()), 1, "https://example.com/start"));
+        assert!(!page.matches_task_page("owner-a", "task-b", &Some("profile-a".into()), 1, "https://example.com/start"));
+        assert!(!page.matches_task_page("owner-b", "task-a", &Some("profile-a".into()), 1, "https://example.com/start"));
+        assert!(!page.matches_task_page("owner-a", "task-a", &Some("profile-a".into()), 2, "https://example.com/start"));
+        page.id.clear();
+        assert!(!page.matches_task_page("owner-a", "", &Some("profile-a".into()), 1, "https://example.com/start"));
+    }
     #[test]
     fn urls_do_not_allow_files_credentials_or_script() {
         for raw in ["file:///C:/secret", "javascript:alert(1)", "https://a:b@example.com", "not a URL"] { assert!(destination(raw).is_err()); }

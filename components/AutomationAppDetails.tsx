@@ -1,12 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ChevronDownIcon, EyeIcon, WorkflowIcon } from "lucide-react";
+import { ChevronDownIcon, EyeIcon } from "lucide-react";
 import type { AppCapability, AutomationAppDetail, AutomationAppIndex, AutomationAppUi, AutomationAppWorkflow, ManagedAutomationPlugin } from "@/lib/automation-app";
 import { useI18n } from "@/hooks/useI18n";
 import { ExtensionDetailsPanel, ExtensionDetailField } from "./ExtensionDetailsPanel";
 import { OrganizationExtensionDetails, type OrganizationExtensionDetailItem } from "./OrganizationExtensionDetails";
-import { OrganizationCapabilityIcon } from "./OrganizationCapabilityIcon";
+import { AutomationAppIcon } from "./AutomationAppIcon";
 import { CapabilityTypeBadge } from "./CapabilityTypeBadge";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
@@ -31,7 +31,7 @@ function StorageDetails({ detail }: { detail: AutomationAppDetail }) {
 export function AutomationAppDetails({ request, onClose, onInstalledChange }: {
   request: AutomationAppDetailsRequest; onClose: () => void; onInstalledChange: () => void;
 }) {
-  const { detail } = request, managed = detail.install.managedPlugin;
+  const { detail, index } = request, managed = detail.install.managedPlugin;
   const { t, locale } = useI18n();
   const translation = useRef(t); translation.current = t;
   const capabilities: Record<AppCapability, string> = { "files.read": t("automationSettings.capability.files.read"), "files.write": t("automationSettings.capability.files.write"), "browser.read": t("automationSettings.capability.browser.read"), "browser.write": t("automationSettings.capability.browser.write"), ai: t("automationSettings.capability.ai"), clarification: t("automationSettings.capability.clarification"), artifacts: t("automationSettings.capability.artifacts") };
@@ -68,7 +68,7 @@ export function AutomationAppDetails({ request, onClose, onInstalledChange }: {
     const location = marketLocation;
     return <OrganizationExtensionDetails item={{ ...market, installScope: location.scope, installedScope: location.scope }} cwd={location.cwd} onClose={onClose} onFavoriteChange={(id, isFavorite) => setMarket(current => current?.id === id ? { ...current, isFavorite } : current)} onInstalledChange={onInstalledChange} extraDetails={storage} />;
   }
-  return <ExtensionDetailsPanel name={detail.manifest.displayName} icon={managed ? <OrganizationCapabilityIcon capability={managed} size={40} fit="cover" className="bg-[var(--bg-hover)] text-[var(--text-muted)]" /> : <span className="inline-flex size-10 shrink-0 items-center justify-center rounded-[var(--radius-control)] bg-[var(--bg-hover)] text-[var(--text-muted)]"><WorkflowIcon size={22} aria-hidden="true" /></span>} badge={managed ? <CapabilityTypeBadge type="Plugin" /> : undefined} tab={tab} onTabChange={setTab} onClose={onClose} tabs={[{value:"details",label:t("extensions.details"),icon:<EyeIcon size={14} />},{value:"quickStart",label:t("extensions.quickStart")},{value:"readme",label:t("extensions.documentation")}]}>
+  return <ExtensionDetailsPanel name={detail.manifest.displayName} icon={<AutomationAppIcon app={detail.install} identity={index} size={40} className="bg-[var(--bg-hover)] text-[var(--text-muted)]" />} badge={managed ? <CapabilityTypeBadge type="Plugin" /> : undefined} tab={tab} onTabChange={setTab} onClose={onClose} tabs={[{value:"details",label:t("extensions.details"),icon:<EyeIcon size={14} />},{value:"quickStart",label:t("extensions.quickStart")},{value:"readme",label:t("extensions.documentation")}]}>
     {loading ? <p role="status" className="text-sm text-[var(--text-muted)]">{t("extensions.contentLoading")}</p> : <>
       {error && <Alert className="mb-3"><AlertDescription>{error}</AlertDescription></Alert>}
       {tab === "details" ? <div className="space-y-3">

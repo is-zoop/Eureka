@@ -18,7 +18,7 @@ export function clarificationContinuationIndices(messages: AgentMessage[], group
   messages.forEach((message, index) => {
     if (message.role === "assistant") {
       for (const block of message.content) {
-        if (block.type === "toolCall" && block.toolName === "request_user_input") encountered.add(block.toolCallId);
+        if (block.type === "toolCall" && groups.some(group => group.id === block.toolCallId)) encountered.add(block.toolCallId);
       }
     } else if (message.role === "user") {
       const text = typeof message.content === "string" ? message.content

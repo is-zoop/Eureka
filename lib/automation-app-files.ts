@@ -6,6 +6,7 @@ import { samePath } from "./paths";
 import { isPathWithinRoots } from "./path-security";
 import { AutomationAppError } from "./automation-app-package";
 import type { AutomationAppDetail } from "./automation-app";
+import { appActionConfigurationScope } from "./automation-app-actions";
 import type { AppFileGrant, AppFileRef } from "./automation-app-run";
 import type { AutomationAppStore } from "./automation-app-store";
 import { pluginRelativePath } from "./haze-plugin-package";
@@ -13,7 +14,7 @@ import { appAiImageMime, AppAiInputError, MAX_APP_AI_IMAGE_BYTES, type AppAiImag
 
 export class AutomationAppFiles {
   constructor(private store: AutomationAppStore, private detail: AutomationAppDetail) {}
-  private get grantsFile() { return path.join(this.detail.dataDirectory, "grants.json"); }
+  private get grantsFile() { const scope = appActionConfigurationScope(this.detail); return path.join(this.detail.dataDirectory, ...(scope ? ["action-grants", `${scope}.json`] : ["grants.json"])); }
   async grants(): Promise<AppFileGrant[]> {
     try { const value = JSON.parse((await this.store.privateBytes(this.grantsFile, 256 * 1024)).toString("utf8")); if (value.schemaVersion !== 1 || !Array.isArray(value.grants) || value.grants.length > 256) throw new Error(); return value.grants; }
     catch (e) { if ((e as NodeJS.ErrnoException).code === "ENOENT") return []; throw new AutomationAppError("文件授权记录不可读取，请重新选择文件。", 409); }
@@ -32,6 +33,7 @@ export class AutomationAppFiles {
     const host=getAgentDir();if(isPathWithinRoots(host,new Set([resolved]))||isPathWithinRoots(resolved,new Set([host]))&&!isPathWithinRoots(resolved,new Set([workspace])))throw new AutomationAppError("不能授权宿主私有配置或其他应用数据目录。");
     const grants = await this.grants(), id = randomUUID();
     const grant: AppFileGrant = { id, fieldId, path: resolved, kind: field.type as "file" | "directory", access, digest: this.detail.install.versions.find(v => v.version === this.detail.manifest.version)!.digest };
+    if (appActionConfigurationScope(this.detail)) await this.store.ensureDataDirectory(path.dirname(this.grantsFile));
     await this.store.privateJson(this.grantsFile, { schemaVersion: 1, grants: [...grants.filter(g => g.fieldId !== fieldId), grant] });
     return { grantId: id, label: resolved, access } as AppFileRef;
   }

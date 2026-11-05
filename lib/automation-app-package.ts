@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { crc32 } from "node:zlib";
 import { pluginRelativePath, readPluginZip } from "./haze-plugin-package";
-import { APP_CAPABILITIES, isAppId, isAppVersion, type AppCapability, type AutomationAppManifest, type AutomationAppUi, type AutomationAppWorkflow } from "./automation-app";
+import { APP_CAPABILITIES, isAppId, isAppVersion, type AppCapability, type AutomationAppAction, type AutomationAppManifest, type AutomationAppUi, type AutomationAppWorkflow } from "./automation-app";
 import { appParameters } from "./automation-app-run";
 import { parseAppBrowser } from "./automation-app-browser";
 import { parseAppAiRules } from "./automation-app-ai";
@@ -13,6 +13,7 @@ export class AutomationAppError extends Error { constructor(message: string, pub
 export interface AutomationAppPackage {
   manifest: AutomationAppManifest; ui: AutomationAppUi; workflow: AutomationAppWorkflow;
   files: Map<string, Buffer>; digest: string; readme: string;
+  actions?: AutomationAppAction[];
 }
 function invalid(message: string): never { throw new AutomationAppError(`应用包无效：${message}`); }
 function object(value: unknown): Record<string, unknown> {
@@ -43,7 +44,7 @@ export function automationPublishPath(value: unknown): string {
   // Only code, UI, workflow, rules, resources and documentation are publishable.
   // There is deliberately no config/data/logs/evidence/output directory here.
   if (!["plugin.json", "package.json", "ui.json", "workflow.json", "README.md"].includes(path) &&
-    !/^(?:scripts\/(?:[a-zA-Z0-9_-]+\/)*[a-zA-Z0-9_-]+\.(?:mjs|js|json)|ai\/(?:[a-zA-Z0-9_-]+\/)*[a-zA-Z0-9_-]+\.(?:md|json)|assets\/(?:[a-zA-Z0-9_-]+\/)*[a-zA-Z0-9_-]+\.(?:svg|png|jpg|jpeg|webp|css|json|txt))$/.test(path)) invalid(`不允许发布文件：${path}`);
+    !/^(?:scripts\/(?:[a-zA-Z0-9_-]+\/)*[a-zA-Z0-9_-]+\.(?:mjs|js|json)|(?:ui|workflows)\/[a-zA-Z0-9_-]+\.json|ai\/(?:[a-zA-Z0-9_-]+\/)*[a-zA-Z0-9_-]+\.(?:md|json)|assets\/(?:[a-zA-Z0-9_-]+\/)*[a-zA-Z0-9_-]+\.(?:svg|png|jpg|jpeg|webp|css|json|txt))$/.test(path)) invalid(`不允许发布文件：${path}`);
   return path;
 }
 const publishPath = automationPublishPath;
@@ -52,10 +53,11 @@ function parseUi(raw: unknown): AutomationAppUi {
   const ui = object(raw); keys(ui, ["schemaVersion", "fields", "buttons", "results"]);
   if (ui.schemaVersion !== 1) invalid("ui.schemaVersion 必须为 1");
   const fields = array(ui.fields, "配置项").map(raw => {
-    const v = object(raw); keys(v, ["id", "label", "type", "required", "description", "default"]);
+    const v = object(raw); keys(v, ["id", "label", "type", "required", "description", "default", "multiline"]);
     if (typeof v.type !== "string" || ![...VALUE_TYPES, "file", "directory"].includes(v.type)) invalid("配置项类型不支持");
     if (["file", "directory"].includes(v.type) && v.default !== undefined) invalid("文件配置项不能携带默认路径或用户授权");
-    return { id: identifier(v.id), label: text(v.label, "配置项名称"), type: v.type as AutomationAppUi["fields"][number]["type"], ...(v.required !== undefined ? { required: optionalBoolean(v.required) } : {}), ...(v.description !== undefined ? { description: optionalText(v.description, "配置项说明") } : {}), ...(v.default !== undefined ? { default: v.default } : {}) };
+    if(v.multiline!==undefined&&(typeof v.multiline!=="boolean"||v.type!=="text"))invalid("多行输入只适用于文本字段");
+    return { id: identifier(v.id), label: text(v.label, "配置项名称"), type: v.type as AutomationAppUi["fields"][number]["type"], ...(v.required !== undefined ? { required: optionalBoolean(v.required) } : {}), ...(v.description !== undefined ? { description: optionalText(v.description, "配置项说明") } : {}), ...(v.default !== undefined ? { default: v.default } : {}),...(v.multiline!==undefined?{multiline:v.multiline as boolean}:{}) };
   });
   const buttons = array(ui.buttons, "按钮", 32).map(raw => { const v = object(raw); keys(v, ["id", "label", "action"]); if (v.action !== "run") invalid("按钮动作不支持"); return { id: identifier(v.id), label: text(v.label, "按钮名称"), action: "run" as const }; });
   const results = object(ui.results); keys(results, ["columns", "download"]);
@@ -95,7 +97,7 @@ export function inspectAutomationFiles(files: Map<string, Buffer>): AutomationAp
   keys(raw, ["$schema", "name", "version", "description", "extensions"]);
   const ext = object(raw.extensions); keys(ext, ["com.eureka"]); const host = object(ext["com.eureka"]); keys(host, ["schemaVersion", "displayName", "automation"]);
   if (host.schemaVersion !== 1) invalid("Eureka schemaVersion 必须为 1");
-  const app = object(host.automation); keys(app, ["schemaVersion", "id", "runtime", "entry", "ui", "workflow", "capabilities", "files", "browser"]);
+  const app = object(host.automation); keys(app, ["schemaVersion", "id", "runtime", "entry", "ui", "workflow", "capabilities", "files", "browser", "actions"]);
   if (app.schemaVersion !== 1 || !isAppId(app.id) || app.runtime !== "javascript-esm" || app.ui !== "ui.json" || app.workflow !== "workflow.json") invalid("自动化应用声明无效");
   const published = array(app.files, "发布清单").map(publishPath); unique(published, "发布清单");
   if (published.length !== files.size || published.some(name => !files.has(name))) invalid("发布清单与包内文件不一致；请移除配置、日志、结果和其他未发布文件");
@@ -110,7 +112,25 @@ export function inspectAutomationFiles(files: Map<string, Buffer>): AutomationAp
   if (capabilities.some(c => c === "browser.read" || c === "browser.write") && !manifest.automation.browser) invalid("网页应用需要声明网站、路径和操作范围");
   if(capabilities.includes("ai")){const rules=files.get("ai/rules.json");if(!rules)invalid("AI 应用需要 ai/rules.json");try{parseAppAiRules(rules);}catch(e){invalid(e instanceof Error?e.message:"AI 规则无效");}}
   const readme = files.get("README.md")!; if (readme.length > 256 * 1024) invalid("README.md 过大");
-  return { manifest, ui: parseUi(json("ui.json")), workflow: parseWorkflow(json("workflow.json"), files), files, digest: appPackageDigest(files), readme: readme.toString("utf8") };
+  const ui = parseUi(json("ui.json")), workflow = parseWorkflow(json("workflow.json"), files);
+  let actions: AutomationAppAction[] | undefined;
+  if (app.actions !== undefined) {
+    const declarations = array(app.actions, "功能", 32); if (!declarations.length) invalid("功能声明不能为空");
+    actions = declarations.map(raw => {
+      const v = object(raw); keys(v, ["id", "label", "description", "entry", "ui", "workflow", "capabilities"]);
+      const id = identifier(v.id), label = text(v.label, "功能名称", 100);
+      if (typeof v.entry !== "string" || !/^scripts\/.+\.(?:mjs|js)$/.test(v.entry) || !files.has(v.entry)) invalid("功能入口必须是已发布脚本");
+      if (typeof v.ui !== "string" || !/^(?:ui\.json|ui\/[a-zA-Z0-9_-]+\.json)$/.test(v.ui) || typeof v.workflow !== "string" || !/^(?:workflow\.json|workflows\/[a-zA-Z0-9_-]+\.json)$/.test(v.workflow)) invalid("功能界面或流程路径无效");
+      const ownCaps = v.capabilities === undefined ? undefined : array(v.capabilities, "功能能力", APP_CAPABILITIES.length).map(c => { if (!capabilities.includes(c as AppCapability)) invalid("功能能力必须属于应用声明的能力"); return c as AppCapability; });
+      if (ownCaps) unique(ownCaps, "功能能力");
+      const definition = parseUi(json(v.ui)), graph = parseWorkflow(json(v.workflow), files);
+      return { id, label, entry: v.entry, ui: v.ui, workflow: v.workflow, ...(v.description === undefined ? {} : { description: text(v.description, "功能说明", 1000) }), capabilities: ownCaps ?? [...capabilities], definition: { ...definition, buttons: [{ id, label, action: "run" as const }] }, graph };
+    });
+    unique(actions.map(action => action.id), "功能 ID");
+    manifest.automation.actions = actions.map(({ definition: _definition, graph: _graph, ...declaration }) => declaration);
+    ui.buttons = actions.map(action => ({ id: action.id, label: action.label, action: "run" }));
+  }
+  return { manifest, ui, workflow, ...(actions ? { actions } : {}), files, digest: appPackageDigest(files), readme: readme.toString("utf8") };
 }
 export function parseAutomationAppArchive(buffer: Buffer): AutomationAppPackage {
   try {
