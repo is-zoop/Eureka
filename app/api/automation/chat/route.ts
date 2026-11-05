@@ -1,5 +1,5 @@
 import { automationAppAccess, appFailure, appJson, readAppRequest } from "@/lib/automation-app-server";
-import { automationChatAccess, chatInvocationSnapshot, listChatInvocations, prepareChatRestart } from "@/lib/automation-chat";
+import { automationChatAccess, chatInvocationSnapshot, listChatInvocations, prepareChatRestart, selectChatFile } from "@/lib/automation-chat";
 import { hasJsonContentType } from "@/lib/request-security";
 import { authorizeCreationSessionId } from "@/lib/automation-creation-auth";
 import { resolveSessionPath } from "@/lib/session-reader";
@@ -11,11 +11,16 @@ export async function POST(request: Request) {
     if (!hasJsonContentType(request)) throw new AutomationAppError("请求格式无效。");
     const body = JSON.parse((await readAppRequest(request, 16 * 1024)).toString("utf8"));
     await automationAppAccess(request, body);
-    if (body.action !== "restart" || !isAppId(body.sessionId) || !isAppId(body.invocationId)) throw new AutomationAppError("调用引用无效。");
+    if (!["restart", "select-file"].includes(body.action) || !isAppId(body.sessionId) || !isAppId(body.invocationId)) throw new AutomationAppError("调用引用无效。");
     await authorizeCreationSessionId(body.sessionId);
     if (!await resolveSessionPath(body.sessionId)) throw new AutomationAppError("会话不存在。", 404);
     const auth = automationChatAccess();
     if (auth.ownerKey !== body.ownerKey || auth.runtimeId !== body.runtimeId) throw new AutomationAppError("登录身份已变化。", 409);
+    if (body.action === "select-file") {
+      if (typeof body.groupId !== "string" || typeof body.path !== "string") throw new AutomationAppError("文件选择引用无效。");
+      await selectChatFile(auth, body.sessionId, body.invocationId, body.groupId, body.path);
+      return appJson({ ok: true });
+    }
     const invocation = await prepareChatRestart(auth, body.sessionId, body.invocationId, body.previousRunId, body.nextRunId);
     return appJson({ runId: invocation.runId });
   } catch (error) { return appFailure(error); }

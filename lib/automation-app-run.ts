@@ -9,11 +9,16 @@ export interface AppRunEvent { seq: number; runId: string; at: string; kind: "ru
 export interface AppArtifact { id: string; name: string; mediaType: string; size: number }
 export interface AppRunRecord {
   schemaVersion: 1; id: string; appId: string; version: string; digest: string; runtimeId: string; serverId: string; serverPid: number; actionId: string;
+  actionLabel?: string;
+  /** Relative entry pinned at launch; absent on historical runs. */
+  entryScript?: string;
   status: AppRunStatus; startedAt: string; finishedAt?: string; error?: string; workflow: AutomationAppWorkflow;
   events: AppRunEvent[]; artifacts: AppArtifact[]; resultRef?: string; resultColumns: AutomationAppUi["results"]["columns"];
   question?: { id: string; questions: UserInputQuestion[] };
   browserApproval?: import("./automation-app-browser").AppBrowserApproval;
   browserSessions?: import("./automation-app-browser-runtime").AppBrowserSession[];
+  stepControl?: { mode: "conversation"; pending: import("./automation-step-driver").AppPendingStep[]; current?: import("./automation-step-driver").AppPendingStep };
+  isolation?: "run";
 }
 export const appRunActive = (status: AppRunStatus) => ["running", "waiting-user", "waiting-browser", "cancelling"].includes(status);
 export const appRunTerminal = (status: AppRunStatus) => !appRunActive(status);

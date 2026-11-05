@@ -1,3 +1,4 @@
+import { AppActionSelectionError } from "./automation-app-actions";
 import { NextResponse } from "next/server";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { automationAccess, DraftIdentityError } from "./automation-access";
@@ -35,6 +36,7 @@ export async function readAppRequest(request: Request, limit: number): Promise<B
 }
 export function appFailure(error: unknown) {
   if (error instanceof DraftIdentityError) return appJson({ error: "请先登录 Haze，再管理自己的应用包。" }, 401);
+  if (error instanceof AppActionSelectionError) return appJson({ error: error.message }, 400);
   if (error instanceof AutomationAppError) return appJson({ error: error.message }, error.status);
   return appJson({ error: "应用包存储暂时不可用，请检查文件是否被占用，刷新后重试。" }, 500);
 }

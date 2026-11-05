@@ -15,7 +15,7 @@ export interface ChatAutomationSnapshot {
   error?: string;
 }
 
-/** Discovery and browser ownership outlive folded or lazily unmounted cards. */
+/** Headless browser ownership and exceptional file prompts, independent of UI. */
 export function useChatAutomations(sessionId: string | undefined, messages: AgentMessage[]) {
   const anchors = useMemo(() => chatAutomationAnchors(messages), [messages]);
   const [state, setState] = useState<{ sessionId: string; snapshots: ChatAutomationSnapshot[] } | null>(null);
@@ -36,7 +36,7 @@ export function useChatAutomations(sessionId: string | undefined, messages: Agen
         else if (!response.ok) setError(data.error ?? "读取自动化运行失败。");
         else if (Array.isArray(data?.invocations)) { setState({ sessionId, snapshots: data.invocations }); setError(""); }
         else setError("运行记录格式已变化，请重启服务后刷新。");
-      } catch { /* Preserve retained cards through temporary connection loss. */ }
+      } catch { /* A temporary connection loss must not stop the actual run. */ }
       if (!abort.signal.aborted) timer = setTimeout(() => void poll(), 2000);
     };
     void poll();
@@ -55,7 +55,5 @@ export function useChatAutomations(sessionId: string | undefined, messages: Agen
     } }));
     return () => { window.dispatchEvent(new CustomEvent("eureka:chat-automation-state", { detail: { sessionId, appId: null, active: false } })); };
   }, [sessionId, current?.ownerKey, current?.runtimeId, current?.invocation.appId, current?.run?.id]);
-  // The server orders actual invocations by creation time. A late status reply
-  // for an old invocation (or loading earlier messages) must not make it newest.
-  return { anchors, snapshots, error, latestId: snapshots.keys().next().value ?? anchors.at(-1)?.id };
+  return { snapshots, error };
 }

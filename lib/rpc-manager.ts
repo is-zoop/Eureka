@@ -11,7 +11,7 @@ import { activeAutomationTask, bindAutomationTask, changeAutomationTask, assertA
 import { creationBinding } from "./automation-creation";
 import { assertCreationIdentity } from "./automation-creation-runtime";
 import { taskPluginSelection, taskAllowsClarification } from "./composer-plugins";
-import { prepareComposerSelection, bindChatAutomations, stopChatTask, AUTOMATION_CHAT_TOOL } from "./automation-chat";
+import { prepareComposerSelection, bindChatAutomations, stopChatTask, cancelChatInteraction, AUTOMATION_CHAT_TOOL } from "./automation-chat";
 import { EUREKA_AUTOMATION_CHAT_EXTENSION } from "./automation-chat-extension";
 import { annotateOrganizationSkills } from "./haze-capability-presentation";
 import type { OrganizationCapabilityRef } from "./organization-capability";
@@ -1225,6 +1225,7 @@ export class AgentSessionWrapper {
       case "cancel_clarification":
         this.clarification.refresh();
         this.clarification.cancel(command.groupId);
+        await cancelChatInteraction(this.sessionId, String(command.groupId));
         // Cancellation ends this task; queued requests remain visible for recall
         // or an explicit subsequent submission, and never query automatically.
         return this.clarification.state;

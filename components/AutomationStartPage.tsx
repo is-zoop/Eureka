@@ -1,15 +1,16 @@
 "use client";
 import { useI18n } from "@/hooks/useI18n";
 
-import { ArrowUpRightIcon, PackageOpenIcon, PlusIcon, WorkflowIcon } from "lucide-react";
-import type { AutomationAppSummary } from "@/lib/automation-app";
-import { OrganizationCapabilityIcon } from "./OrganizationCapabilityIcon";
+import { ArrowUpRightIcon, PackageOpenIcon, PlusIcon } from "lucide-react";
+import type { AutomationAppIndex, AutomationAppSummary } from "@/lib/automation-app";
+import { AutomationAppIcon } from "./AutomationAppIcon";
 import { Button } from "./ui/button";
 import { AutomationIcon } from "./AutomationIcon";
 import styles from "./AutomationStartPage.module.css";
 
-export function AutomationStartPage({ apps, loading, importDisabled, onCreate, onImport, onOpen }: {
+export function AutomationStartPage({ apps, index, loading, importDisabled, onCreate, onImport, onOpen }: {
   apps: readonly AutomationAppSummary[];
+  index?: Pick<AutomationAppIndex, "ownerKey" | "runtimeId">;
   loading: boolean;
   importDisabled: boolean;
   onCreate: () => void;
@@ -31,7 +32,7 @@ export function AutomationStartPage({ apps, loading, importDisabled, onCreate, o
         <h2 className={styles.sectionTitle}>{t("automationUi.frequent")}</h2>
         <ul className={styles.list}>{apps.map(app => <li key={app.id}>
           <button type="button" className={styles.app} onClick={() => onOpen(app.id)}>
-            <span className={styles.appIcon}>{app.managedPlugin ? <OrganizationCapabilityIcon capability={app.managedPlugin} size={36} fit="cover" /> : <WorkflowIcon size={18} strokeWidth={1.6} aria-hidden="true" />}</span>
+            <span className={styles.appIcon}><AutomationAppIcon app={app} identity={index} size={36} /></span>
             <span className={styles.appCopy}><span className={styles.appName}>{app.displayName}</span>{app.description?.trim() && <span className={styles.appDescription}>{app.description}</span>}</span>
             <span className={styles.openLabel}>{t("automationUi.open")}</span><ArrowUpRightIcon size={14} strokeWidth={1.6} aria-hidden="true" />
           </button>

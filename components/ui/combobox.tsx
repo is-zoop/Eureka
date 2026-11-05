@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 const Combobox = ComboboxPrimitive.Root;
 
 function ComboboxInput({ className, ...props }: ComboboxPrimitive.Input.Props) {
-  return <ComboboxPrimitive.Input data-slot="combobox-input" className={cn("flex h-8 w-full rounded-[5px] border border-[var(--border)] bg-[var(--bg-panel)] px-2 text-xs text-[var(--text)] outline-none placeholder:text-[var(--text-muted)] hover:bg-[var(--bg-hover)] focus-visible:ring-2 focus-visible:ring-[var(--accent)]", className)} {...props} />;
+  return <ComboboxPrimitive.Input data-slot="combobox-input" className={cn("flex h-8 w-full rounded-[5px] border border-[var(--border)] bg-[var(--bg-panel)] px-2 text-xs text-[var(--text)] outline-none transition-[border-color,box-shadow] placeholder:text-[var(--text-muted)] hover:bg-[var(--bg-hover)] focus-visible:border-[var(--input-focus-border)] focus-visible:ring-2 focus-visible:ring-[var(--input-focus-ring)]", className)} {...props} />;
 }
 
 function ComboboxContent({ className, side = "bottom", sideOffset = 4, align = "start", ...props }: ComboboxPrimitive.Popup.Props & Pick<ComboboxPrimitive.Positioner.Props, "side" | "sideOffset" | "align">) {

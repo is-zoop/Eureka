@@ -1,7 +1,7 @@
 "use client";
 import { useI18n } from "@/hooks/useI18n";
 import { useEffect,useRef,useState } from "react";
-import { authorBrowserTarget, type AuthorSnapshot } from "@/lib/automation-authoring-types";
+import { authorBrowserTarget, authorActionsPassed, type AuthorSnapshot } from "@/lib/automation-authoring-types";
 import type { UserInputResponse } from "@/lib/user-input";
 import { AutomationApplication } from "./AutomationApplication";
 import { AutomationApplicationBrowser } from "./AutomationApplicationBrowser";
@@ -29,12 +29,14 @@ export function AutomationAuthoringCard({sessionId,onSaved}:{sessionId:string;on
   const index={ownerKey:snapshot.ownerKey,runtimeId:snapshot.runtimeId,apps:[],data:[]};
   const name=c?.saved?.displayName??(nameDraft?.taskId===snapshot.task.id?nameDraft.value:c?.saveIntent?.displayName??snapshot.detail?.manifest.displayName??"");
   const validation=c?.validation?.digest===c?.digest&&c?.validation?.runId===c?.runId?c?.validation:undefined;
-  const passed=validation?.status==="passed"&&snapshot.run?.status==="completed";
+  const passed=Boolean(c&&snapshot.detail&&authorActionsPassed(c,snapshot.detail)&&snapshot.run?.status==="completed");
   return <section ref={card} className={`${styles.application} ${styles.authoringCard}`} aria-label={t("automationUi.creationResult")}>
     <div className={styles.authoringHeader}><h3>{t("automationUi.app")}</h3><span>{c?.saved?t("automationUi.saved"):!snapshot.active?t("automationUi.paused"):passed?t("automationUi.readyToSave"):c?t("automationUi.generated"):t("automationUi.waitingHelp")}</span></div>{error&&<p role="alert" className={styles.error}>{error}</p>}
     {c&&snapshot.detail&&<>
       <div className={styles.authoringField}>{c.saved?<span className={styles.authoringLabel}>{t("automationUi.appName")}</span>:<label htmlFor={`application-name-${snapshot.task.id}`}>{t("automationUi.appName")}</label>}{c.saved?<p className={styles.authoringName}>{name}</p>:<Input className={styles.authoringNameInput} id={`application-name-${snapshot.task.id}`} value={name} maxLength={100} disabled={busy||!snapshot.active} placeholder={t("automationUi.enterAppName")} onChange={event=>setNameDraft({taskId:snapshot.task.id,value:event.target.value})}/>}</div>
       <dl className={styles.authoringFields}>
+        {Boolean(snapshot.detail.actions?.length)&&<div><dt>{t("automationUi.functions")}</dt><dd>{snapshot.detail.actions!.map(action=>action.label).join(locale==="zh-CN"?"、":", ")}</dd></div>}
+        {Boolean(snapshot.detail.manifest.automation.actions?.length)&&<div><dt>{t("automationUi.functionValidation")}</dt><dd>{snapshot.detail.manifest.automation.actions!.map(action=>{const trial=action.id===c.actionId?c:c.actionTrials?.[action.id];const valid=trial?.validation?.digest===c.digest&&trial.validation.runId===trial.runId?trial.validation:undefined;return <span key={action.id} className={styles.actionValidation} data-state={valid?.status}>{action.label} · {valid?.status==="passed"?t("automationUi.passed"):valid?.status==="failed"?t("automationUi.failed"):t("automationUi.notValidated")}</span>;})}</dd></div>}
         <div><dt>{t("automationUi.parameters")}</dt><dd>{snapshot.detail.ui.fields.map(field=>field.label).join(locale === "zh-CN" ? "、" : ", ")||t("automationUi.noParams")}</dd></div>
         <div><dt>{t("automationUi.outputs")}</dt><dd>{snapshot.detail.ui.results.columns.map(column=>column.label).join(locale === "zh-CN" ? "、" : ", ")||(snapshot.detail.manifest.automation.capabilities.includes("artifacts")?t("automationUi.resultsAndFiles"):t("automationUi.runResults"))}</dd></div>
         <div><dt>{t("automationUi.trialRun")}</dt><dd>{statuses[snapshot.run?.status??""]??t("automationUi.notStarted")}</dd></div>
@@ -50,7 +52,7 @@ export function AutomationAuthoringCard({sessionId,onSaved}:{sessionId:string;on
         {c.saved?<Button size="sm" onClick={()=>window.dispatchEvent(new CustomEvent("eureka:open-automation-app",{detail:{id:c.saved!.id}}))}>{t("automationUi.viewAutomation")}</Button>:<><Button size="sm" disabled={busy||!snapshot.active||!passed||!name.trim()} onClick={()=>void post("save",{digest:c.digest,displayName:name})}>{t("automationUi.saveToDirectory")}</Button><Button size="sm" variant="outline" disabled={!snapshot.active} aria-expanded={previewOpen} onClick={()=>setPreviewOpen(value=>!value)}>{previewOpen?t("automationUi.collapsePreview"):t("automationUi.previewApp")}</Button></>}
         {!c.saved&&snapshot.active&&<Button size="sm" variant="ghost" disabled={busy} onClick={()=>{window.dispatchEvent(new CustomEvent("eureka:automation-pause",{detail:{sessionId,taskId:snapshot.task.id}}));void post("stop");}}>{t("automationUi.stopCreation")}</Button>}
       </div>
-      {!c.saved&&snapshot.active&&previewOpen&&<div className={styles.authoringPreview}><AutomationApplication key={`${snapshot.task.id}:${c.digest}`} authoringPreview taskId={snapshot.task.id} detail={{...snapshot.detail,manifest:{...snapshot.detail.manifest,displayName:name.trim()||snapshot.detail.manifest.displayName}}} index={index} active={snapshot.active} providedRunId={c.runId}/></div>}
+      {!c.saved&&snapshot.active&&previewOpen&&<div className={styles.authoringPreview}><AutomationApplication key={`${snapshot.task.id}:${c.digest}`} authoringPreview taskId={snapshot.task.id} detail={{...snapshot.detail,manifest:{...snapshot.detail.manifest,displayName:name.trim()||snapshot.detail.manifest.displayName}}} index={index} active={snapshot.active} providedRunId={c.runId} providedActionId={c.actionId??snapshot.run?.actionId} providedRunIds={Object.fromEntries(Object.entries(c.actionTrials??{}).filter(([,trial])=>Boolean(trial.runId)).map(([id,trial])=>[id,trial.runId!]))}/></div>}
     </>}
     {explorer&&snapshot.active&&["running","waiting-user","waiting-browser"].includes(explorer.run.status)&&<><AutomationApplicationBrowser view="requests" detail={explorer.detail} index={index} run={explorer.run} running active taskId={snapshot.task.id}/>{explorer.run.question&&<UserInputCard questions={explorer.run.question.questions} onAnswer={(_,responses:UserInputResponse[])=>post("login",{questionId:explorer.run.question!.id,responses})}/>}</>}
   </section>;

@@ -1,7 +1,7 @@
 {
   "name": "eureka-desktop",
   "private": true,
-  "version": "0.8.8",
+  "version": "0.8.9",
   "description": "Windows desktop shell for Eureka",
   "type": "module",
   "scripts": {

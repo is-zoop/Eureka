@@ -83,7 +83,7 @@ export function buildTaskPhases(input: TaskPhaseSource[], options: {
   const answerRefs = last ? references(last).filter((ref) => answerBlocks.includes(ref.block)) : [];
   const hasAnswer = answerRefs.some(({ block }) => block.type === "image" || (block.type === "text" && block.text.trim()));
   const lastCall = last?.message.content.findLast((block) => block.type === "toolCall");
-  const question = lastCall?.type === "toolCall" && lastCall.toolName === "request_user_input"
+  const question = lastCall?.type === "toolCall"
     ? options.clarificationGroups?.get(lastCall.toolCallId) : undefined;
   const status: TaskTurnStatus = options.running ? "running"
     : last?.message.stopReason === "error" ? "failed"

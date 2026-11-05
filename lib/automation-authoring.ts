@@ -17,7 +17,8 @@ import { assertAppIdle } from "./automation-app-lease";
 import { AppFileOperations,AutomationAppFiles } from "./automation-app-files";
 import { resolveSessionPath } from "./session-reader";
 import type { AutomationAppDetail } from "./automation-app";
-import { authorEqual,authorValueAt,type AuthorCheck,type AuthorState,type AuthorFinding } from "./automation-authoring-types";
+import { appActionDetail, appActions } from "./automation-app-actions";
+import { activateAuthorAction,rememberAuthorAction,authorActionsPassed,authorEqual,authorValueAt,type AuthorCheck,type AuthorState,type AuthorFinding } from "./automation-authoring-types";
 import { authorCheckPlan,authorColumnCoverage,parseAuthorChecks,replaceAuthorChecks } from "./automation-authoring-validation";
 const globals=globalThis as typeof globalThis & {__eurekaAuthors?:Map<string,{generation:number;blockedAt?:string;browser?:ApplicationBrowserRuntime;login?:{resolve:()=>void;reject:(e:Error)=>void}}>};
 const actors=globals.__eurekaAuthors??=new Map();
@@ -32,7 +33,7 @@ export async function authorAccess(task:AutomationTaskRef,allowClosed=false) {
 }
 type Access=Awaited<ReturnType<typeof authorAccess>>;
 export async function readAuthor(a:Access):Promise<AuthorState>{try{const raw=JSON.parse((await a.host.privateBytes(join(a.directory,"author.json"),4*1024*1024)).toString("utf8"));if(raw?.schemaVersion!==1||!Array.isArray(raw.evidence)||raw.evidence.length>150)fail("创建记录损坏，未恢复任何执行；请检查该任务数据。");return raw;}catch(e){if((e as NodeJS.ErrnoException).code==="ENOENT")return {schemaVersion:1,evidence:[]};throw e;}}
-async function write(a:Access,s:AuthorState){a.assertIdentity();if(s.evidence.length>150)fail("本次探索证据已达 150 条；已保留原记录，请缩小任务。");appJsonValue(s,4*1024*1024);await a.host.privateJson(join(a.directory,"author.json"),s);}
+async function write(a:Access,s:AuthorState){a.assertIdentity();if(s.candidate)rememberAuthorAction(s.candidate);if(s.evidence.length>150)fail("本次探索证据已达 150 条；已保留原记录，请缩小任务。");appJsonValue(s,4*1024*1024);await a.host.privateJson(join(a.directory,"author.json"),s);}
 async function locked<T>(a:Access,work:(s:AuthorState)=>Promise<T>){const release=await lockfile.lock(join(a.directory,"author"),{realpath:false,retries:{retries:20,minTimeout:30,maxTimeout:100}});try{a.assertIdentity();return await work(await readAuthor(a));}finally{await release();}}
 async function patch(a:Access,work:(s:AuthorState)=>void){return locked(a,async s=>{work(s);await write(a,s);});}
 // Only host browser events can become read evidence; script logs and result
@@ -115,21 +116,30 @@ export async function authorWrite(task:AutomationTaskRef,rawFiles:Record<string,
     if(s.candidate?.saved)fail("该创建任务已保存，请用 AI 修改入口创建新版本。");
     if(s.candidate?.runId&&appRunActive((await getAppRun(a,s.candidate.id,s.candidate.runId)).status))fail("试运行尚未结束，请先停止。");
     if(s.candidate)await assertAppIdle(a.store.dataDirectory(s.candidate.id));
-    try{checks=parseAuthorChecks(checks,pkg,s.evidence);}catch(error){fail(error instanceof Error?error.message:"校验规则无效。");}
+    const selectedAction=s.candidate?.digest===pkg.digest?s.candidate.actionId:undefined;
+    const selected=appActionDetail(pkg,selectedAction);
+    try{checks=parseAuthorChecks(checks,selected,s.evidence);}catch(error){fail(error instanceof Error?error.message:"校验规则无效。");}
     const current=await a.store.find(pkg.manifest.automation.id),install=await a.store.install(pkg,current?.revision??0);
     const sameCode=s.candidate?.digest===pkg.digest?s.candidate.runId:undefined;
-    s.candidate={id:install.id,digest:pkg.digest,revision:install.revision,scope,limitations,checks,...(sameCode?{runId:sameCode}:{})};await write(a,s);return {generated:true,saved:false,appId:install.id,version:pkg.manifest.version,digest:pkg.digest,parameters:pkg.ui.fields,scope,limitations,checkPlan:authorCheckPlan(pkg,checks,s.evidence),validation:sameCode?"可用 eureka_app_validate 更新校验规则，对同一次实际运行重新校验，无需再次执行":"尚未试运行"};
+    const trials=s.candidate?.digest===pkg.digest?s.candidate.actionTrials:undefined;
+    s.candidate={id:install.id,digest:pkg.digest,revision:install.revision,scope,limitations,checks,actionId:selected.actionId,...(pkg.actions?{actionTrials:trials??{}}:{}),...(sameCode?{runId:sameCode}:{})};await write(a,s);return {generated:true,saved:false,appId:install.id,version:pkg.manifest.version,digest:pkg.digest,actionId:selected.actionId,actions:appActions(pkg).map(action=>({id:action.id,label:action.label})),parameters:selected.ui.fields,scope,limitations,checkPlan:authorCheckPlan(selected,checks,s.evidence),validation:sameCode?"可用 eureka_app_validate 更新校验规则，对同一次实际运行重新校验，无需再次执行":"尚未试运行"};
   });
 }
-export async function authorTest(task:AutomationTaskRef,values:unknown,signal?:AbortSignal,actionId?:string,collectEvidence=false){const a=await authorAccess(task);return locked(a,async s=>{const c=s.candidate;if(!c||c.saved)fail("请先生成尚未保存的应用代码。");if(c.runId){const old=await getAppRun(a,c.id,c.runId);if(appRunActive(old.status))return old;const detail=await a.store.detail(c.id);if(detail.manifest.automation.capabilities.some(v=>["browser.write","files.write"].includes(v))&&Date.parse(a.doc.updatedAt)<=Date.parse(old.startedAt))fail("本轮已执行含变更的试运行。请用 waitOnly 查看或直接校验原结果；再次执行须由用户在原对话明确继续。");}
-  const detail=await a.store.detail(c.id),plan=authorCheckPlan(detail,c.checks,s.evidence);
+export async function authorTest(task:AutomationTaskRef,values:unknown,signal?:AbortSignal,actionId?:string,collectEvidence=false){const a=await authorAccess(task);return locked(a,async s=>{const c=s.candidate;if(!c||c.saved)fail("请先生成尚未保存的应用代码。");const detail=appActionDetail(await a.store.detail(c.id),actionId??c.actionId);
+  if(c.runId){const current=await getAppRun(a,c.id,c.runId);if(appRunActive(current.status)){if(current.actionId!==detail.actionId)fail("另一功能仍在试运行，请等待或停止后再切换。");return current;}}
+  if(c.actionTrials)activateAuthorAction(c,detail.actionId);else c.actionId=detail.actionId;
+  if(c.runId){const old=await getAppRun(a,c.id,c.runId);if(detail.manifest.automation.capabilities.some(v=>["browser.write","files.write"].includes(v))&&Date.parse(a.doc.updatedAt)<=Date.parse(old.startedAt))fail("本轮已执行含变更的试运行。请用 waitOnly 查看或直接校验原结果；再次执行须由用户在原对话明确继续。");}
+  const plan=authorCheckPlan(detail,c.checks,s.evidence);
   if(!plan.ready&&!collectEvidence)fail(`${plan.blocking.join("；")}。请先用 eureka_app_validate 的 checks 更新规则；确需先取得真实字段时，显式使用 collectEvidence:true，仅采集证据，不能宣称通过。`);
-  if(!values||typeof values!=="object"||Array.isArray(values))fail("试运行参数需要对象。");const config=await readAppConfiguration(a,c.id),inputs={...config.values,...values};c.runId=randomUUID();delete c.validation;delete c.lastError;await write(a,s);signal?.throwIfAborted();try{return await startAppRun(a,c.id,c.revision,c.runId,inputs,config.revision,actionId);}catch(e){try{await getAppRun(a,c.id,c.runId);}catch{delete c.runId;}c.lastError=e instanceof Error?e.message:"试运行准备失败";await write(a,s);throw e;}});}
-export async function authorValidate(task:AutomationTaskRef,options:{checks?:AuthorCheck[];digest?:string;runId?:string;prepareOnly?:boolean}={}) {
+  if(!values||typeof values!=="object"||Array.isArray(values))fail("试运行参数需要对象。");const config=await readAppConfiguration(a,c.id,detail.actionId),inputs={...config.values,...values};c.runId=randomUUID();delete c.validation;delete c.lastError;await write(a,s);signal?.throwIfAborted();try{return await startAppRun(a,c.id,c.revision,c.runId,inputs,config.revision,detail.actionId);}catch(e){try{await getAppRun(a,c.id,c.runId);}catch{delete c.runId;}c.lastError=e instanceof Error?e.message:"试运行准备失败";await write(a,s);throw e;}});}
+export async function authorValidate(task:AutomationTaskRef,options:{checks?:AuthorCheck[];digest?:string;runId?:string;prepareOnly?:boolean;actionId?:string}={}) {
   const a=await authorAccess(task);
   return locked(a,async s=>{
     const c=s.candidate;if(!c||c.saved)fail("请先生成尚未保存的应用代码。");
-    const run=c.runId?await getAppRun(a,c.id,c.runId):undefined,detail=await a.store.detail(c.id);
+    const detail=appActionDetail(await a.store.detail(c.id),options.actionId??c.actionId);
+    if(c.runId&&c.actionId!==detail.actionId&&appRunActive((await getAppRun(a,c.id,c.runId)).status))fail("另一功能仍在运行，不能切换校验目标。");
+    if(c.actionTrials)activateAuthorAction(c,detail.actionId);else c.actionId=detail.actionId;
+    const run=c.runId?await getAppRun(a,c.id,c.runId):undefined;
     if(options.checks!==undefined){
       if(options.digest!==c.digest||options.runId!==c.runId)fail("代码或试运行记录已变化，请先读取当前任务，再修改所属校验规则。");
       if(run&&appRunActive(run.status))fail("仍在运行或等待用户，请结束后再修改校验规则。");
@@ -137,7 +147,7 @@ export async function authorValidate(task:AutomationTaskRef,options:{checks?:Aut
     if(run)await collectRunEvidence(a,s,run);
     if(options.checks!==undefined){try{replaceAuthorChecks(c,detail,options.checks,s.evidence,options);}catch(error){fail(error instanceof Error?error.message:"校验规则无效。");}}
     const checkPlan=authorCheckPlan(detail,c.checks,s.evidence);
-    if(options.prepareOnly){await write(a,s);return {status:"prepared",runId:c.runId,digest:c.digest,checkPlan,message:"仅检查或更新私有校验规则，未执行应用；现有代码、文件选择和运行结果已保留。"};}
+    if(options.prepareOnly){await write(a,s);return {status:"prepared",actionId:detail.actionId,runId:c.runId,digest:c.digest,checkPlan,message:"仅检查或更新私有校验规则，未执行应用；现有代码、文件选择和运行结果已保留。"};}
     if(!run)fail("尚未实际试运行；可先使用 prepareOnly:true 完善规则。");
     if(appRunActive(run.status))return {status:run.status,runId:run.id,message:"仍在运行或等待用户，不能标记通过。"};
     if(run.status!=="completed"||run.digest!==c.digest)fail("试运行未完成或代码已变化，不能标记校验通过。");
@@ -174,11 +184,11 @@ export async function authorValidate(task:AutomationTaskRef,options:{checks?:Aut
     if(caps.includes("files.write"))findings.push({label:"实际文件或产物内容校验",equal:c.checks.some(check=>["file","artifact"].includes(check.source)),reason:"missing-check",hint:"需比较实际生成文件或产物的内容。"});
     if(caps.includes("browser.read")&&!caps.includes("browser.write"))findings.push({label:"本任务实际网页字段证据",equal:!checkPlan.needsWebEvidence,reason:"missing-evidence",hint:"需引用本任务 read/extract 的 evidenceId；仅查询状态或成功标志不足以验证字段。"});
     if(caps.includes("browser.write"))findings.push({label:"实际网页变更状态校验",equal:run.events.some(event=>event.kind==="log"&&event.status==="browser"&&event.message==="网页变更的页面状态已校验"),reason:"missing-evidence",hint:"需有真实变更后的页面状态验证。"});
-    c.validation={status:findings.every(finding=>finding.equal)?"passed":"failed",runId:run.id,digest:c.digest,at:new Date().toISOString(),checks:findings};await write(a,s);return {...c.validation,checkPlan,evidenceWarnings:s.evidenceWarnings};
+    c.validation={status:findings.every(finding=>finding.equal)?"passed":"failed",runId:run.id,digest:c.digest,at:new Date().toISOString(),checks:findings};await write(a,s);return {...c.validation,actionId:detail.actionId,allActionsPassed:authorActionsPassed(c,detail),checkPlan,evidenceWarnings:s.evidenceWarnings};
   });
 }
 export async function saveAuthor(task:AutomationTaskRef,digest:string,displayName?:unknown){const a=await authorAccess(task);return locked(a,async s=>{const c=s.candidate;if(!c||c.digest!==digest)fail("待保存代码已变化，请重新查看。");if(c.saved)return c.saved;if(c.validation?.status!=="passed"||c.validation.digest!==digest||c.validation.runId!==c.runId)fail("当前代码尚未通过实际试运行校验。");
-  const run=await getAppRun(a,c.id,c.runId!);if(run.status!=="completed"||run.digest!==digest)fail("试运行状态已变化。");await assertAppIdle(a.store.dataDirectory(c.id));const exported=await a.store.export(c.id),source=inspectAutomationFiles((await import("./automation-app-package")).parseAutomationAppArchive(exported.bytes).files);
+  const detail=await a.store.detail(c.id);if(!authorActionsPassed(c,detail))fail("仍有功能尚未通过实际试运行校验，请分别验证全部功能后保存。");for(const action of detail.manifest.automation.actions??[]){const trial=action.id===c.actionId?c:c.actionTrials?.[action.id];if(!trial?.runId)fail("功能缺少实际试运行。");const tested=await getAppRun(a,c.id,trial.runId);if(tested.status!=="completed"||tested.digest!==digest||tested.actionId!==action.id)fail("功能试运行状态已变化，请重新核对。");}const run=await getAppRun(a,c.id,c.runId!);if(run.status!=="completed"||run.digest!==digest)fail("试运行状态已变化。");await assertAppIdle(a.store.dataDirectory(c.id));const exported=await a.store.export(c.id),source=inspectAutomationFiles((await import("./automation-app-package")).parseAutomationAppArchive(exported.bytes).files);
   if(source.digest!==digest)fail("待保存包与已校验的代码不一致。");
   const old=await a.host.find(c.id);if(c.saveIntent?.digest===digest&&old?.activeVersion===source.manifest.version&&old.versions.some(v=>v.version===source.manifest.version&&v.digest===(c.saveIntent!.publishedDigest??digest))){c.saved={id:old.id,version:old.activeVersion,at:new Date().toISOString(),displayName:c.saveIntent.displayName??source.manifest.displayName};await write(a,s);return c.saved;}
   if(task.baseApp?(old?.revision!==task.baseApp.revision||old.activeVersion!==task.baseApp.version):Boolean(old))fail("应用登记已变化，请重新从目录创建修改任务。");
@@ -188,6 +198,6 @@ export async function authorSnapshot(a:Access,collectEvidence=false){
   if(collectEvidence)await locked(a,async state=>{const c=state.candidate;if(c?.runId){const run=await getAppRun(a,c.id,c.runId);await collectRunEvidence(a,state,run);await write(a,state);}});
   let state=await readAuthor(a);
   if(state.explorer&&appRunActive(state.explorer.run.status)&&state.explorer.run.serverPid!==process.pid&&!a.actor.browser){await patch(a,s=>{if(s.explorer&&appRunActive(s.explorer.run.status)&&s.explorer.run.serverPid!==process.pid){s.explorer.run.status="interrupted";s.explorer.run.finishedAt=new Date().toISOString();s.explorer.run.error="开发服务或执行进程已重启，原网页探索已中断；刷新不会重新执行旧操作。";delete s.explorer.run.question;delete s.explorer.run.browserApproval;}});state=await readAuthor(a);}
-  const c=state.candidate;return {task:a.task,sessionId:a.doc.sessionId,active:a.doc.status==="active"&&a.actor.blockedAt!==a.doc.updatedAt,goal:a.doc.goal,state,ownerKey:a.ownerKey,runtimeId:a.runtimeId,...(c?{detail:await a.store.detail(c.id),...(c.runId?{run:await getAppRun(a,c.id,c.runId)}:{})}:{})};
+  const c=state.candidate;return {task:a.task,sessionId:a.doc.sessionId,active:a.doc.status==="active"&&a.actor.blockedAt!==a.doc.updatedAt,goal:a.doc.goal,state,ownerKey:a.ownerKey,runtimeId:a.runtimeId,...(c?{detail:appActionDetail(await a.store.detail(c.id),c.actionId),...(c.runId?{run:await getAppRun(a,c.id,c.runId)}:{})}:{})};
 }
-export async function authorFile(task:AutomationTaskRef,fieldId:string,method:string,relative?:string){const a=await authorAccess(task);if(!["list","readText","readJson"].includes(method))fail("仅开放已选文件的读取探索。");const s=await readAuthor(a),c=s.candidate;if(!c)fail("先生成带文件配置项的草稿，由用户选择业务文件。");const detail=await a.store.detail(c.id),config=await readAppConfiguration(a,c.id),grants=await new AutomationAppFiles(a.store,detail).validateReferences(config.values,c.digest),ref=config.values[fieldId];if(!ref||typeof ref!=="object"||Array.isArray(ref))fail("请在对话中的配置卡片选择并保存该文件。");const value=appJsonValue(await new AppFileOperations(a.store.workspaceDirectory(c.id),grants,detail.manifest.automation.capabilities,a.assertIdentity).call(method,[{...ref,...(relative?{relative}:{})}]),256000),evidenceId=randomUUID();await patch(a,s=>{s.evidence.push({id:evidenceId,method:"file."+method,at:new Date().toISOString(),value});});return {evidenceId,value};}
+export async function authorFile(task:AutomationTaskRef,fieldId:string,method:string,relative?:string,actionId?:string){const a=await authorAccess(task);if(!["list","readText","readJson"].includes(method))fail("仅开放已选文件的读取探索。");const s=await readAuthor(a),c=s.candidate;if(!c)fail("先生成带文件配置项的草稿，由用户选择业务文件。");const detail=appActionDetail(await a.store.detail(c.id),actionId??c.actionId),config=await readAppConfiguration(a,c.id,detail.actionId),grants=await new AutomationAppFiles(a.store,detail).validateReferences(config.values,c.digest),ref=config.values[fieldId];if(!ref||typeof ref!=="object"||Array.isArray(ref))fail("请在对话中的配置卡片选择并保存该文件。");const value=appJsonValue(await new AppFileOperations(a.store.workspaceDirectory(c.id),grants,detail.manifest.automation.capabilities,a.assertIdentity).call(method,[{...ref,...(relative?{relative}:{})}]),256000),evidenceId=randomUUID();await patch(a,s=>{s.evidence.push({id:evidenceId,method:"file."+method,at:new Date().toISOString(),value});});return {evidenceId,value};}

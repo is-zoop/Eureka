@@ -26,7 +26,7 @@ interface Command {
   bridgeId?: string; lease?: string; operation?: AppWebOperation; result?: unknown; error?: string; dispatched?: boolean;
 }
 type Ticket = { service: ApplicationBrowserRuntime; command: Command; expiresAt: number; payload: string; lease:string; bridgeId:string };
-const shared = globalThis as typeof globalThis & { __eurekaAppWeb?: { services: Map<string, ApplicationBrowserRuntime>; tickets: Map<string, Ticket>; slot?: string } };
+const shared = globalThis as typeof globalThis & { __eurekaAppWeb?: { services: Map<string, ApplicationBrowserRuntime>; tickets: Map<string, Ticket> } };
 const globalWeb = shared.__eurekaAppWeb ??= { services: new Map<string, ApplicationBrowserRuntime>(), tickets: new Map<string, Ticket>() };
 const hash = (v: unknown) => createHash("sha256").update(JSON.stringify(v)).digest("hex");
 function fail(message: string): never { throw new AutomationAppError(message, 409); }
@@ -98,7 +98,7 @@ export class ApplicationBrowserRuntime {
     if (typeof environmentId!=="string" || environmentId !== "temporary" && !/^[a-f0-9]{32}$/.test(environmentId)) fail("浏览环境引用无效。");
     // Task identity changes per run; the native profile is reused separately by
     // owner/environment. Late close/pause calls must not reach the next run.
-    const native: NativeBrowserSpec = { ownerKey: this.options.ownerKey, sessionId: appBrowserSessionId(hash([this.options.detail.install.id, this.options.runId])), websiteUrl: site.startUrl, applicationId: this.options.detail.install.id, applicationRunId: this.options.runId, applicationSiteId: site.id, ...(this.options.taskId?{applicationTaskId:this.options.taskId}:{}), ...(environmentId === "temporary" ? { browserMode: "temporary" as const } : { accountId: environmentId }) };
+    const native: NativeBrowserSpec = { ownerKey: this.options.ownerKey, sessionId: appBrowserSessionId(hash([this.options.detail.install.id, this.options.runId, site.id])), websiteUrl: site.startUrl, applicationId: this.options.detail.install.id, applicationRunId: this.options.runId, applicationSiteId: site.id, ...(this.options.taskId?{applicationTaskId:this.options.taskId}:{}), ...(environmentId === "temporary" ? { browserMode: "temporary" as const } : { accountId: environmentId }) };
     const session = { siteId: site.id, native }; this.sessions.set(site.id, session); await this.options.saveSession(session); return session;
   }
   private async command(method: string, site: AppBrowserSite, args: Record<string, unknown> = {}, operation?: AppWebOperation) {
@@ -180,8 +180,7 @@ export class ApplicationBrowserRuntime {
       this.eventContext = context;
       this.check();
       if (method === "connect") {
-        if (globalWeb.slot && globalWeb.slot !== this.options.runId) fail("另一个应用正在使用原生浏览器，请先结束它。");
-        globalWeb.slot = this.options.runId; const site = this.site(args[0]); this.activeSite = site; this.binding = null;
+        const site = this.site(args[0]); this.activeSite = site; this.binding = null;
         await this.command("open", site); let binding = await this.probe(site, true);
         if (site.account && !binding.account) { await this.command("release", site); await this.options.askLogin(`请在右侧完成“${site.label}”的登录或人工验证，确认账号后继续。`); binding = await this.probe(site); }
         if (site.account && !binding.account) fail("仍未读取到账号标记，请核对登录及应用中的账号定位规则。");
@@ -192,6 +191,7 @@ export class ApplicationBrowserRuntime {
       if (method === "observe") return (await this.command("observe",site) as {value:unknown}).value;
       if (method === "operation") {
         const op = site.operations.find(o => o.id === args[0]); if (!op) fail("操作未在应用包中声明。");
+        if (op.effect === "mutation" && !this.options.detail.manifest.automation.capabilities.includes("browser.write")) fail("当前功能未声明网页变更能力。");
         const input = args[1] === undefined ? {} : args[1] as Record<string, unknown>;
         if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).some(k => !["key", "value"].includes(k))) fail("网页操作参数无效。");
         if (op.row && (typeof input.key !== "string" || !input.key || input.key.length > 1000)) fail("需要明确的记录匹配值。");
@@ -248,7 +248,7 @@ export class ApplicationBrowserRuntime {
     this.closed = true; for (const c of this.commands.values()) if (c.phase !== "done") c.phase = "cancelled";
     this.approval?.reject(new Error(reason)); this.approval = null;
     for (const [token, ticket] of globalWeb.tickets) if (ticket.service === this) globalWeb.tickets.delete(token);
-    if (globalWeb.slot === this.options.runId) globalWeb.slot = undefined; globalWeb.services.delete(this.options.runId);
+    globalWeb.services.delete(this.options.runId);
   }
 }
 export function appWebServices(ownerKey: string, appId: string) { return [...globalWeb.services.values()].filter(s => s.options.ownerKey === ownerKey && s.options.detail.install.id === appId); }

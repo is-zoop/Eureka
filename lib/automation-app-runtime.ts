@@ -16,6 +16,8 @@ import lockfile from "proper-lockfile";
 import { ApplicationBrowserRuntime } from "./automation-app-browser-runtime";
 import { executeAppAi, parseAppAiRules } from "./automation-app-ai";
 import { automationNodeLaunch,automationStartError,automationFilePermissionFlags } from "./automation-node-runtime";
+import { AutomationStepDriver } from "./automation-step-driver";
+import { appActionDetail, appActionConfigurationScope, appActions } from "./automation-app-actions";
 
 type Access = { ownerKey: string; runtimeId: string; store: AutomationAppStore; assertIdentity: () => void; assertExecution?:()=>void; taskId?: string };
 interface LiveRun {
@@ -24,6 +26,7 @@ interface LiveRun {
   open: Map<number, string>; fileOps: AppFileOperations; stopKind?: "cancelled" | "failed" | "interrupted";
   requests: Set<Promise<unknown>>;
   browser?: ApplicationBrowserRuntime;
+  stepDriver?: AutomationStepDriver;
   aiAbort?: AbortController; aiCalls?: number;
   watchdog?: ReturnType<typeof setInterval>; killTimer?: ReturnType<typeof setTimeout>;
   question?: { id: string; resolve: (v: unknown) => void; reject: (e: Error) => void; answering?: boolean };
@@ -69,7 +72,7 @@ async function readRecord(auth: Access, appId: string, id: string, reconcile = t
   try { const text = (await auth.store.privateBytes(join(dir, "events.jsonl"), 24 * 1024 * 1024)).toString("utf8"); events = text.trim().split("\n").filter(Boolean).map(line => JSON.parse(line)); } catch (e) { if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e; }
   record.events = events;
   // A service restart only reconciles terminal state; never imports or restarts code.
-  if (reconcile && appRunActive(record.status) && !runtime.live.has(id) && (!serverExists(record.serverPid) || !await appHasLease(auth.store.dataDirectory(appId)))) {
+  if (reconcile && appRunActive(record.status) && !runtime.live.has(id) && (!serverExists(record.serverPid) || !await appHasLease(auth.store.dataDirectory(appId), record.isolation === "run" ? id : undefined))) {
     const release = await lockfile.lock(join(dir, "reconcile"), { realpath: false, retries: { retries: 6, minTimeout: 25, maxTimeout: 100 } });
     try {
       const fresh = await readRecord(auth, appId, id, false);
@@ -84,29 +87,31 @@ async function readRecord(auth: Access, appId: string, id: string, reconcile = t
   }
   auth.assertIdentity(); return record;
 }
-export async function readAppConfiguration(auth: Access, appId: string): Promise<AppConfiguration> {
-  if (!await auth.store.find(appId)) fail("应用未安装", 404);
-  try { const raw = JSON.parse((await auth.store.privateBytes(join(auth.store.dataDirectory(appId), "config.json"), 1024 * 1024)).toString("utf8")); if (raw.schemaVersion !== 1 || !raw.values || typeof raw.values !== "object" || Array.isArray(raw.values)) fail("配置文件无效。"); return { schemaVersion: 1, revision: Number.isSafeInteger(raw.revision) ? raw.revision : 0, values: raw.values }; }
+export async function readAppConfiguration(auth: Access, appId: string, actionId?: string): Promise<AppConfiguration> {
+  const detail = appActionDetail(await auth.store.detail(appId), actionId), scope = appActionConfigurationScope(detail);
+  try { const raw = JSON.parse((await auth.store.privateBytes(join(auth.store.dataDirectory(appId), ...(scope ? ["action-config", `${scope}.json`] : ["config.json"])), 1024 * 1024)).toString("utf8")); if (raw.schemaVersion !== 1 || !raw.values || typeof raw.values !== "object" || Array.isArray(raw.values)) fail("配置文件无效。"); return { schemaVersion: 1, revision: Number.isSafeInteger(raw.revision) ? raw.revision : 0, values: raw.values }; }
   catch (e) { if ((e as NodeJS.ErrnoException).code === "ENOENT") return { schemaVersion: 1, revision: 0, values: {} }; throw e; }
 }
 async function saveConfiguration(auth: Access, detail: AutomationAppDetail, values: unknown, revision: number, required: boolean) {
-  const current = await readAppConfiguration(auth, detail.install.id); if (current.revision !== revision) fail("配置已变化，请重新读取后保存。");
+  const current = await readAppConfiguration(auth, detail.install.id, detail.actionId); if (current.revision !== revision) fail("配置已变化，请重新读取后保存。");
   const configuration: AppConfiguration = { schemaVersion: 1, revision: revision + 1, values: parameters(detail, values, required) };
   try { appJsonValue(configuration.values, 512 * 1024); } catch { fail("配置超过 512 KiB，请将大量数据作为文件输入。", 400); }
-  await auth.store.privateJson(join(detail.dataDirectory, "config.json"), configuration); return configuration;
+  const scope = appActionConfigurationScope(detail);
+  if (scope) await auth.store.ensureDataDirectory(join(detail.dataDirectory, "action-config"));
+  await auth.store.privateJson(join(detail.dataDirectory, ...(scope ? ["action-config", `${scope}.json`] : ["config.json"])), configuration); return configuration;
 }
-export async function saveAppConfiguration(auth: Access, appId: string, revision: number, configRevision: number, values: unknown) {
-  return auth.store.admitRun(appId, revision, detail => saveConfiguration(auth, detail, values, configRevision, false), false);
+export async function saveAppConfiguration(auth: Access, appId: string, revision: number, configRevision: number, values: unknown, actionId?: string) {
+  return auth.store.admitRun(appId, revision, detail => saveConfiguration(auth, appActionDetail(detail, actionId), values, configRevision, false), false);
 }
-export async function grantAppFile(auth: Access, appId: string, revision: number, fieldId: string, path: string, access: "read" | "readwrite") {
-  return auth.store.admitRun(appId, revision, detail => new AutomationAppFiles(auth.store, detail).grant(fieldId, path, access), false);
+export async function grantAppFile(auth: Access, appId: string, revision: number, fieldId: string, path: string, access: "read" | "readwrite", actionId?: string) {
+  return auth.store.admitRun(appId, revision, detail => new AutomationAppFiles(auth.store, appActionDetail(detail, actionId)).grant(fieldId, path, access), false);
 }
-export async function listAppRuns(auth: Access, appId: string) {
+export async function listAppRuns(auth: Access, appId: string, actionId?: string) {
   const root = join(auth.store.dataDirectory(appId), "logs", "runs"); await auth.store.managedPath(root);
   let ids: string[]; try { ids = (await readdir(root)).filter(isAppId); } catch (e) { if ((e as NodeJS.ErrnoException).code === "ENOENT") return []; throw e; }
   // Read only headers to select the newest runs; load event logs for that page only.
   const dated = await Promise.all(ids.map(async id => {
-    try { const record = await readRecordHeader(auth, appId, id); return { id, startedAt: record.startedAt }; }
+    try { const record = await readRecordHeader(auth, appId, id); return actionId && record.actionId !== actionId ? null : { id, startedAt: record.startedAt }; }
     catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return null; throw error; }
   }));
   const result: AppRunRecord[] = [];
@@ -120,6 +125,8 @@ export async function getAppRun(auth: Access, appId: string, id: string) {
 async function finish(live: LiveRun, status: AppRunStatus, error?: string, result?: unknown) {
   if (live.finishing) return; live.finishing = true;
   if (live.watchdog) clearInterval(live.watchdog); if (live.killTimer) clearTimeout(live.killTimer);
+  live.stepDriver?.close("运行已结束。");
+  if (live.record.stepControl) live.record.stepControl = { mode: "conversation", pending: [] };
   live.question?.reject(new Error("运行已结束。")); live.question = undefined; delete live.record.question;
   live.browser?.close(); delete live.record.browserApproval;
   live.aiAbort?.abort();
@@ -141,6 +148,8 @@ async function finish(live: LiveRun, status: AppRunStatus, error?: string, resul
 async function stop(live: LiveRun, kind: "cancelled" | "failed" | "interrupted", reason: string) {
   if (live.finishing || live.stopKind) return;
   live.stopKind = kind; live.record.status = "cancelling"; live.record.error = reason;
+  live.stepDriver?.close(reason);
+  if (live.record.stepControl) live.record.stepControl = { mode: "conversation", pending: [] };
   live.browser?.close(reason); delete live.record.browserApproval;
   live.aiAbort?.abort();
   live.question?.reject(new Error(reason)); live.question = undefined; delete live.record.question;
@@ -160,16 +169,22 @@ async function rpc(live: LiveRun, method: string, args: unknown[], context: { no
   check(live);
   if (method === "step-start") {
     const [nodeId, input] = args; if (typeof nodeId !== "string" || !live.record.workflow.nodes.some(n => n.id === nodeId)) throw new Error("脚本引用未声明的节点。");
-    const execution = ++live.executions; live.open.set(execution, nodeId);
-    const inputRef = await valueRef(live, input); await emit(live, { kind: "node", status: "running", nodeId, execution, inputRef }); return { nodeId, execution };
+    const execution = ++live.executions;
+    const inputRef = await valueRef(live, input);
+    const nested = context && live.open.get(context.execution ?? -1) === context.nodeId;
+    if (live.stepDriver && !nested) await live.stepDriver.wait(nodeId, execution, inputRef);
+    check(live); live.open.set(execution, nodeId);
+    await emit(live, { kind: "node", status: "running", nodeId, execution, inputRef }); return { nodeId, execution };
   }
   if (method === "step-end" || method === "step-error") {
     const token = args[0] as { nodeId: string; execution: number };
     if (!token || live.open.get(token.execution) !== token.nodeId) throw new Error("节点执行引用已失效。");
     const outputRef = await valueRef(live, args[1]); check(live); live.open.delete(token.execution);
-    await emit(live, { kind: "node", status: method === "step-end" ? "completed" : "failed", nodeId: token.nodeId, execution: token.execution, outputRef }); return null;
+    await emit(live, { kind: "node", status: method === "step-end" ? "completed" : "failed", nodeId: token.nodeId, execution: token.execution, outputRef });
+    await live.stepDriver?.complete(token.execution); return null;
   }
   const attached = context && live.open.get(context.execution ?? -1) === context.nodeId ? { nodeId: context.nodeId, execution: context.execution } : {};
+  if (live.stepDriver && !attached.nodeId && method !== "log") throw new Error("聊天逐步执行要求将业务操作放入 ctx.step；请适配应用步骤，或明确选择整流程兼容执行。");
   if(method==="ai") {
     if(!live.detail.manifest.automation.capabilities.includes("ai")||!attached.nodeId||live.record.workflow.nodes.find(n=>n.id===attached.nodeId)?.kind!=="ai")throw new Error("只能在声明的 AI 节点调用 AI 规则。");
     if((live.aiCalls=(live.aiCalls??0)+1)>20)throw new Error("本轮 AI 判断已达到 20 次限制。");
@@ -217,38 +232,46 @@ async function rpc(live: LiveRun, method: string, args: unknown[], context: { no
   }
   throw new Error("本阶段不支持此 SDK 能力。");
 }
-export async function startAppRun(auth: Access, appId: string, revision: number, runId: string, values: unknown, configRevision: number, actionId?: string): Promise<AppRunRecord> {
-  return withDesktopUpdateAdmission(() => startAppRunInternal(auth, appId, revision, runId, values, configRevision, actionId));
+export async function startAppRun(auth: Access, appId: string, revision: number, runId: string, values: unknown, configRevision: number, actionId?: string, options?: { conversationSteps?: boolean; persistConfiguration?: boolean; isolatedWorkspace?: boolean }): Promise<AppRunRecord> {
+  return withDesktopUpdateAdmission(() => startAppRunInternal(auth, appId, revision, runId, values, configRevision, actionId, options));
 }
-async function startAppRunInternal(auth: Access, appId: string, revision: number, runId: string, values: unknown, configRevision: number, actionId?: string): Promise<AppRunRecord> {
+async function startAppRunInternal(auth: Access, appId: string, revision: number, runId: string, values: unknown, configRevision: number, actionId?: string, options?: { conversationSteps?: boolean; persistConfiguration?: boolean; isolatedWorkspace?: boolean }): Promise<AppRunRecord> {
   assertDesktopUpdateIdle();
   auth.assertExecution?.();
   if (!isAppId(runId)) fail("运行 ID 无效", 400);
-  const inputHash = rawHash({ values, actionId: actionId ?? null });
+  const inputHash = rawHash({ values, actionId: actionId ?? null, ...(options?.conversationSteps ? { conversationSteps: true } : {}), ...(options?.isolatedWorkspace ? { isolatedWorkspace: true } : {}) });
   try {
     const previous = await getAppRun(auth, appId, runId);
     if (previous.runtimeId !== auth.runtimeId || (previous as AppRunRecord & { inputHash?: string }).inputHash !== inputHash) fail("该运行 ID 已用于另一项请求。");
     return previous;
   } catch (e) { if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e; }
-  return auth.store.admitRun(appId, revision, async (detail, pkg) => {
+  return auth.store.admitRun(appId, revision, async (baseDetail, pkg) => {
+    if (!appActions(baseDetail).some(action => action.id === (actionId ?? appActions(baseDetail)[0]?.id))) fail("运行功能引用无效。", 400);
+    const detail = appActionDetail(baseDetail, actionId);
     // A repeated HTTP submission may have waited behind the first admission.
     try { const existing = await getAppRun(auth, appId, runId); if (existing.runtimeId !== auth.runtimeId || (existing as AppRunRecord & { inputHash?: string }).inputHash !== inputHash) fail("运行请求已变化。"); return existing; } catch (e) { if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e; }
     if (runtime.live.size >= 4) fail("本机已有 4 个应用运行，请等待其中一项结束。");
     let leaseLost = false;
-    const release = await takeAppLease(detail.dataDirectory, () => { leaseLost = true; const live = runtime.live.get(runId); if (live) void stop(live, "interrupted", "执行占用已失效，运行已停止。"); }), directory = runDirectory(auth.store, appId, runId);
+    if (options?.isolatedWorkspace) await auth.store.ensureDataDirectory(join(detail.dataDirectory, "execution-leases"));
+    const release = await takeAppLease(detail.dataDirectory, () => { leaseLost = true; const live = runtime.live.get(runId); if (live) void stop(live, "interrupted", "执行占用已失效，运行已停止。"); }, options?.isolatedWorkspace ? runId : undefined), directory = runDirectory(auth.store, appId, runId);
     let started = false, prepared: (AppRunRecord & { inputHash: string }) | undefined;
     try {
       const selectedAction = actionId ?? detail.ui.buttons[0]?.id;
       if (!selectedAction || !detail.ui.buttons.some(button => button.id === selectedAction)) fail("运行按钮引用无效。", 400);
       const params = parameters(detail, values, true), grants = await new AutomationAppFiles(auth.store, detail).validateReferences(params, pkg.digest);
-      if ((await readAppConfiguration(auth, appId)).revision !== configRevision) fail("配置已变化，请重新读取后启动。");
+      if ((await readAppConfiguration(auth, appId, detail.actionId)).revision !== configRevision) fail("配置已变化，请重新读取后启动。");
       await auth.store.ensureDataDirectory(directory); await auth.store.ensureDataDirectory(join(directory, "values"));
-      const record: AppRunRecord & { inputHash: string } = { schemaVersion: 1, id: runId, appId, version: detail.manifest.version, digest: pkg.digest, runtimeId: auth.runtimeId, serverId: runtime.serverId, serverPid: process.pid, actionId: selectedAction, status: "running", startedAt: new Date().toISOString(), workflow: detail.workflow, resultColumns: detail.ui.results.columns, events: [], artifacts: [], inputHash };
+      // Pin the selected function's entry together with its graph and output schema.
+      // The package-level entry is only the default, not the selected function.
+      const entryScript = detail.manifest.automation.entry;
+      const record: AppRunRecord & { inputHash: string } = { schemaVersion: 1, id: runId, appId, version: detail.manifest.version, digest: pkg.digest, runtimeId: auth.runtimeId, serverId: runtime.serverId, serverPid: process.pid, actionId: selectedAction, actionLabel: detail.ui.buttons[0]?.label, entryScript, status: "running", startedAt: new Date().toISOString(), workflow: detail.workflow, resultColumns: detail.ui.results.columns, events: [], artifacts: [], inputHash };
+      if (options?.isolatedWorkspace) record.isolation = "run";
       prepared = record; await auth.store.privateJson(join(directory, "run.json"), { ...record, events: [] });
-      const code = join(directory, "code"), workspace = await auth.store.ensureWorkspace(appId);
+      const code = join(directory, "code"), workspace = options?.isolatedWorkspace ? join(directory, "workspace") : await auth.store.ensureWorkspace(appId);
+      if (options?.isolatedWorkspace) await auth.store.ensureDataDirectory(workspace);
       await auth.store.ensureDataDirectory(code);
       for (const [name, bytes] of pkg.files) { const target = join(code, ...name.split("/")); await auth.store.ensureDataDirectory(dirname(target)); await writeFile(target, bytes, { flag: "wx", mode: 0o600 }); }
-      await saveConfiguration(auth, detail, params, configRevision, true);
+      if (options?.persistConfiguration !== false) await saveConfiguration(auth, detail, params, configRevision, true);
       const readable = [{ path: code, kind: "directory" as const }, { path: workspace, kind: "directory" as const }, ...grants], writable = [{ path: workspace, kind: "directory" as const }, ...grants.filter(g => g.access === "readwrite")];
       const flags = ["--permission", "--max-old-space-size=256", ...automationFilePermissionFlags(readable, writable), "--input-type=module", "--eval", AUTOMATION_WORKER_SOURCE];
       auth.assertIdentity();auth.assertExecution?.(); if (leaseLost) fail("执行占用已失效，请重新启动运行。");
@@ -257,6 +280,13 @@ async function startAppRunInternal(auth: Access, appId: string, revision: number
       const child = spawn(launch.executable, ["--max-old-space-size=256", "--input-type=module", "--eval", AUTOMATION_SUPERVISOR_SOURCE], { cwd: launch.directory, windowsHide: true, env: { NODE_ENV: process.env.NODE_ENV ?? "production", ...(process.env.SystemRoot ? { SystemRoot: process.env.SystemRoot } : {}), ...(process.env.WINDIR ? { WINDIR: process.env.WINDIR } : {}), TEMP: workspace, TMP: workspace, LANG: "zh_CN.UTF-8" }, stdio: ["ignore", "pipe", "pipe", "ipc"] });
       const closed = new Promise<void>(resolve => { child.once("close", () => resolve()); child.once("error", () => resolve()); });
       const live: LiveRun = { auth, detail, record, directory, child, closed, release, journal: Promise.resolve(), finishing: false, rpc: 0, executions: 0, open: new Map(), requests: new Set(), fileOps: new AppFileOperations(workspace, grants, detail.manifest.automation.capabilities, () => check(live)) };
+      if (options?.conversationSteps) {
+        record.stepControl = { mode: "conversation", pending: [] };
+        live.stepDriver = new AutomationStepDriver(async (pending, current) => {
+          check(live); record.stepControl = { mode: "conversation", pending, ...(current ? { current } : {}) };
+          await snapshot(live);
+        });
+      }
       runtime.live.set(runId, live); started = true;
       const terminal = (message: { type: string; error?: string; result?: unknown }) => {
         if (live.finishing) return;
@@ -286,9 +316,9 @@ async function startAppRunInternal(auth: Access, appId: string, revision: number
         const message = chunk.toString("utf8"); void emit(live, { kind: "log", status: "console", message: message.slice(0, 1000) + (message.length > 1000 ? "…（日志已截短）" : "") }).catch(() => {});
       });
       let activeTime=0,lastTick=Date.now();
-      live.watchdog = setInterval(() => { const now=Date.now();if(record.status==="running")activeTime+=now-lastTick;lastTick=now;try { auth.assertIdentity();auth.assertExecution?.(); if (activeTime > 30 * 60 * 1000) void stop(live, "failed", "实际执行超过 30 分钟，运行失败；等待网页或用户的时间不计入。"); } catch(error) { void stop(live, "interrupted", errorMessage(error)||"登录身份已变化，运行已中断。"); } }, 1000);
+      live.watchdog = setInterval(() => { const now=Date.now();if(record.status==="running"&&(!record.stepControl||record.stepControl.current))activeTime+=now-lastTick;lastTick=now;try { auth.assertIdentity();auth.assertExecution?.(); if (activeTime > 30 * 60 * 1000) void stop(live, "failed", "实际执行超过 30 分钟，运行失败；等待网页或用户的时间不计入。"); } catch(error) { void stop(live, "interrupted", errorMessage(error)||"登录身份已变化，运行已中断。"); } }, 1000);
       await emit(live, { kind: "run", status: "running", inputRef: await valueRef(live, params) });
-      child.send({ type: "start", workerArgs: flags, code, workspace, entry: join(code, ...pkg.manifest.automation.entry.split("/")), params, runId, actionId: selectedAction }, error => { if (error) void finish(live, "failed", automationStartError(error, "ipc")); });
+      child.send({ type: "start", workerArgs: flags, code, workspace, entry: join(code, ...entryScript.split("/")), params, runId, actionId: selectedAction }, error => { if (error) void finish(live, "failed", automationStartError(error, "ipc")); });
       return structuredClone(record);
     } catch (e) {
       const live = runtime.live.get(runId);
@@ -306,6 +336,12 @@ function ownedLive(auth: Access, appId: string, id: string) {
   const live = runtime.live.get(id);
   if (!live || live.auth.ownerKey !== auth.ownerKey || live.record.appId !== appId || live.record.runtimeId !== auth.runtimeId || live.auth.store.base!==auth.store.base) fail("当前运行已结束、已中断或属于其他登录代次。");
   return live;
+}
+export async function advanceAppRun(auth: Access, appId: string, id: string, stepToken: string) {
+  const live = ownedLive(auth, appId, id); check(live);
+  if (!live.stepDriver || typeof stepToken !== "string") fail("当前运行不支持逐步调度，请读取原运行状态。");
+  await live.stepDriver.advance(stepToken);
+  return getAppRun(auth, appId, id);
 }
 export async function stopAppRun(auth: Access, appId: string, id: string) {
   const live = runtime.live.get(id);
@@ -329,7 +365,8 @@ export async function answerAppRun(auth: Access, appId: string, id: string, ques
 }
 export async function appRunValue(auth: Access, appId: string, runId: string, ref: string) {
   const record = await getAppRun(auth, appId, runId);
-  if (!/^[a-f0-9-]{36}\.json$/.test(ref) || (record.resultRef !== ref && !record.events.some(e => e.inputRef === ref || e.outputRef === ref))) fail("数据引用不存在。", 404);
+  if (!/^[a-f0-9-]{36}\.json$/.test(ref) || (record.resultRef !== ref && !record.events.some(e => e.inputRef === ref || e.outputRef === ref)
+    && !record.stepControl?.pending.some(step => step.inputRef === ref) && record.stepControl?.current?.inputRef !== ref)) fail("数据引用不存在。", 404);
   const value = JSON.parse((await auth.store.privateBytes(join(runDirectory(auth.store, appId, runId), "values", ref), 2 * 1024 * 1024)).toString("utf8")); auth.assertIdentity(); return value;
 }
 export async function appRunArtifact(auth: Access, appId: string, runId: string, artifactId: string) {

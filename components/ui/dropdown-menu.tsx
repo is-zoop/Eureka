@@ -204,19 +204,22 @@ function DropdownMenuRadioItem({
   ...props
 }: MenuPrimitive.RadioItem.Props & {
   inset?: boolean
-  indicatorPosition?: "start" | "end"
+  indicatorPosition?: "start" | "end" | "none"
 }) {
   return (
     <MenuPrimitive.RadioItem
       data-slot="dropdown-menu-radio-item"
       data-inset={inset}
       className={cn(
-        "relative flex cursor-default items-center gap-1.5 rounded-md py-1 pr-8 pl-1.5 text-sm outline-hidden select-none focus:bg-accent focus:text-accent-foreground focus:**:text-accent-foreground data-inset:pl-7 data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        "relative flex cursor-default items-center gap-1.5 rounded-md py-1 text-sm text-[var(--text)] outline-hidden select-none focus:bg-[var(--bg-hover)] focus:text-[var(--text)] data-highlighted:bg-[var(--bg-hover)] data-inset:pl-7 data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        indicatorPosition === "none"
+          ? "px-2 data-checked:bg-[var(--bg-selected)] data-checked:focus:bg-[var(--bg-selected)] data-checked:data-highlighted:bg-[var(--bg-selected)]"
+          : "pr-8 pl-1.5",
         className
       )}
       {...props}
     >
-      <span
+      {indicatorPosition !== "none" && <span
         className="pointer-events-none absolute right-2 flex items-center justify-center"
         data-slot="dropdown-menu-radio-item-indicator"
         style={indicatorPosition === "start" ? { left: 8, right: "auto" } : undefined}
@@ -225,7 +228,7 @@ function DropdownMenuRadioItem({
           <CheckIcon
           />
         </MenuPrimitive.RadioItemIndicator>
-      </span>
+      </span>}
       {children}
     </MenuPrimitive.RadioItem>
   )
