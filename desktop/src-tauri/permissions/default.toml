@@ -11,7 +11,7 @@ commands.allow = ["open_external_url"]
 [[permission]]
 identifier = "allow-desktop-automation-browser"
 description = "Allows only the Eureka content view to manage an isolated native website view."
-commands.allow = ["desktop_automation_browser", "desktop_automation_observe", "desktop_automation_control", "desktop_automation_app", "desktop_automation_accounts"]
+commands.allow = ["desktop_automation_browser", "desktop_automation_observe", "desktop_automation_control", "desktop_automation_app", "desktop_automation_accounts", "desktop_automation_credentials"]
 
 [[permission]]
 identifier = "allow-desktop-clipboard-files"
@@ -30,8 +30,8 @@ commands.allow = ["desktop_select_directory"]
 
 [[permission]]
 identifier = "allow-desktop-save-file"
-description = "Allows only the Eureka content view to save supplied bytes to a path chosen in the system Save As dialog."
-commands.allow = ["desktop_save_file"]
+description = "Allows only the Eureka content view to save supplied bytes or stream a local run artifact to a path chosen in the system Save As dialog."
+commands.allow = ["desktop_save_file", "desktop_save_artifact"]
 
 [[permission]]
 identifier = "allow-desktop-window-action"

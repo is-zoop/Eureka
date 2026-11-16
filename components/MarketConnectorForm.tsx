@@ -1,8 +1,9 @@
 "use client";
 
+import { McpExposureOptions } from "./McpExposureOptions";
 import { useI18n } from "@/hooks/useI18n";
 import type { McpConfigScope, McpRuntimeStatus, McpServerInput } from "@/lib/api-types";
-import { ChevronDownIcon, CircleHelpIcon, FolderIcon, GlobeIcon, SaveIcon, Settings2Icon, SlidersHorizontalIcon, Trash2Icon } from "lucide-react";
+import { ChevronDownIcon, CircleHelpIcon, FolderIcon, GlobeIcon, SaveIcon, Settings2Icon, Trash2Icon } from "lucide-react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Textarea } from "./ui/textarea";
@@ -38,11 +39,11 @@ export function MarketConnectorForm({ form, scope, savedPath, isNew, busy, canSa
   uninstalling?: boolean;
 }) {
   const { t } = useI18n();
-  const lifecycle = form.lifecycle ?? "lazy";
   return <div data-market-connector-form="" className="@container w-full text-[13px] text-[var(--text)]">
     <div className="mb-5 flex flex-wrap items-center justify-between gap-3"><div><h2 className="mb-1 text-[17px] font-semibold">{isNew ? t("extensions.connectorAdd") : t("extensions.connectorEdit", { name: form.name })}</h2><p className="text-[12px] text-[var(--text-muted)]">{t("extensions.connectorDescription")}</p></div>{!isNew ? <label className="ml-auto flex items-center gap-2 text-[12px] text-[var(--text-muted)]">{t(form.disabled ? "i18n.disabled" : "extensions.managementEnabled")}<Switch aria-label={t(form.disabled ? "extensions.connectorEnable" : "extensions.connectorDisable")} checked={!form.disabled} disabled={busy} onCheckedChange={onToggleDisabled} /></label> : null}</div>
     <fieldset disabled={busy} className="min-w-0 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-panel)] p-4 @min-[560px]:p-5">
       <h3 className="mb-4 flex items-center gap-2 font-semibold"><Settings2Icon size={15} className="text-[var(--text-muted)]" aria-hidden="true" />{t("extensions.connectorConnectionConfig")}</h3>
+
       <div className="grid grid-cols-1 items-start gap-4 @min-[560px]:grid-cols-2"><label className={labelClass}><span>{t("extensions.connectorName")}</span><Input value={form.name} onChange={event => onChange("name", event.target.value)} autoComplete="off" spellCheck={false} placeholder={t("extensions.connectorNamePlaceholder")} className={controlClass} /></label><ConnectorSelect label={t("extensions.connectorTransport")} value={form.transport} options={[{ value: "stdio", label: t("extensions.connectorTransportStdio") }, { value: "http", label: t("extensions.connectorTransportHttp") }]} onChange={value => onTransportChange(value === "http" ? "http" : "stdio")} /></div>
       <div className="mt-4 flex flex-col gap-4">
         {form.transport === "stdio" ? <>
@@ -54,8 +55,8 @@ export function MarketConnectorForm({ form, scope, savedPath, isNew, busy, canSa
           <details><summary className="w-fit cursor-pointer rounded text-[12px] text-[var(--text-muted)] focus-visible:outline-2 focus-visible:outline-[var(--accent)]">{t("extensions.connectorAuthOptional")}</summary><label className={`${labelClass} mt-3`}><span>{t("extensions.connectorBearerEnv")}</span><Input aria-label={t("extensions.connectorBearerEnv")} value={form.bearerTokenEnv ?? ""} onChange={event => onChange("bearerTokenEnv", event.target.value)} placeholder="MCP_TOKEN" autoComplete="off" spellCheck={false} className={`${controlClass} font-mono`} /><span className="text-[11px] text-[var(--text-muted)]">{t("extensions.connectorBearerEnvHint")}</span></label></details>
         </>}
       </div>
-      <section className="mt-5 border-t border-[var(--border)] pt-5"><h3 className="mb-4 flex items-center gap-2 font-semibold"><SlidersHorizontalIcon size={15} className="text-[var(--text-muted)]" aria-hidden="true" />{t("extensions.connectorRuntimeSettings")}<Tooltip><TooltipTrigger render={<button type="button" aria-label={t("extensions.connectorRuntimeHelp")} className="rounded text-[var(--text-muted)] focus-visible:outline-2 focus-visible:outline-[var(--accent)]"><CircleHelpIcon size={13} aria-hidden="true" /></button>} /><TooltipContent>{t("extensions.connectorRuntimeHelp")}</TooltipContent></Tooltip></h3>
-        <div className="grid grid-cols-1 items-start gap-4 @min-[560px]:grid-cols-2"><div className="min-w-0"><ConnectorSelect label={t("extensions.connectorPolicy")} value={lifecycle} options={[{ value: "lazy", label: t("extensions.connectorPolicyLazy") }, { value: "eager", label: t("extensions.connectorPolicyEager") }, { value: "keep-alive", label: t("extensions.connectorPolicyKeepAlive") }]} onChange={value => onChange("lifecycle", value as McpServerInput["lifecycle"])} /><p className="mt-2 text-[11px] text-[var(--text-muted)]">{t(lifecycle === "eager" ? "extensions.lifecycle.eager" : lifecycle === "keep-alive" ? "extensions.lifecycle.keepAlive" : "extensions.lifecycle.lazy")}</p></div><label className={labelClass}><span>{t("extensions.connectorIdleMinutes")}</span><Input type="number" value={form.idleTimeout ?? 10} onChange={event => onChange("idleTimeout", Number(event.target.value))} className={controlClass} /></label></div>
+      <section className="mt-5 border-t border-[var(--border)] pt-5">
+        <McpExposureOptions value={form.exposure} disabled={busy} allowHidden onChange={exposure => onChange("exposure", exposure)} />
       </section>
       <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-[var(--border)] pt-4"><div className="flex flex-wrap items-center gap-2 text-[12px] text-[var(--text-muted)]"><span className="inline-flex items-center gap-1.5">{scope === "global" ? <GlobeIcon size={14} aria-hidden="true" /> : <FolderIcon size={14} aria-hidden="true" />}{t(scope === "global" ? "extensions.connectorSaveGlobal" : "extensions.connectorSaveProject")}</span><Tooltip><TooltipTrigger render={<button type="button" className="inline-flex items-center gap-1 rounded focus-visible:outline-2 focus-visible:outline-[var(--accent)]">{t("extensions.connectorConfigLocation")}<CircleHelpIcon size={13} aria-hidden="true" /></button>} /><TooltipContent className="break-all font-mono">{savedPath}</TooltipContent></Tooltip></div><div className="ml-auto flex items-center gap-2">{!isNew && onUninstall ? <Button type="button" variant="destructive" size="sm" className="h-[36px] shrink-0 gap-1.5 text-[13px]" disabled={busy} onClick={onUninstall}><Trash2Icon size={15} aria-hidden="true" />{t(uninstalling ? "extensions.marketUninstalling" : "extensions.uninstall")}</Button> : null}<Button type="button" size="sm" className="h-[36px] shrink-0 gap-1.5 text-[13px]" disabled={busy || !canSave} onClick={onSave}><SaveIcon size={15} aria-hidden="true" />{t(busy && !uninstalling ? "i18n.saving" : "extensions.connectorSave")}</Button></div></div>
     </fieldset>

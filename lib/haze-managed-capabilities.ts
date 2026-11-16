@@ -11,14 +11,19 @@ export type { HazeManagedInstall, HazeInstallScope, HazeCapabilityType, HazeMcpL
 
 export type HazeCapabilityInput = { id: string; name: string; slug?: string | null; type: HazeCapabilityType; version: string; serverUrl?: string | null; connectType?: string | null };
 
-export function hazeMcpRuntimeOptions(lifecycle: unknown, idleTimeout: unknown): HazeMcpRuntimeOptions {
+export function hazeMcpRuntimeOptions(lifecycle: unknown, idleTimeout: unknown, exposure?: unknown): HazeMcpRuntimeOptions {
+  if (exposure !== undefined && exposure !== "direct" && exposure !== "deferred" && exposure !== "codemode") throw new Error("工具提供方式无效");
+  if (lifecycle === undefined && idleTimeout === undefined) {
+    if (exposure === undefined) throw new Error("缺少工具提供方式");
+    return { exposure };
+  }
   if (lifecycle !== "lazy" && lifecycle !== "eager" && lifecycle !== "keep-alive") throw new Error("无效的生命周期");
   if (typeof idleTimeout !== "number" || !Number.isFinite(idleTimeout) || idleTimeout < 1 || idleTimeout > 1440) throw new Error("空闲断开时间必须为 1–1440 分钟");
-  return { lifecycle, idleTimeout };
+  return { lifecycle, idleTimeout, ...(exposure === undefined ? {} : { exposure }) };
 }
 
 function storedMcpRuntimeOptions(record: Partial<HazeManagedInstall>): HazeMcpRuntimeOptions {
-  try { return hazeMcpRuntimeOptions(record.lifecycle ?? "lazy", record.idleTimeout ?? 10); }
+  try { return hazeMcpRuntimeOptions(record.lifecycle ?? "lazy", record.idleTimeout ?? 10, record.exposure); }
   catch { return { lifecycle: "lazy", idleTimeout: 10 }; }
 }
 
@@ -166,8 +171,9 @@ async function configureHazeManagedMcpUnlocked(cwd: string, scope: HazeInstallSc
   const registry = await readRegistry(cwd, scope);
   const install = registry.installs.find((item) => item.capabilityId === capabilityId && item.type === "MCP");
   if (!install) throw new Error("该范围未安装此 MCP");
-  install.lifecycle = options.lifecycle;
-  install.idleTimeout = options.idleTimeout;
+  if (options.exposure !== undefined) install.exposure = options.exposure;
+  if (options.lifecycle !== undefined) install.lifecycle = options.lifecycle;
+  if (options.idleTimeout !== undefined) install.idleTimeout = options.idleTimeout;
   await writeRegistry(cwd, scope, registry);
   return install;
 }

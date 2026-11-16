@@ -1,5 +1,6 @@
 import { join } from "node:path";
 import { appFailure, appJson, applicationAccess, readAppRequest } from "@/lib/automation-app-server";
+import { APP_BROWSER_POST_MAX_BYTES } from "@/lib/automation-data-limits";
 import { AutomationAppError } from "@/lib/automation-app-package";
 import { appWebService, appWebServices, lockAppBrowserGrants } from "@/lib/automation-app-browser-runtime";
 import { appBrowserSpec, stopAppRun } from "@/lib/automation-app-runtime";
@@ -36,7 +37,9 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     if (!hasJsonContentType(request)) throw new AutomationAppError("请求格式无效");
-    const body = JSON.parse((await readAppRequest(request, 512 * 1024)).toString("utf8")), auth = await applicationAccess(request, body), { id } = await params;
+    const bytes = await readAppRequest(request, APP_BROWSER_POST_MAX_BYTES), body = JSON.parse(bytes.toString("utf8"));
+    if (body.mode !== "complete" && bytes.byteLength > 512 * 1024) throw new AutomationAppError("网页控制请求超过大小限制", 413);
+    const auth = await applicationAccess(request, body), { id } = await params;
     if (body.mode === "settings") {
       const result = await auth.store.admitRun(id, body.revision, async detail => {
         await assertAppIdle(detail.dataDirectory);
@@ -61,7 +64,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       } finally { await release(); }
       },false));
     }
-    const service = appWebService(auth.ownerKey, id, body.runId); if (service.options.runtimeId !== auth.runtimeId || service.options.taskId !== ("taskId" in auth?auth.taskId:undefined)) throw new AutomationAppError("登录代次或任务已变化", 409);
+    const service = appWebService(auth.ownerKey, id, body.runId); if (service.options.runtimeId !== auth.runtimeId || service.options.taskId !== ("taskId" in auth?auth.taskId:undefined)) throw new AutomationAppError("本地运行上下文或任务已变化", 409);
     if(body.mode==="detach"){await service.detach(body.bridgeId);return appJson({ok:true});}
     if(body.mode==="connection-failed"){if(!service.ownsBridge(body.bridgeId))throw new AutomationAppError("网页面板不属于本次连接",409);await service.connectionFailed(body.reason==="desktop-required"?"网页应用需要在 Eureka 桌面程序中执行；会话和草稿已保留。":"原网页视图已丢失，无法确认页面状态；本轮网页执行已中断，不会自动重新查询或提交。请在原会话核对后继续。");return appJson({ok:true});}
     if(body.mode==="defer")return appJson(await service.defer(body.commandId,body.lease,body.bridgeId));

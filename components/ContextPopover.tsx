@@ -1,4 +1,5 @@
 "use client";
+import { CacheWarmingStatus } from "./RunDetails";
 
 import { useEffect, useId, useRef, useState } from "react";
 import { Popover } from "@base-ui/react/popover";
@@ -175,6 +176,7 @@ export function ContextPopover({ sessionId, leafId, stats, usage, controls, open
         <Popover.Popup className={styles.popup} aria-label={t("context.title")} data-context-popup>
           <Popover.Close className={styles.close} aria-label={t("context.close")}>×</Popover.Close>
           {open && <ContextInspector details={details} usage={displayUsage} stats={stats} controls={activeControls} tab={tab} onTabChange={setTab} loading={!details && errorKey !== requestKey} error={errorKey === requestKey} onRetry={() => setRefresh((value) => value + 1)} />}
+          {open && <CacheWarmingStatus sessionId={sessionId ?? undefined}/>}
         </Popover.Popup>
       </Popover.Positioner>
     </Popover.Portal>

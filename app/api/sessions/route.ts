@@ -4,9 +4,7 @@ import {
   listAllSessions,
   mergeSessionLists,
 } from "@/lib/session-reader";
-import { getRpcSessionInfos, getRunningRpcSessionIds } from "@/lib/rpc-manager";
-import { creationOwnerFromCwd } from "@/lib/automation-creation-auth";
-import { automationAccess } from "@/lib/automation-access";
+import { getRpcSessionInfos, getRunningRpcSessionIds } from "@/lib/rpc-session-registry";
 
 export const dynamic = "force-dynamic";
 
@@ -17,12 +15,9 @@ export async function GET(req: Request) {
       listAllSessions({ force }),
       attachSessionProjectInfo(getRpcSessionInfos()),
     ]);
-    const merged = mergeSessionLists(persistedSessions, runtimeSessions);let owner:string|null=null;
-    if(merged.some(s=>creationOwnerFromCwd(s.cwd)))try{owner=(await automationAccess()).ownerKey;}catch{/* Guest and other identities do not browse private creation histories. */}
-    const hidden=new Set(merged.filter(s=>{const key=creationOwnerFromCwd(s.cwd);return key&&key!==owner;}).map(s=>s.id));
-    const sessions=merged.filter(s=>!hidden.has(s.id));
+    const sessions = mergeSessionLists(persistedSessions, runtimeSessions);
     return NextResponse.json(
-      { sessions, runningSessionIds: getRunningRpcSessionIds().filter(id=>!hidden.has(id)) },
+      { sessions, runningSessionIds: getRunningRpcSessionIds() },
       { headers: { "Cache-Control": "no-store" } },
     );
   } catch (error) {

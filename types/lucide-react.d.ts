@@ -15,13 +15,16 @@ declare module "lucide-react" {
   export const PackageIcon: LucideIcon;
   export const FileTextIcon: LucideIcon;
   export const CheckIcon: LucideIcon;
+  export const PencilIcon: LucideIcon;
   export const AlertCircleIcon: LucideIcon;
   export const AlertTriangleIcon: LucideIcon;
   export const CheckCircle2Icon: LucideIcon;
   export const InfoIcon: LucideIcon;
   export const XIcon: LucideIcon;
   export const ChevronDownIcon: LucideIcon;
+  export const ChevronRightIcon: LucideIcon;
   export const ClockIcon: LucideIcon;
+  export const CalendarIcon: LucideIcon;
   export const CpuIcon: LucideIcon;
   export const EyeIcon: LucideIcon;
   export const FolderIcon: LucideIcon;
@@ -49,5 +52,6 @@ declare module "lucide-react" {
   export const SaveIcon: LucideIcon;
   export const Settings2Icon: LucideIcon;
   export const StarIcon: LucideIcon;
+  export const SparklesIcon: LucideIcon;
   export const Trash2Icon: LucideIcon;
 }

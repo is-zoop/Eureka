@@ -1,3 +1,4 @@
+import { readPackageChangelog } from "@/lib/package-changelog";
 import { NextResponse } from "next/server";
 import { existsSync, readFileSync, statSync } from "fs";
 import { basename, dirname, extname, join, relative } from "path";
@@ -12,6 +13,7 @@ import {
 import { getAllowedFileRoots, isExistingFilePathAllowed } from "@/lib/file-access";
 import { hasJsonContentType, isApiRequestAllowed } from "@/lib/request-security";
 import { getProjectTrustStatus } from "@/lib/project-trust";
+import { invalidateModelsCache } from "@/lib/models-cache";
 import type {
   PluginDiagnostic,
   PluginPackageInfo,
@@ -288,7 +290,14 @@ export async function GET(req: Request) {
     if (!isExistingFilePathAllowed(cwd, allowedRoots)) {
       return NextResponse.json({ error: "Access denied" }, { status: 403 });
     }
-    return NextResponse.json(await readPlugins(cwd));
+    const result = await readPlugins(cwd);
+    const query = new URL(req.url).searchParams;
+    if (query.has("notesSource")) {
+      const pkg = result.packages.find(p => p.source === query.get("notesSource") && p.scope === query.get("notesScope"));
+      if (!pkg) return NextResponse.json({ error: "Package not found" }, { status: 404 });
+      return NextResponse.json({ notes: pkg.counts.extensions > 0 ? readPackageChangelog(pkg.installedPath) ?? null : null });
+    }
+    return NextResponse.json(result);
   } catch (error) {
     return NextResponse.json({ error: String(error) }, { status: 500 });
   }
@@ -357,6 +366,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: `Unsupported action: ${body.action}` }, { status: 400 });
     }
 
+    invalidateModelsCache();
     return NextResponse.json(await readPlugins(body.cwd));
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : String(error) }, { status: 500 });

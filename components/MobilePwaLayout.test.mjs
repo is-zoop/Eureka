@@ -21,8 +21,8 @@ test("tracks the visual viewport while the software keyboard is open", () => {
   assert.match(appShellSource, /paddingBottom: "env\(safe-area-inset-bottom\)"/);
   assert.match(appShellSource, /paddingLeft: "env\(safe-area-inset-left\)"/);
   assert.match(appShellSource, /paddingRight: "env\(safe-area-inset-right\)"/);
-  assert.match(appShellSource, /height: "calc\(36px \+ env\(safe-area-inset-top\)\)"/);
-  assert.match(appShellSource, /\/\* Right panel tab bar \*\/[\s\S]*?height: "calc\(36px \+ env\(safe-area-inset-top\)\)"/);
+  assert.match(appShellSource, /height: `calc\(\$\{isMobile \? 48 : 38\}px \+ env\(safe-area-inset-top\)\)`/);
+  assert.match(appShellSource, /\/\* Right panel tab bar \*\/[\s\S]*?height: `calc\(\$\{isMobile \? 48 : 38\}px \+ env\(safe-area-inset-top\)\)`/);
   assert.match(appShellSource, /height: "var\(--app-viewport-height, 100dvh\)"/);
   assert.match(appShellSource, /data-mobile-toolbar-file=\{mobile \? "true" : undefined\}/);
   assert.match(viewportHookSource, /window\.visualViewport/);
@@ -40,7 +40,7 @@ test("contains chat content and inputs within the mobile viewport", () => {
   assert.match(cssSource, /\.markdown-body \{[\s\S]*?min-width: 0;[\s\S]*?max-width: 100%;[\s\S]*?overflow-x: hidden;/);
   assert.match(cssSource, /\.markdown-code-block \{[\s\S]*?min-width: 0;[\s\S]*?max-width: 100%;/);
   assert.match(chatWindowSource, /overflow-x-hidden overflow-y-auto/);
-  assert.match(chatInputSource, /flex: 1,\s*minWidth: 0,\s*width: "100%",/);
+  assert.match(chatInputSource, /minWidth: 0,\s*display: "block",\s*width: "100%",/);
 });
 
 test("prevents iOS focus zoom from widening the layout", () => {

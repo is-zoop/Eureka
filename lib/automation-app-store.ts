@@ -9,16 +9,17 @@ import { AutomationAppError, automationPublishPath, inspectAutomationFiles, MAX_
 import { assertAppIdle } from "./automation-app-lease";
 import { compareAppVersions, latestAppVersion } from "./automation-app-version";
 import { copyAutomationAppPackage } from "./automation-app-metadata";
+import { APP_ICON_MAX, parseAppEditValues, parseAppPresentation, readAppEditIcon } from "./automation-app-presentation";
 
 interface Registry { schemaVersion: 1; nextRevision: number; apps: AutomationAppInstall[] }
 const missing = (e: unknown) => (e as NodeJS.ErrnoException).code === "ENOENT";
 function fail(message: string, status = 409): never { throw new AutomationAppError(message, status); }
 function parseInstall(raw: unknown): AutomationAppInstall {
   const v = raw as AutomationAppInstall | null;
-  if (!v || !isAppId(v.id) || typeof v.name !== "string" || !/^[a-z0-9][a-z0-9-]{0,63}$/.test(v.name) || typeof v.displayName !== "string" || v.displayName.length > 100 || !isAppVersion(v.activeVersion) || typeof v.disabled !== "boolean" || !Number.isSafeInteger(v.revision) || v.revision < 1 || typeof v.installedAt !== "string" || !Number.isFinite(Date.parse(v.installedAt)) || typeof v.updatedAt !== "string" || !Number.isFinite(Date.parse(v.updatedAt)) || !Array.isArray(v.versions) || !v.versions.length || v.versions.length > 32) fail("应用登记文件损坏，请恢复登记文件后重试");
-  const versions = v.versions.map(item => { if (!item || !isAppVersion(item.version) || typeof item.digest !== "string" || !/^[a-f0-9]{64}$/.test(item.digest) || typeof item.installedAt !== "string" || !Number.isFinite(Date.parse(item.installedAt))) fail("应用版本登记损坏"); return { version: item.version, digest: item.digest, installedAt: item.installedAt }; });
+  if (!v || !isAppId(v.id) || typeof v.name !== "string" || !/^[a-z0-9][a-z0-9-]{0,63}$/.test(v.name) || typeof v.displayName !== "string" || v.displayName.length > 100 || !isAppVersion(v.activeVersion) || typeof v.disabled !== "boolean" || !Number.isSafeInteger(v.revision) || v.revision < 1 || typeof v.installedAt !== "string" || !Number.isFinite(Date.parse(v.installedAt)) || typeof v.updatedAt !== "string" || !Number.isFinite(Date.parse(v.updatedAt)) || !Array.isArray(v.versions) || !v.versions.length) fail("应用登记文件损坏，请恢复登记文件后重试");
+  const versions = v.versions.map(item => { if (!item || !isAppVersion(item.version) || typeof item.digest !== "string" || !/^[a-f0-9]{64}$/.test(item.digest) || item.codeRevision !== undefined && item.codeRevision !== item.digest || typeof item.installedAt !== "string" || !Number.isFinite(Date.parse(item.installedAt))) fail("应用版本登记损坏"); return { version: item.version, digest: item.digest, installedAt: item.installedAt, ...(item.codeRevision ? {codeRevision:item.codeRevision} : {}) }; });
   if (!versions.some(item => item.version === v.activeVersion) || new Set(versions.map(item => item.version)).size !== versions.length) fail("应用版本登记冲突");
-  return { id: v.id, name: v.name, displayName: v.displayName, activeVersion: v.activeVersion, disabled: v.disabled, revision: v.revision, installedAt: v.installedAt, updatedAt: v.updatedAt, versions,...(v.managedPlugin?{managedPlugin:parseManagedAutomationSource(v.managedPlugin)}:{}) };
+  return { id: v.id, name: v.name, displayName: v.displayName, activeVersion: v.activeVersion, disabled: v.disabled, revision: v.revision, installedAt: v.installedAt, updatedAt: v.updatedAt, versions,...(v.managedPlugin?{managedPlugin:parseManagedAutomationSource(v.managedPlugin)}:{}), ...(v.presentation ? { presentation: parseAppPresentation(v.presentation) } : {}) };
 }
 
 /** Owner-scoped registration and private data; immutable packages live under plugins/. */
@@ -43,7 +44,7 @@ export class AutomationAppStore {
     // that identity hierarchy; keep distinct owners isolated even with a shared base.
     return this.options.compactWorkspace ? join(this.base, "work", createHash("sha256").update(this.owner + ":" + id).digest("hex").slice(0, 32)) : legacy;
   }
-  codeDirectory(id: string, version: string) { if (!isAppId(id) || !isAppVersion(version)) fail("应用版本无效", 400); return join(this.codeRoot, id, version); }
+  codeDirectory(id: string, version: string, codeRevision?: string) { if (!isAppId(id) || !isAppVersion(version) || codeRevision !== undefined && !/^[a-f0-9]{64}$/.test(codeRevision)) fail("应用版本无效", 400); return join(this.codeRoot, id, codeRevision ? `${version}-${codeRevision}` : version); }
   /** Every managed path component is checked, including before recursive removal. */
   private async checkPath(path: string) {
     const part = relative(this.base, resolve(path));
@@ -60,6 +61,7 @@ export class AutomationAppStore {
   private async remove(path: string) { await this.checkPath(path); await rm(path, { recursive: true, force: true }); }
   private async writeJson(path: string, value: unknown, compact = false) {
     await this.directory(dirname(path)); await this.checkPath(path); const temp = `${path}.${randomUUID()}.tmp`;
+    if(path===this.registryFile&&Buffer.byteLength(JSON.stringify(value,null,compact?undefined:2))>4*1024*1024)fail("应用版本登记超过容量限制，未保存本次修改；历史版本仍保留。");
     try { await writeFile(temp, `${JSON.stringify(value, null, compact ? undefined : 2)}\n`, { flag: "wx", mode: 0o600 }); this.assertIdentity(); await rename(temp, path); }
     finally { await this.remove(temp); }
   }
@@ -99,11 +101,16 @@ export class AutomationAppStore {
         if (saved.schemaVersion === 1 && saved.appId === id && typeof saved.displayName === "string") data.push({ id, displayName: saved.displayName.slice(0, 100), installed: registry.apps.some(item => item.id === id) });
       } catch { /* A damaged data marker never executes or discloses another directory. */ }
     }
-    this.assertIdentity(); return { apps: registry.apps, data };
+    this.assertIdentity(); return { apps: registry.apps.map(app => ({ ...app, ...(app.presentation ? { description: app.presentation.description } : {}) })), data };
   }
   async find(id: string) { this.assertIdentity(); const install = (await this.registry()).apps.find(item => item.id === id); this.assertIdentity(); return install ?? null; }
   /** Migrate a former version selection; already-running jobs keep their code snapshot. */
   async useLatest() {
+    // Normal browsing needs no write lock when no migration is necessary.
+    this.assertIdentity();
+    const snapshot = await this.registry();
+    this.assertIdentity();
+    if (snapshot.apps.every(install => install.managedPlugin || install.activeVersion === latestAppVersion(install.versions) && !install.disabled)) return;
     await this.locked(async registry => {
       let changed = false;
       for (const install of registry.apps) {
@@ -111,7 +118,7 @@ export class AutomationAppStore {
         const latest = latestAppVersion(install.versions);
         if (install.activeVersion === latest && !install.disabled) continue;
         const pkg = await this.verified(install, latest);
-        install.activeVersion = latest; install.disabled = false; install.displayName = pkg.manifest.displayName; install.revision = this.nextRevision(registry); install.updatedAt = new Date().toISOString(); changed = true;
+        install.activeVersion = latest; install.disabled = false; if (!install.presentation) install.displayName = pkg.manifest.displayName; install.revision = this.nextRevision(registry); install.updatedAt = new Date().toISOString(); changed = true;
       }
       if (changed) await this.writeJson(this.registryFile, registry);
     }, false);
@@ -126,26 +133,65 @@ export class AutomationAppStore {
   }
   private async verified(install: AutomationAppInstall, version: string) {
     const entry = install.versions.find(item => item.version === version); if (!entry) fail("未安装此版本", 404);
-    const pkg = await this.packageAt(this.codeDirectory(install.id, version));
+    const pkg = await this.packageAt(this.codeDirectory(install.id, version, entry.codeRevision));
     if (pkg.digest !== entry.digest || pkg.manifest.automation.id !== install.id || pkg.manifest.name !== install.name || pkg.manifest.version !== version) fail("应用代码与登记不一致，请重新导入；不会覆盖已登记版本");
     return pkg;
   }
   async detail(id: string, version?: string): Promise<AutomationAppDetail> {
     const install = await this.find(id); if (!install) fail("应用未安装", 404);
     const chosen = version ?? install.activeVersion, pkg = await this.verified(install, chosen); this.assertIdentity();
-    return { install, manifest: pkg.manifest, ui: pkg.ui, workflow: pkg.workflow, files: [...pkg.files.keys()], readme: pkg.readme, codeDirectory: this.codeDirectory(id, chosen), dataDirectory: this.dataDirectory(id), workspaceDirectory: this.workspaceDirectory(id) };
+    const manifest = install.presentation ? { ...pkg.manifest, displayName: install.displayName, description: install.presentation.description } : pkg.manifest;
+    return { install, manifest, ui: pkg.ui, workflow: pkg.workflow, actions: pkg.actions, files: [...pkg.files.keys()], readme: pkg.readme, codeDirectory: this.codeDirectory(id, chosen, install.versions.find(v=>v.version===chosen)?.codeRevision), dataDirectory: this.dataDirectory(id), workspaceDirectory: this.workspaceDirectory(id) };
+  }
+  async presentationIcon(id: string) {
+    const install = await this.find(id), icon = install?.presentation?.icon;
+    if (!install || !icon) fail("应用图标不存在", 404);
+    const bytes = await this.bytes(join(this.registryDirectory, "icons", id, icon.digest), APP_ICON_MAX);
+    if (createHash("sha256").update(bytes).digest("hex") !== icon.digest) fail("应用图标摘要不一致");
+    this.assertIdentity(); return { bytes, mimeType: icon.mimeType };
+  }
+  async editValues(id: string) {
+    const detail = await this.detail(id), metadata = detail.install.presentation;
+    let icon;
+    if (metadata?.icon) {
+      const image = await this.presentationIcon(id);
+      icon = { name: `icon.${image.mimeType.split("/")[1]}`, type: image.mimeType, data: image.bytes.toString("base64") };
+    }
+    return { displayName: detail.manifest.displayName, description: detail.manifest.description.slice(0, 300), categoryId: metadata?.categoryId ?? null, tags: metadata?.tags ?? [], icon: icon ?? null, revision: detail.install.revision, metadataRevision: metadata?.revision };
+  }
+  async edit(id: string, revision: number, raw: unknown, categories: readonly number[]) {
+    const values = parseAppEditValues(raw, categories);
+    return this.locked(async registry => {
+      const install = this.current(registry, id, revision);
+      if (install.managedPlugin) fail("市场应用请先另存为我的应用再编辑", 403);
+      let icon = install.presentation?.icon;
+      if (values.icon === null) icon = undefined;
+      else if (values.icon) {
+        const image = readAppEditIcon(values.icon), file = join(this.registryDirectory, "icons", id, image.digest);
+        await this.directory(dirname(file)); await this.checkPath(file);
+        try { await writeFile(file, image.bytes, { flag: "wx", mode: 0o600 }); }
+        catch (error) { if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error; }
+        icon = { digest: image.digest, mimeType: image.mimeType };
+      }
+      install.displayName = values.displayName;
+      install.presentation = { revision: randomUUID(), description: values.description, categoryId: values.categoryId, tags: values.tags, ...(icon ? { icon } : {}) };
+      install.revision = this.nextRevision(registry); install.updatedAt = new Date().toISOString();
+      return install;
+    });
   }
   /** Shared admission lock: execution and removal cannot race each other. */
-  async admitRun<T>(id: string, revision: number, work: (detail: AutomationAppDetail, pkg: AutomationAppPackage) => Promise<T>, requireEnabled = true) {
+  async admitRun<T>(id: string, revision: number, work: (detail: AutomationAppDetail, pkg: AutomationAppPackage) => Promise<T>, requireEnabled = true, selectedVersion?: string) {
     return this.locked(async registry => {
       const install = this.current(registry, id, revision); if (requireEnabled && install.disabled) fail("应用已停用，请先启用。");
       if(requireEnabled&&install.managedPlugin){const state=managedAutomationState(id,install.managedPlugin),selected=state.selected;if(!selected||state.disabled)fail("所属组织插件已停用或卸载，请在扩展中管理。");if(selected.item.version!==install.activeVersion||selected.item.plugin!.manifest.automation!.digest!==install.versions.find(version=>version.version===install.activeVersion)?.digest)fail("组织插件已更新，请刷新自动化目录后运行。");}
-      if (requireEnabled && !install.managedPlugin && install.activeVersion !== latestAppVersion(install.versions)) fail("应用需要使用最新版本，请重新打开应用后再操作。");
-      const pkg = await this.verified(install, install.activeVersion), directory = this.dataDirectory(id);
+      if(selectedVersion&&install.managedPlugin&&selectedVersion!==install.activeVersion)fail("组织插件仅能使用当前安装版本。");
+      if (requireEnabled && !selectedVersion && !install.managedPlugin && install.activeVersion !== latestAppVersion(install.versions)) fail("应用需要使用最新版本，请重新打开应用后再操作。");
+      const chosen=selectedVersion??install.activeVersion;
+      const pkg = await this.verified(install, chosen), directory = this.dataDirectory(id);
       await this.directory(directory); await this.checkPath(join(directory, "execution-lease.lock"));
       const marker = join(directory, "application.json"); await this.checkPath(marker);
       try { await lstat(marker); } catch (e) { if (!missing(e)) throw e; await this.writeJson(marker, { schemaVersion: 1, appId: id, displayName: pkg.manifest.displayName }); }
-      return work({ install, manifest: pkg.manifest, ui: pkg.ui, workflow: pkg.workflow, files: [...pkg.files.keys()], readme: pkg.readme, codeDirectory: this.codeDirectory(id, install.activeVersion), dataDirectory: directory, workspaceDirectory: this.workspaceDirectory(id) }, pkg);
+      return work({ install, manifest: pkg.manifest, ui: pkg.ui, workflow: pkg.workflow, actions: pkg.actions, files: [...pkg.files.keys()], readme: pkg.readme, codeDirectory: this.codeDirectory(id, chosen, install.versions.find(v=>v.version===chosen)?.codeRevision), dataDirectory: directory, workspaceDirectory: this.workspaceDirectory(id) }, pkg);
     }, false);
   }
   async managedPath(path: string) { await this.checkPath(path); return path; }
@@ -185,18 +231,20 @@ export class AutomationAppStore {
   }
   async privateJson(path: string, value: unknown) { await this.writeJson(path, value, true); }
   async privateBytes(path: string, limit: number) { return this.bytes(path, limit); }
-  async install(pkg: AutomationAppPackage, expectedRevision: number, managed?:{source:ManagedAutomationPlugin;disabled:boolean}): Promise<AutomationAppInstall> {
+  async install(pkg: AutomationAppPackage, expectedRevision: number, managed?:{source:ManagedAutomationPlugin;disabled:boolean}, localRevision = false): Promise<AutomationAppInstall> {
     return this.locked(async registry => {
       const { manifest } = pkg, id = manifest.automation.id, old = registry.apps.find(item => item.id === id);
+      if(localRevision){if(managed||old?.managedPlugin)fail("组织插件不能通过本地修订覆盖。");await assertAppIdle(this.dataDirectory(id));if(old&&old.name!==manifest.name)fail("同一应用修订不能更换包名。");}
       if(old?.managedPlugin&&(!managed||old.managedPlugin.source!==managed.source.source||old.managedPlugin.capabilityId!==managed.source.capabilityId))fail("此应用由组织插件管理，请使用现有插件更新入口。");
       if(managed){const state=managedAutomationState(id,managed.source);if(old&&!old.managedPlugin)fail("本机已有同 ID 的个人应用，请先卸载个人应用（保留数据）再安装组织插件。");if(!state.selected||state.selected.item.version!==manifest.version||state.selected.item.plugin!.manifest.automation!.digest!==pkg.digest||state.disabled!==managed.disabled)fail("组织插件登记已变化，请重新安装或刷新。");}
       if ((old?.revision ?? 0) !== expectedRevision || (old && old.name !== manifest.name)) fail("安装状态或应用身份已变化，请重新选择应用包");
       if (old && !managed && compareAppVersions(manifest.version, latestAppVersion(old.versions)) < 0) fail("仅支持最新版本或更高版本，不能安装较旧的应用包");
       if (!old && registry.apps.length >= 100) fail("本机应用登记已满");
       const previous = old?.versions.find(item => item.version === manifest.version);
-      if (previous && previous.digest !== pkg.digest) fail("相同版本的代码不同，请增加版本号后重新导入");
-      if (!previous && old && old.versions.length >= 32) fail("此应用保留版本已满");
-      const parent = join(this.codeRoot, id), target = this.codeDirectory(id, manifest.version), staging = join(parent, `.install-${randomUUID()}`);
+      if (previous && previous.digest !== pkg.digest && !localRevision) fail("相同版本的代码不同，请增加版本号后重新导入");
+      if(localRevision&&previous&&old!.activeVersion!==manifest.version)fail("仅能修订当前活动版本。");
+      const codeRevision = localRevision ? pkg.digest : previous?.codeRevision;
+      const parent = join(this.codeRoot, id), target = this.codeDirectory(id, manifest.version, codeRevision), staging = join(parent, `.install-${randomUUID()}`);
       await this.directory(parent); await this.checkPath(target);
       let exists = true; try { await lstat(target); } catch (e) { if (missing(e)) exists = false; else throw e; }
       if (exists) { const actual = await this.packageAt(target); if (actual.digest !== pkg.digest) fail("该版本目录已有不同代码，不能覆盖"); }
@@ -214,7 +262,9 @@ export class AutomationAppStore {
       try { await lstat(config); } catch (e) { if (!missing(e)) throw e; this.assertIdentity(); await writeFile(config, JSON.stringify({ schemaVersion: 1, values: {} }, null, 2), { flag: "wx", mode: 0o600 }); }
       for (const folder of ["logs", "artifacts", "evidence"]) await this.directory(join(data, folder));
       const now = new Date().toISOString();
-      const install: AutomationAppInstall = { id, name: manifest.name, displayName: manifest.displayName, activeVersion: manifest.version, disabled: managed?.disabled ?? false, revision: this.nextRevision(registry), installedAt: old?.installedAt ?? now, updatedAt: now, versions: previous ? old!.versions : [...(old?.versions ?? []), { version: manifest.version, digest: pkg.digest, installedAt: now }],...(managed?{managedPlugin:parseManagedAutomationSource(managed.source)}:{}) };
+      const versionEntry = {version:manifest.version,digest:pkg.digest,installedAt:now,...(codeRevision?{codeRevision}:{})};
+      const versions = previous ? (localRevision ? old!.versions.map(v=>v.version===manifest.version?versionEntry:v) : old!.versions) : [...(old?.versions??[]),versionEntry];
+      const install: AutomationAppInstall = { id, name: manifest.name, displayName: !managed && old?.presentation ? old.displayName : manifest.displayName, activeVersion: manifest.version, disabled: managed?.disabled ?? false, revision: this.nextRevision(registry), installedAt: old?.installedAt ?? now, updatedAt: now, versions,...(managed?{managedPlugin:parseManagedAutomationSource(managed.source)}:{}), ...(!managed && old?.presentation ? { presentation: old.presentation } : {}) };
       registry.apps = [install, ...registry.apps.filter(item => item.id !== id)]; return install;
     });
   }

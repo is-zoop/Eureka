@@ -35,8 +35,16 @@ export function pluginServerUrl(value: unknown): string {
   return url.href;
 }
 
-/** Bounded, non-executing ZIP reader shared by package validation and extraction. */
-export function readPluginZip(buffer: Buffer, limits: { archive?: number; expanded?: number; entries?: number } = {}): Map<string, Buffer> {
+export interface ZipLimits {archive?:number;expanded?:number;entries?:number;file?:number;nameEncoding?:"utf-8"|"gb18030"|"auto"}
+export interface ZipEntry {name:string;size:number;crc:number;method:number;start:number;packed:number}
+/** Validate all metadata and paths without expanding file bodies into memory. */
+export function readZipEntries(buffer: Buffer, limits: ZipLimits = {}): ZipEntry[] {
+  const decodeName=(bytes:Buffer,flags:number)=>{
+    if(!limits.nameEncoding)return bytes.toString("utf8");
+    const encoding=flags&0x800?"utf-8":limits.nameEncoding;
+    if(encoding!=="auto")return new TextDecoder(encoding,{fatal:true}).decode(bytes);
+    try{return new TextDecoder("utf-8",{fatal:true}).decode(bytes);}catch{return new TextDecoder("gb18030",{fatal:true}).decode(bytes);}
+  };
   if (buffer.length > (limits.archive ?? MAX_ARCHIVE)) invalid("ZIP 大小超过限制");
   const end = buffer.lastIndexOf(Buffer.from([0x50, 0x4b, 0x05, 0x06]));
   if (end < 0 || end + 22 > buffer.length || end + 22 + buffer.readUInt16LE(end + 20) !== buffer.length) invalid("ZIP 结束记录损坏");
@@ -46,7 +54,7 @@ export function readPluginZip(buffer: Buffer, limits: { archive?: number; expand
   if (cursor + buffer.readUInt32LE(end + 12) !== end) invalid("ZIP 目录损坏");
   let expanded = 0;
   const seen = new Set<string>();
-  const files = new Map<string, Buffer>();
+  const files:ZipEntry[]=[];
   for (let index = 0; index < count; index++) {
     if (cursor + 46 > end || buffer.readUInt32LE(cursor) !== 0x02014b50) invalid("ZIP 目录损坏");
     const flags = buffer.readUInt16LE(cursor + 8), method = buffer.readUInt16LE(cursor + 10);
@@ -54,7 +62,7 @@ export function readPluginZip(buffer: Buffer, limits: { archive?: number; expand
     const nameSize = buffer.readUInt16LE(cursor + 28), extra = buffer.readUInt16LE(cursor + 30), comment = buffer.readUInt16LE(cursor + 32);
     const mode = buffer.readUInt32LE(cursor + 38) >>> 16, local = buffer.readUInt32LE(cursor + 42);
     if (cursor + 46 + nameSize + extra + comment > end || flags & 1 || ![0, 8].includes(method) || ((mode & 0xf000) !== 0 && ![0x8000, 0x4000].includes(mode & 0xf000))) invalid("ZIP 包含加密条目、链接或不支持的文件");
-    const raw = buffer.subarray(cursor + 46, cursor + 46 + nameSize).toString("utf8");
+    const raw = decodeName(buffer.subarray(cursor + 46, cursor + 46 + nameSize),flags);
     const name = pluginRelativePath(raw);
     const key = name.toLowerCase();
     if (seen.has(key)) invalid("ZIP 包含重复路径");
@@ -63,20 +71,30 @@ export function readPluginZip(buffer: Buffer, limits: { archive?: number; expand
     if (local + 30 > end || buffer.readUInt32LE(local) !== 0x04034b50 || buffer.readUInt16LE(local + 6) !== flags || buffer.readUInt16LE(local + 8) !== method) invalid("ZIP 条目损坏");
     const localNameSize = buffer.readUInt16LE(local + 26), localExtra = buffer.readUInt16LE(local + 28);
     const start = local + 30 + localNameSize + localExtra;
-    if (start + packed > end || buffer.subarray(local + 30, local + 30 + localNameSize).toString("utf8") !== raw) invalid("ZIP 条目路径不一致");
+    if (start + packed > end || decodeName(buffer.subarray(local + 30, local + 30 + localNameSize),flags) !== raw) invalid("ZIP 条目路径不一致");
+    if(size>(limits.file??MAX_EXPANDED))invalid(`ZIP 中单个文件超过 ${(limits.file??MAX_EXPANDED)/1024/1024} MiB。`);
     expanded += size;
     if (expanded > (limits.expanded ?? MAX_EXPANDED)) invalid("解压大小超过限制");
     if (raw.endsWith("/")) { if (size) invalid("ZIP 目录包含内容"); continue; }
-    const data = buffer.subarray(start, start + packed);
-    const content = method === 0 ? data : inflateRawSync(data, { maxOutputLength: Math.max(1, size) });
-    if (content.length !== size || crc32(content) !== expectedCrc) invalid("ZIP 内容校验失败");
-    files.set(name, Buffer.from(content));
+    files.push({name,size,crc:expectedCrc,method,start,packed});
   }
   if (cursor !== end) invalid("ZIP 目录长度不一致");
-  const fileNames = new Set([...files.keys()].map((name) => name.toLowerCase()));
-  for (const name of files.keys()) {
+  const fileNames = new Set(files.map(entry => entry.name.toLowerCase()));
+  for (const {name} of files) {
     const parts = name.toLowerCase().split("/");
     for (let index = 1; index < parts.length; index++) if (fileNames.has(parts.slice(0, index).join("/"))) invalid("文件与目录路径冲突");
+  }
+  return files;
+}
+
+/** Bounded, non-executing ZIP reader for package validation. */
+export function readPluginZip(buffer:Buffer,limits:ZipLimits={}):Map<string,Buffer>{
+  const entries=readZipEntries(buffer,limits),files=new Map<string,Buffer>();
+  for(const entry of entries){
+    const packed=buffer.subarray(entry.start,entry.start+entry.packed);
+    const content=entry.method===0?packed:inflateRawSync(packed,{maxOutputLength:Math.max(1,entry.size)});
+    if(content.length!==entry.size||crc32(content)!==entry.crc)invalid("ZIP 内容校验失败");
+    files.set(entry.name,Buffer.from(content));
   }
   return files;
 }

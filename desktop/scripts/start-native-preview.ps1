@@ -1,10 +1,23 @@
+param([switch]$CheckOnly)
+
 $ErrorActionPreference = 'Stop'
 $previewRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
 $previewExe = Join-Path $previewRoot 'desktop\src-tauri\target\debug\eureka.exe'
 $previewLogs = Join-Path $previewRoot '.cache\native-preview'
 try {
-    if (-not (Test-Path -LiteralPath $previewExe -PathType Leaf)) {
-        throw 'The desktop test executable is missing. It must be compiled first.'
+    $nativeRoot = Join-Path $previewRoot 'desktop\src-tauri'
+    $nativeSources = @(Get-ChildItem -LiteralPath (Join-Path $nativeRoot 'src') -Recurse -File)
+    foreach ($name in @('Cargo.toml', 'Cargo.lock', 'build.rs', 'tauri.conf.json', 'tauri.dev.conf.json')) {
+        $source = Join-Path $nativeRoot $name
+        if (Test-Path -LiteralPath $source -PathType Leaf) { $nativeSources += Get-Item -LiteralPath $source }
+    }
+    $nativeSources += @(Get-ChildItem -LiteralPath (Join-Path $nativeRoot 'capabilities') -Recurse -File -ErrorAction SilentlyContinue)
+    $latestSource = $nativeSources | Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
+    $executable = Get-Item -LiteralPath $previewExe -ErrorAction SilentlyContinue
+    $needsBuild = -not $executable -or $latestSource.LastWriteTimeUtc -gt $executable.LastWriteTimeUtc
+    if ($CheckOnly) {
+        [pscustomobject]@{ needsBuild = $needsBuild; executable = $previewExe; executableTime = if ($executable) { $executable.LastWriteTimeUtc.ToString('o') } else { $null }; latestSource = $latestSource.FullName; sourceTime = $latestSource.LastWriteTimeUtc.ToString('o') } | ConvertTo-Json -Compress
+        exit 0
     }
     $probe = New-Object System.Net.Sockets.TcpClient
     try {
@@ -15,6 +28,23 @@ try {
     } catch {
         throw 'Cannot connect to the development server at 127.0.0.1:8080. Run npm run dev in E:\Eureka first.'
     } finally { $probe.Dispose() }
+    if ($needsBuild) {
+        $oldPreview = @(Get-Process -Name eureka -ErrorAction SilentlyContinue | Where-Object { [string]::Equals($_.Path, $previewExe, [System.StringComparison]::OrdinalIgnoreCase) })
+        if ($oldPreview.Count -gt 0) {
+            throw "The native test application is outdated and still running (PID $($oldPreview.Id -join ', ')). Close its desktop window, then run this launcher again to compile the current source."
+        }
+        if (-not (Get-Command cargo -ErrorAction SilentlyContinue)) { throw 'Rust cargo is missing. Install the desktop build prerequisites before running this launcher.' }
+        Write-Host 'Native source changed. Compiling the desktop test application (no release or installer)...'
+        $previousTauriConfig = $env:TAURI_CONFIG
+        try {
+            $env:TAURI_CONFIG = Get-Content -LiteralPath (Join-Path $nativeRoot 'tauri.dev.conf.json') -Raw
+            & cargo build --offline --locked --manifest-path (Join-Path $nativeRoot 'Cargo.toml') --target-dir (Join-Path $nativeRoot 'target')
+            if ($LASTEXITCODE -ne 0) { throw 'Native test compilation failed. The old executable was not started.' }
+        } finally {
+            if ($null -eq $previousTauriConfig) { Remove-Item Env:TAURI_CONFIG -ErrorAction SilentlyContinue } else { $env:TAURI_CONFIG = $previousTauriConfig }
+        }
+        if (-not (Test-Path -LiteralPath $previewExe -PathType Leaf)) { throw 'Compilation did not produce the desktop test executable.' }
+    }
     New-Item -ItemType Directory -Path $previewLogs -Force | Out-Null
     $stamp = Get-Date -Format 'yyyyMMdd-HHmmss-fff'
     $stdout = Join-Path $previewLogs "$stamp.stdout.log"

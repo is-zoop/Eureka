@@ -11,9 +11,12 @@ mod save_file;
 mod webview_layout;
 mod window_preferences;
 mod automation_browser;
+mod automation_session_request;
+mod automation_credentials;
 mod browser_overlay;
 mod automation_accounts;
 mod app_updater;
+mod updater_network;
 mod session_secret;
 
 use std::{
@@ -864,6 +867,7 @@ fn main() {
             automation_browser::desktop_automation_control,
             automation_browser::desktop_automation_app,
             automation_browser::desktop_automation_accounts,
+            automation_credentials::desktop_automation_credentials,
             desktop_window_action,
             set_desktop_navigation_state,
             set_desktop_menu_state,
@@ -876,6 +880,7 @@ fn main() {
             desktop_select_attachments,
             desktop_select_directory,
             save_file::desktop_save_file,
+            save_file::desktop_save_artifact,
             set_desktop_tray_state,
             desktop_tray_snapshot,
             desktop_tray_action,

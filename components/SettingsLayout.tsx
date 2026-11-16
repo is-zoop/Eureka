@@ -30,19 +30,23 @@ export function SettingsLayout({ title, description, actions, children }: {
   </div>;
 }
 
-export function SettingsSection({ title, description, meta, titleId, descriptionId, children }: {
+export function SettingsSection({ title, description, meta, actions, titleId, descriptionId, children }: {
   title: string;
   description?: string;
   meta?: ReactNode;
+  actions?: ReactNode;
   titleId?: string;
   descriptionId?: string;
   children: ReactNode;
 }) {
   return <section aria-labelledby={titleId}>
     <header className="mb-[12px]">
+      <div className="flex flex-wrap items-center justify-between gap-3">
       <div className="flex flex-wrap items-baseline gap-[8px]">
         <h2 id={titleId} className="m-0 text-[14px] font-semibold leading-[20px]">{title}</h2>
         {meta != null && <span className="text-[11px] leading-[20px] text-[var(--text-dim)]">{meta}</span>}
+      </div>
+      {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
       </div>
       {description && <p id={descriptionId} className="mb-0 mt-[8px] text-[12px] leading-[18px] text-[var(--text-muted)]">{description}</p>}
     </header>
@@ -67,6 +71,6 @@ export function SettingsRow({ label, description, htmlFor, descriptionId, childr
       {htmlFor ? <label className={labelClassName} htmlFor={htmlFor}>{label}</label> : <span className={labelClassName}>{label}</span>}
       <p id={descriptionId} className="mb-0 mt-[4px] text-[11px] leading-[18px] text-[var(--text-muted)]">{description}</p>
     </div>
-    <div className="flex shrink-0 items-center">{children}</div>
+    <div className="flex max-w-full shrink-0 items-center">{children}</div>
   </div>;
 }

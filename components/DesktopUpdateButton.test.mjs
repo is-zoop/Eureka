@@ -29,7 +29,17 @@ test("the rail button is hidden until a newer enabled desktop release is known",
     assert.doesNotMatch(renderTrigger(state), /data-desktop-update-trigger/);
   }
   assert.doesNotMatch(renderTrigger({ version: "0.8.9" }, { host: false }), /data-desktop-update-trigger/);
-  assert.match(renderTrigger({ phase: "available", version: "0.8.9" }), /aria-label="Download version 0.8.9"/);
+  assert.match(renderTrigger({ phase: "available", version: "0.8.9" }), /aria-label="View version 0.8.9"/);
+});
+
+test("a discovered release opens with notes and a download action, without another check", () => {
+  const html = render({ phase: "available", version: "0.8.9", notes: "## Changes\n\n- A smaller, scrollable release note." });
+  assert.match(html, /Version 0.8.9 is available/);
+  assert.match(html, />Download update</);
+  assert.doesNotMatch(html, />Check for updates</);
+  assert.match(html, /class="notesScroll" role="region" aria-labelledby="[^"]+" tabindex="0"/);
+  assert.match(html, /class="markdown-body notesBody"/);
+  assert.match(html, /A smaller, scrollable release note/);
 });
 
 test("the rail button exposes download progress and the explicit quit-and-update action", () => {
@@ -54,6 +64,18 @@ test("a verified update presents explicit installation and retains busy-task ret
 test("development status explains the restriction and offers no update action", () => {
   const html = render({ phase: "disabled", enabled: false });
   assert.match(html, /Development version/); assert.doesNotMatch(html, />Check for updates</);
+});
+
+test("automatic retry explains restarted progress without offering premature installation", () => {
+  const checking = render({ phase: "checking", retryAttempt: 1 });
+  assert.match(checking, /Retrying automatically \(1\/2\)/);
+  assert.match(checking, /disabled=""/);
+  const downloading = render({ phase: "downloading", version: "0.8.9", retryAttempt: 2 });
+  assert.match(downloading, /Restarting the download \(2\/2\)/);
+  assert.doesNotMatch(downloading, />Close Eureka and update</);
+  const failure = render({ phase: "error" }, { error: "EUREKA_UPDATE_MANIFEST" });
+  assert.match(failure, /valid release information/);
+  assert.doesNotMatch(failure, /Check your connection/);
 });
 test("update UI has matching Chinese and English translations", () => {
   const en = getLocalePlugin("en").messages, zh = getLocalePlugin("zh-CN").messages;

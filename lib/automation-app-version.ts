@@ -18,3 +18,7 @@ export function compareAppVersions(a: string, b: string): number {
   return 0;
 }
 export function latestAppVersion(versions: { version: string }[]) { return versions.reduce((latest, item) => compareAppVersions(item.version, latest) > 0 ? item.version : latest, versions[0].version); }
+export function nextAppVersion(version: string) {
+  const [major, minor, patch] = version.split("-")[0].split(".");
+  return `${major}.${minor}.${BigInt(patch) + BigInt(1)}`;
+}

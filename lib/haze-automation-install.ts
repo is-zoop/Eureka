@@ -6,15 +6,16 @@ import { AutomationAppStore } from "./automation-app-store";
 import { AutomationAppError,automationPublishPath,inspectAutomationFiles,MAX_APP_EXPANDED } from "./automation-app-package";
 import type { ManagedAutomationPlugin } from "./automation-app";
 import { managedAutomationState } from "./automation-managed-source";
-import { automationOwnerKey } from "./automation-owner";
+import { LocalAutomationAppStore } from "./automation-local-store";
 import { readHazeRegistry,type HazeInstallScope,type HazeManagedInstall } from "./haze-registry";
 import { validatedPluginRoot } from "./haze-plugin-resources";
 import { isPathWithinRoots } from "./path-security";
 import { samePath } from "./paths";
 import { interruptManagedApplicationRuns } from "./automation-app-runtime";
+import { localAutomationContext } from "./automation-local-context";
 
 type User={source:string;subject:string;check:()=>void};
-function storeFor(user:User){return new AutomationAppStore(getAgentDir(),automationOwnerKey(user.source,user.subject),user.check);}
+function storeFor(user:User){const local=localAutomationContext();return new LocalAutomationAppStore(getAgentDir(),local.ownerKey,()=>{local.assertIdentity();user.check();});}
 async function locked<T>(store:AutomationAppStore,work:()=>Promise<T>){await store.ensureDataDirectory(store.registryDirectory);const release=await lockfile.lock(join(store.registryDirectory,"organization-sync"),{realpath:false,retries:{retries:40,minTimeout:25,maxTimeout:100}});try{return await work();}finally{await release();}}
 function sameSource(a:ManagedAutomationPlugin,b:ManagedAutomationPlugin){return a.source===b.source&&a.capabilityId===b.capabilityId;}
 function addLocation(source:ManagedAutomationPlugin,cwd:string,scope:HazeInstallScope):ManagedAutomationPlugin {
@@ -34,11 +35,11 @@ async function syncOne(store:AutomationAppStore,user:User,id:string,source:Manag
   if(old&&(!old.managedPlugin||!sameSource(old.managedPlugin,source)))throw new AutomationAppError("本机已有同 ID 的个人应用或另一插件应用，请先在原管理入口卸载，个人数据会保留。",409);
   const state=managedAutomationState(id,source);
   if(!state.selected){
-    if(old){await interruptManagedApplicationRuns(automationOwnerKey(user.source,user.subject),id);user.check();return store.uninstall(id,old.revision,source,deleteData);}
+    if(old){await interruptManagedApplicationRuns(localAutomationContext().ownerKey,id);user.check();return store.uninstall(id,old.revision,source,deleteData);}
     if(deleteData){user.check();await store.clearData(id,0);}return;
   }
   if(deleteData)throw new AutomationAppError("此插件仍在其他范围安装，不能删除共享用户数据。请先卸载其他安装，或取消勾选删除数据。",409);
-  if(state.disabled)await interruptManagedApplicationRuns(automationOwnerKey(user.source,user.subject),id);
+  if(state.disabled)await interruptManagedApplicationRuns(localAutomationContext().ownerKey,id);
   const selected=state.selected,version=old?.versions.find(version=>version.version===selected.item.version);
   if(old&&old.activeVersion===selected.item.version&&version?.digest===selected.item.plugin!.manifest.automation!.digest&&old.disabled===state.disabled&&JSON.stringify(old.managedPlugin)===JSON.stringify(source))return;
   const pkg=await readAutomationPackage(selected.location,selected.item);user.check();

@@ -50,6 +50,9 @@ next-env.d.ts
 # Local screenshots, diagnostics and temporary QA artifacts
 /.tmp/
 
+# Content-addressed browser bundles prepared from installed dependencies.
+/public/vendor/mermaid/
+
 # Local Windows preview launchers
 /测试浏览器-不连接Eureka.cmd
 /测试原生侧栏浏览器.cmd

@@ -1,6 +1,6 @@
 import { appFailure, appJson, applicationAccess, readAppRequest } from "@/lib/automation-app-server";
 import { AutomationAppError } from "@/lib/automation-app-package";
-import { answerAppRun, appRunArtifact, appRunValue, getAppRun, grantAppFile, listAppRuns, readAppConfiguration, saveAppConfiguration, startAppRun, stopAppRun } from "@/lib/automation-app-runtime";
+import { answerAppRun, appRunArtifactStream, appRunValue, getAppRun, grantAppFile, listAppRuns, readAppConfiguration, saveAppConfiguration, startAppRun, stopAppRun } from "@/lib/automation-app-runtime";
 import { hasJsonContentType, isApiRequestAllowed } from "@/lib/request-security";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -10,13 +10,13 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     const auth = await applicationAccess(request, { ownerKey: query.get("ownerKey"), runtimeId: query.get("runtimeId") });
     const mode = query.get("mode"), runId = query.get("runId") ?? "";
     if (mode === "artifact") {
-      const { bytes, artifact } = await appRunArtifact(auth, id, runId, query.get("artifactId") ?? "");
+      const { stream, artifact } = await appRunArtifactStream(auth, id, runId, query.get("artifactId") ?? "");
       const filename = encodeURIComponent(artifact.name).replace(/['()*]/g, c => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
-      return new Response(new Uint8Array(bytes), { headers: { "Content-Type": artifact.mediaType, "Content-Disposition": `attachment; filename="artifact"; filename*=UTF-8''${filename}`, "X-Content-Type-Options": "nosniff", "Cache-Control": "no-store" } });
+      return new Response(stream, { headers: { "Content-Type": artifact.mediaType, "Content-Length": String(artifact.size), "Content-Disposition": `attachment; filename="artifact"; filename*=UTF-8''${filename}`, "X-Content-Type-Options": "nosniff", "Cache-Control": "no-store" } });
     }
     let result;
-    if (mode === "config") result = await readAppConfiguration(auth, id);
-    else if (mode === "runs") result = await listAppRuns(auth, id);
+    if (mode === "config") result = await readAppConfiguration(auth, id, query.get("actionId") ?? undefined);
+    else if (mode === "runs") result = await listAppRuns(auth, id, query.get("actionId") ?? undefined);
     else if (mode === "run") {
       const record = await getAppRun(auth, id, runId), after = Number(query.get("after") ?? 0);
       result = { ...record, events: record.events.filter(event => event.seq > (Number.isSafeInteger(after) && after >= 0 ? after : 0)) };
@@ -35,9 +35,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     if (["save", "grant", "start"].includes(body.action) && (!Number.isSafeInteger(body.revision) || body.revision < 1)) throw new AutomationAppError("应用版本引用无效");
     if (["save", "start"].includes(body.action) && (!Number.isSafeInteger(body.configRevision) || body.configRevision < 0 || !body.values || typeof body.values !== "object" || Array.isArray(body.values))) throw new AutomationAppError("配置版本或内容无效");
     let result;
-    if (body.action === "save") result = await saveAppConfiguration(auth, id, body.revision, body.configRevision, body.values);
-    else if (body.action === "grant") { if (typeof body.fieldId !== "string" || typeof body.path !== "string") throw new AutomationAppError("文件选择无效"); result = await grantAppFile(auth, id, body.revision, body.fieldId, body.path, body.access); }
-    else if (body.action === "start") { if (typeof body.actionId !== "string") throw new AutomationAppError("请选择运行按钮"); result = await startAppRun(auth, id, body.revision, body.runId, body.values, body.configRevision, body.actionId); }
+    if (body.actionId !== undefined && typeof body.actionId !== "string") throw new AutomationAppError("功能引用无效");
+    if (body.resumeFrom !== undefined && (body.action !== "start" || typeof body.resumeFrom !== "string" || body.taskId)) throw new AutomationAppError("检查点恢复请求无效");
+    if (body.action === "save") result = await saveAppConfiguration(auth, id, body.revision, body.configRevision, body.values, body.actionId);
+    else if (body.action === "grant") { if (typeof body.fieldId !== "string" || typeof body.path !== "string") throw new AutomationAppError("文件选择无效"); result = await grantAppFile(auth, id, body.revision, body.fieldId, body.path, body.access, body.actionId); }
+    else if (body.action === "start") { if (typeof body.actionId !== "string") throw new AutomationAppError("请选择运行按钮"); result = body.taskId
+      ? await (await import("@/lib/automation-authoring")).authorManualTest({id:body.taskId,ownerKey:auth.ownerKey,runtimeId:auth.runtimeId},id,body.revision,body.runId,body.values,body.configRevision,body.actionId)
+      : await startAppRun(auth, id, body.revision, body.runId, body.values, body.configRevision, body.actionId, body.resumeFrom ? { resumeFrom: body.resumeFrom } : undefined); }
     else if (body.action === "stop") result = await stopAppRun(auth, id, body.runId);
     else result = await answerAppRun(auth, id, body.runId, body.questionId, body.responses);
     auth.assertIdentity(); return appJson(result);

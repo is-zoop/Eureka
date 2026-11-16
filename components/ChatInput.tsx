@@ -1,6 +1,6 @@
 "use client";
 
-import { dedupePlugins, retainedPluginSelection, splitPluginSelection, type ComposerPlugin, type SelectedPlugin } from "@/lib/plugin-selection";
+import { LOCAL_AUTOMATION_SOURCE, dedupePlugins, retainedPluginSelection, splitPluginSelection, type ComposerPlugin, type SelectedPlugin } from "@/lib/plugin-selection";
 import { NotificationNotice } from "@/components/Notifications";
 import { OrganizationCapabilityIcon } from "./OrganizationCapabilityIcon";
 import { MessageCapabilityIcon } from "./MessageResourceTags";
@@ -1166,7 +1166,9 @@ export const ChatInput = React.memo(forwardRef<ChatInputHandle, Props>(function 
         setComposerPluginsReady(true);
         if (data.subject === undefined) return;
         setSelectedPlugins((current) => {
-          const next = current.filter((item) => data.subject !== null && (!item.subject || item.subject === data.subject) && (!data.source || item.source === data.source)).map((item) => {
+          const next = current.filter((item) => item.source === LOCAL_AUTOMATION_SOURCE
+            ? plugins.some(p=>p.source===item.source&&p.capabilityId===item.capabilityId&&p.digest===item.digest)
+            : data.subject !== null && (!item.subject || item.subject === data.subject) && (!data.source || item.source === data.source)).map((item) => {
             const actual = plugins.find((p) => p.source === item.source && p.capabilityId === item.capabilityId && p.digest === item.digest);
             return actual ? { ...item, selectionMode: actual.selectionMode, subject: actual.subject } : item;
           });

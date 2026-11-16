@@ -1,4 +1,8 @@
 /** Public identity only. No paths, credentials or executable input from the client. */
+export const LOCAL_AUTOMATION_SOURCE = "eureka-local";
+export function requiresCloudPluginSelection(value: unknown): boolean {
+  return !Array.isArray(value) || value.some(item => !item || item.source !== LOCAL_AUTOMATION_SOURCE || typeof item.capabilityId !== "string" || !item.capabilityId.startsWith("automation:"));
+}
 export interface SelectedPlugin { source: string; capabilityId: string; digest: string; name: string; selectionMode?: "once" | "persistent"; subject?: string }
 export interface ComposerPlugin extends SelectedPlugin { description: string; skills: string[]; state: string; automation?: { id: string; revision: number; version: string } }
 export function dedupePlugins(items: SelectedPlugin[]): SelectedPlugin[] {

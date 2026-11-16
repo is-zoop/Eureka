@@ -2,7 +2,7 @@
 
 The desktop application wraps the existing Eureka Next.js server in a Tauri 2 Windows shell. It shares the existing `~/.pi/agent` data directory with the Pi CLI.
 
-The root `package.json` is the single version source (currently `0.8.8`). Run
+The root `package.json` is the single version source (currently `0.8.9`). Run
 `npm run version:sync` to synchronize desktop/Cargo manifests and lock files, or
 `npm run version:check` to verify without writing. Desktop development and resource
 preparation synchronize automatically. Release identity is **Eureka** /
@@ -24,6 +24,23 @@ Downloads require HTTPS and a valid signature. Checking and downloading never
 trigger installation. Downloads remain in memory for the current app process;
 restarting requires another download. Concurrent operations and stale version
 requests are rejected.
+
+Network checks and downloads allow up to three attempts with one- and two-second
+backoff for timeouts, interrupted connections/bodies, and retryable download HTTP
+errors (408/5xx). Connections time out after eight seconds, stalled reads after
+30 seconds; metadata requests retain a 20-second total limit per attempt and
+downloads a 30-minute total limit per attempt. An interrupted download restarts
+from zero, keeps its release notes, and remains unavailable for installation until
+signature verification succeeds. Missing files, rate limits, invalid metadata,
+certificate and signature failures are not automatically retried. The plugin
+does not expose metadata endpoint HTTP statuses, so non-success metadata responses
+are reported as unavailable release information rather than a network diagnosis.
+The dialog displays automatic retries and distinguishes network, timeout, release,
+server, certificate and storage failures. Unknown failures use neutral guidance.
+Native diagnostics are written to `updater.log` in Tauri's app log directory
+(`%LOCALAPPDATA%/com.eureka.desktop/logs` on Windows), with timestamp, attempt,
+failure category and cause. Request URLs are omitted. The log rotates at 256 KiB
+and keeps one previous file. No extra services or mirrors are configured.
 
 The local signing key is `desktop/.signing/updater.key` (not password-encrypted).
 Back up this key privately and restrict access. The whole directory is ignored
@@ -60,9 +77,17 @@ service is restarted. User data and persistent browser profiles are retained.
 The desktop navigation rail has a blue update button directly above the account
 avatar. It opens a dialog with manual checks, release notes, download progress,
 and explicit installation/retry actions. **Help → Check for updates** opens the
-same dialog and checks immediately. Downloads continue when the dialog is
-closed. A silent check runs ten seconds after the first idle connection; a manual
-operation cancels that scheduled check. Available/downloaded updates show a badge.
+same dialog, reusing an already discovered release or checking if none is known.
+Downloads continue when the dialog is closed. A silent check runs one second
+after the first idle connection; a manual operation cancels that scheduled check.
+The button appears only for a newer release: it opens the release page before
+download, and quits to install when a verified download is ready. Release notes
+use a compact, independently scrolling region within a wider, bounded dialog.
+Windows updates use quiet NSIS mode with current-user installation: the final
+click quits Eureka, installs without an installer window, then reopens it.
+Downloading and verification happen while Eureka is running; replacing the
+installed files still requires that final exit. This is not a side-by-side
+version installation or instant directory switch.
 Web sessions do not show a native installer entry. The dialog is translated in
 Chinese and English, supports light/dark themes, and restores focus to its trigger.
 
@@ -76,7 +101,19 @@ Never test real installation in a development instance or during active work.
 
 Install the desktop development dependency with `npm install --prefix desktop`, then use these root commands:
 
+Before the first desktop bundle, and after changing the Playwright version, run
+`npm run browser:install` in the repository root. Packaging needs the exact
+Chromium revision supplied by Playwright; an installed system Chrome does not
+replace this dependency. The browser is copied into the installer, so end users
+do not need to install it separately.
+
+Production dependency tracing uses a project-local home and temporary directory
+under `desktop/.build-home`, avoiding protected Windows user/temp directories.
+
 - `npm run desktop:dev` starts the local Next development server and Eureka.
+  Both desktop and root web development use Webpack explicitly to avoid the
+  Windows Turbopack/PostCSS worker timeout. Stop the previous dev server before
+  restarting; no production build or cache deletion is needed to switch.
 - `npm run desktop:build` produces the NSIS installer after building a bundled Node runtime and standalone Next service.
 - `npm run desktop:bundle` is an alias for the production bundle.
 

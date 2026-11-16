@@ -18,12 +18,25 @@ export const updateBusy = (view: UpdateView) => view.loading || Boolean(view.pen
 export const hasDesktopUpdate = (view: UpdateView) => Boolean(view.host && view.state?.enabled && view.state.version && isNewerStableVersion(view.state.version, view.state.currentVersion));
 
 export function updateErrorKey(error: string) {
+  const code = /^EUREKA_UPDATE_(\w+)$/.exec(error)?.[1];
+  const networkErrors: Record<string, string> = {
+    TIMEOUT: "updates.errorTimeout", NETWORK: "updates.errorNetwork",
+    SERVER: "updates.errorServer", RATE_LIMITED: "updates.errorRateLimited",
+    MISSING: "updates.errorMissing", MANIFEST: "updates.errorManifest",
+    TLS: "updates.errorTls", STORAGE: "updates.errorStorage", SIGNATURE: "updates.errorSignature",
+  };
+  if (code) return networkErrors[code] ?? "updates.errorRetry";
   if (/正在运行|结束任务|tasks?.*still running/i.test(error)) return "updates.errorTasks";
   if (/verify.*local tasks|local update preparation|local.*preparation response/i.test(error)) return "updates.errorLocalService";
   if (/signature|pubkey|public key|base64|签名/i.test(error)) return "updates.errorSignature";
   if (/command.*not found|unknown command|not allowed|bundled.*view/i.test(error)) return "updates.errorUnavailable";
   if (/development|开发版本/i.test(error)) return "updates.disabled";
   if (/operation.*running|already running/i.test(error)) return "updates.errorBusy";
+  // Older desktop hosts still return unstructured errors.
+  if (/timed?\s*out|timeout/i.test(error)) return "updates.errorTimeout";
+  if (/release JSON|platform.*not found|missing field|invalid.*JSON/i.test(error)) return "updates.errorManifest";
+  if (/certificate|\bTLS\b|\bSSL\b/i.test(error)) return "updates.errorTls";
+  if (/error sending request|connect|dns|network/i.test(error)) return "updates.errorNetwork";
   return "updates.errorRetry";
 }
 
@@ -39,7 +52,7 @@ export class DesktopUpdateController {
   private timer: ReturnType<typeof setTimeout> | undefined;
   private autoChecked = false;
   private checkRequested = false;
-  constructor(private api: Api = native, private autoDelay = 10_000) {}
+  constructor(private api: Api = native, private autoDelay = 1_000) {}
   getSnapshot = () => this.value;
   getServerSnapshot = () => INITIAL;
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
@@ -90,8 +103,9 @@ export class DesktopUpdateController {
   }
   requestCheck = () => {
     if (this.value.loading) { this.checkRequested = true; return; }
-    // A menu check must not discard an already verified download.
-    if (!this.value.state?.readyToInstall) void this.run("check");
+    // Opening the update page reuses the known release and any verified download.
+    // The page's explicit check action can still refresh an up-to-date result.
+    if (!hasDesktopUpdate(this.value) && !this.value.state?.readyToInstall) void this.run("check");
   };
   // Each click performs one action; completing a download never starts installation.
   runPrimary = async () => {

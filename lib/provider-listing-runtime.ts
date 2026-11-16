@@ -8,7 +8,9 @@ import type { ProviderCredentialType, ProviderListingInput } from "@/lib/provide
 export async function collectProviderListingInputs(
   modelRuntime: ModelRuntime,
 ): Promise<ProviderListingInput[]> {
-  const models = modelRuntime.getModels();
+  // Include non-chat models too (e.g. TypeSafe classifiers); chat selectors
+  // continue to use getModels()/getAvailable() and only offer chat models.
+  const models = modelRuntime.getAllModels();
 
   const credentialTypes = new Map<string, ProviderCredentialType>();
   try {

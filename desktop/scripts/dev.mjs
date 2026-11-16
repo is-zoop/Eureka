@@ -17,7 +17,9 @@ if (!existsSync(nextBin) || !existsSync(tauriBin)) {
   throw new Error("Install root and desktop dependencies before starting Eureka development.");
 }
 
-const web = spawn(process.execPath, [nextBin, "dev", "-H", "127.0.0.1", "-p", "8080"], {
+// Match the root dev scripts to avoid the observed Turbopack/PostCSS worker
+// communication timeout on Windows.
+const web = spawn(process.execPath, [nextBin, "dev", "--webpack", "-H", "127.0.0.1", "-p", "8080"], {
   cwd: rootDir,
   env,
   stdio: "inherit",

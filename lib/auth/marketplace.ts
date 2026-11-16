@@ -1,6 +1,8 @@
 import "server-only";
 
-import { MARKETPLACE_PERMISSION } from "@/lib/auth/config";
+import { MARKETPLACE_PERMISSION, getAuthConfig } from "@/lib/auth/config";
+import { createHash } from "node:crypto";
+import { extensionCatalogCache } from "../extension-catalog-cache";
 import { getIdentityProvider } from "@/lib/auth/provider";
 import { readAuthSession } from "@/lib/auth/session";
 import { refreshRuntimeHazeSession } from "@/lib/auth/runtime-session";
@@ -21,7 +23,11 @@ export async function refreshMarketplaceSession(force = false): Promise<RefreshR
     const provider = getIdentityProvider();
     if (!provider) return null;
     try {
-      const principal = await provider.userInfo(session.accessToken);
+      // Coalesce simultaneous directory/category/icon checks for the same
+      // login. TTL zero discards the result immediately: later requests always
+      // verify current permissions, and token rotation gets a different key.
+      const key = "auth:" + createHash("sha256").update(JSON.stringify([getAuthConfig()?.issuer, session.providerId, session.runtimeId, session.principal.subject, session.accessToken])).digest("hex");
+      const principal = await extensionCatalogCache.read(key, 0, () => provider.userInfo(session.accessToken!));
       if (principal.subject !== current.principal.subject) return null;
       return { session: { ...session, principal }, refreshed: true };
     } catch { return null; }

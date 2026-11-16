@@ -7,11 +7,10 @@ import { listAutomationComposerApps } from "@/lib/automation-chat";
 export const dynamic = "force-dynamic";
 export async function GET(request: Request) {
   const auth = await readAuthSession();
-  if (!auth) return NextResponse.json({ error: "请先登录 Haze" }, { status: 401 });
   const query = new URL(request.url).searchParams;
   const cwd = query.get("cwd");
   if (!cwd || !isExistingFilePathAllowed(cwd, await getAllowedFileRoots())) return NextResponse.json({ error: "Access denied" }, { status: 403 });
-  const source = getAuthConfig()!.issuer.replace(/\/$/, "");
+  const source = auth ? getAuthConfig()!.issuer.replace(/\/$/, "") : undefined;
   const automations = await listAutomationComposerApps(cwd);
-  return NextResponse.json({ source, subject: auth.principal.subject, plugins: [...listComposerPlugins(cwd, source, auth.principal.subject, query.get("sessionId") ?? undefined), ...automations] });
+  return NextResponse.json({ source, subject: auth?.principal.subject ?? null, plugins: [...(auth&&source?listComposerPlugins(cwd, source, auth.principal.subject, query.get("sessionId") ?? undefined):[]), ...automations] });
 }

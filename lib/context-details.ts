@@ -49,7 +49,7 @@ export function estimateTextTokens(text: string): number {
 
 export function estimateMessageTokens(messages: readonly unknown[]): number {
   return messages.reduce<number>((sum, message) => {
-    if (!record(message)) return sum;
+    if (!record(message) || message.role === "system") return sum;
     return sum + estimateTextTokens(contentText(message.content ?? message.summary)) + 4;
   }, 0);
 }

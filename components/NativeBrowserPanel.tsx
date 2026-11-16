@@ -61,7 +61,7 @@ export function NativeBrowserPanel({ spec, visible, onHide, onClose, controlRef,
     return task;
   }, [spec]);
   const [stopPhase, setStopPhase] = useState<"stopping" | "stopped" | null>(null);
-  const phase = stopPhase ?? (error ? "error" : !snapshot.opened ? "opening" : snapshot.loading ? "loading" : "manual");
+  const phase = stopPhase ?? (error ? "error" : !snapshot.opened || snapshot.active === false ? "opening" : snapshot.loading ? "loading" : "manual");
   useEffect(() => { onTaskState?.({ phase, ...(error ? { message: error } : {}) }); }, [phase, error, onTaskState]);
 
   const stop = useCallback(() => {
@@ -195,6 +195,7 @@ export function NativeBrowserPanel({ spec, visible, onHide, onClose, controlRef,
           const value = await nativeBrowserCommand(spec, "renew");
           if (!cancelled && !halted.current && run === generation.current) {
             setSnapshot(value);
+            if (value.opened && value.active === false && visibleRef.current) opened.current = false;
             if (!value.opened) { opened.current = false; authorized.current = false; halted.current = true; setError("网站视图已关闭或会话已过期。请重新打开网站并登录。"); }
           }
         }
@@ -230,7 +231,7 @@ export function NativeBrowserPanel({ spec, visible, onHide, onClose, controlRef,
       if (busy || failed || halted.current || Date.now() < retryAt) return;
       const bounds = visibleRef.current && slot.current ? browserSlotBounds(slot.current) : null;
       const overlay = bounds ? browserOverlay(bounds) : undefined;
-      const available=Boolean(bounds)&&!overlay?.blockInput&&authorized.current;
+      const available=Boolean(bounds)&&!overlay?.blockInput&&authorized.current&&opened.current;
       if(advertised!==available){advertised=available;window.dispatchEvent(new CustomEvent("eureka:automation-browser-availability",{detail:{spec,available}}));}
       if (overlay?.blockInput && controlToken.current) void pauseAutomation().catch(() => {});
       const next = bounds ? JSON.stringify({ bounds, overlay }) : "hidden";
@@ -252,6 +253,9 @@ export function NativeBrowserPanel({ spec, visible, onHide, onClose, controlRef,
         if (value && !cancelled && !halted.current && run === generation.current) {
           if (layoutError) { const previous = layoutError; setError(current => current === previous ? "" : current); layoutError = ""; }
           setSnapshot(value);
+          // Another task can present its own page while ours is retained.
+          // Re-present this task by identity; opening must not re-navigate it.
+          if (value.opened && value.active === false && visibleRef.current) { opened.current = false; signature = ""; }
           if (opened.current && !value.opened) { opened.current = false; authorized.current = false; halted.current = true; setError("网站视图已关闭或会话已过期。请重新打开网站并登录。"); }
         }
       } catch (error) {

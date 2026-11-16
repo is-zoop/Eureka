@@ -1,4 +1,5 @@
 "use client";
+import { PackageReleaseNotes } from "./PackageReleaseNotes";
 
 import { describeExtensionError } from "@/lib/extension-errors";
 
@@ -639,21 +640,19 @@ function PackageDetail({
         </div>
       </div>
 
-      <div
+      <PackageReleaseNotes identity={`${pkg.scope === "global" ? "global" : cwd}:${key}`} version={pkg.version} cwd={cwd} source={pkg.source} scope={pkg.scope} enabled={pkg.counts.extensions > 0}>      <div
         style={{
           display: "grid",
           gridTemplateColumns: "minmax(96px, 130px) minmax(0, 1fr)",
           gap: "9px 14px",
-          fontSize: 12,
-          lineHeight: 1.45,
         }}
       >
         <div style={{ color: "var(--text-dim)" }}>{t("i18n.status")}</div>
         <div style={{ color: statusColor(pkg.status), textTransform: "capitalize" }}>{pkg.status}</div>
         <div style={{ color: "var(--text-dim)" }}>{t("i18n.version")}</div>
-         <div style={{ color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>{versionSummary(pkg, t)}</div>
+         <div style={{ color: "var(--text-muted)" }}>{versionSummary(pkg, t)}</div>
         <div style={{ color: "var(--text-dim)" }}>{t("i18n.package")}</div>
-        <div style={{ color: "var(--text-muted)", fontFamily: "var(--font-mono)", overflowWrap: "anywhere" }}>
+        <div style={{ color: "var(--text-muted)", overflowWrap: "anywhere" }}>
           {pkg.packageName ?? t("i18n.unknown")}
         </div>
         <div style={{ color: "var(--text-dim)" }}>{t("i18n.resources")}</div>
@@ -662,17 +661,17 @@ function PackageDetail({
         <div
           style={{
             color: pkg.installedPath ? "var(--text-muted)" : "#ef4444",
-            fontFamily: "var(--font-mono)",
             overflowWrap: "anywhere",
           }}
         >
           {pkg.installedPath ? shortenPath(pkg.installedPath) : t("i18n.notFound")}
         </div>
         <div style={{ color: "var(--text-dim)" }}>{t("i18n.cwd")}</div>
-        <div style={{ color: "var(--text-dim)", fontFamily: "var(--font-mono)", overflowWrap: "anywhere" }}>
+        <div style={{ color: "var(--text-dim)", overflowWrap: "anywhere" }}>
           {shortenPath(cwd)}
         </div>
       </div>
+</PackageReleaseNotes>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text)" }}>

@@ -1,6 +1,7 @@
+import { createCompatibleModelRuntime } from "./model-runtime-compat";
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { getAgentDir, ModelRuntime } from "@earendil-works/pi-coding-agent";
+import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { writePrivateFileAtomicSync } from "./atomic-file";
 import { invalidateModelsCache } from "./models-cache";
 
@@ -60,7 +61,7 @@ export async function refreshPiCatalog(force = false): Promise<void> {
   const state = readState();
   if (!state.enabled || process.env.PI_OFFLINE !== undefined) return;
   try {
-    const runtime = await ModelRuntime.create({
+    const runtime = await createCompatibleModelRuntime({
       allowModelNetwork: true,
       refreshOnCreate: false,
       modelRefreshTimeoutMs: REFRESH_TIMEOUT_MS,

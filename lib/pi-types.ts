@@ -121,6 +121,8 @@ export interface ExtensionUiContextLike {
 }
 
 export interface AgentSessionLike {
+  readonly cacheWarmingStatus?: import("@earendil-works/pi-coding-agent").AgentSession["cacheWarmingStatus"];
+  setCacheWarmingMode?(mode: "off" | "streaming" | "idle"): void;
   readonly sessionId: string;
   readonly sessionFile: string | undefined;
   readonly isStreaming: boolean;
@@ -129,12 +131,14 @@ export interface AgentSessionLike {
   readonly autoRetryEnabled: boolean;
   readonly model: ModelLike | undefined;
   readonly modelRuntime: ModelRuntime;
+  readonly systemPrompt?: string;
   readonly sessionManager: SessionManager;
   readonly settingsManager: SettingsManager;
   readonly agent: {
-    shouldStopAfterTurn?: Agent["shouldStopAfterTurn"];
+    streamFunction?: Agent["streamFunction"];
+    finishTurn?: Agent["finishTurn"];
     state?: {
-      systemPrompt?: string;
+      readonly systemPrompt?: string;
       thinkingLevel?: string;
       streamingMessage?: PiAgentMessage;
       messages?: PiAgentMessage[];
@@ -153,7 +157,7 @@ export interface AgentSessionLike {
     images?: Array<{ type: "image"; data: string; mimeType: string }>;
     streamingBehavior?: "steer" | "followUp";
     source?: "interactive" | "rpc";
-    preflightResult?: (success: boolean) => void;
+    preflightResult?: (disposition: "handled" | "queued" | "started") => void;
   }): Promise<void>;
   abort(): Promise<void>;
   executeBash(command: string, onChunk?: (chunk: string) => void, options?: { excludeFromContext?: boolean }): Promise<{ output: string; exitCode?: number; cancelled?: boolean; truncated?: boolean; fullOutputPath?: string }>;
@@ -168,8 +172,8 @@ export interface AgentSessionLike {
   getLastAssistantText(): string | undefined;
   setAutoCompactionEnabled(enabled: boolean): void;
   setAutoRetryEnabled(enabled: boolean): void;
-  steer(text: string, images?: Array<{ type: "image"; data: string; mimeType: string }>): Promise<void>;
-  followUp(text: string, images?: Array<{ type: "image"; data: string; mimeType: string }>): Promise<void>;
+  steer(text: string, images?: Array<{ type: "image"; data: string; mimeType: string }>): Promise<"handled" | "queued">;
+  followUp(text: string, images?: Array<{ type: "image"; data: string; mimeType: string }>): Promise<"handled" | "queued">;
   readonly pendingMessageCount: number;
   getSteeringMessages(): readonly string[];
   getFollowUpMessages(): readonly string[];

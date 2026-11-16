@@ -46,7 +46,7 @@ export function proxy(request: NextRequest) {
   const isMarketplaceAuthRoute = pathname.startsWith("/api/marketplace-auth/");
   if (!isPublicPage && !isMarketplaceAuthRoute && !isDevelopmentResearchFixture && !isNativeBrowserGate && !isNativeUpdateGate) {
     const guest = isGuestSessionValue(request.cookies.get(GUEST_SESSION_COOKIE)?.value);
-    if (guest && (pathname === "/api/organization-extensions" || pathname.startsWith("/api/organization-extensions/"))) {
+    if (guest && pathname !== "/api/organization-extensions/composer" && (pathname === "/api/organization-extensions" || pathname.startsWith("/api/organization-extensions/"))) {
       return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
     }
     const session = readAuthSessionValue(request.cookies.get(AUTH_SESSION_COOKIE)?.value);

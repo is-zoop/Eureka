@@ -1,4 +1,6 @@
 import "server-only";
+import { createHash } from "node:crypto";
+import { extensionCatalogCache } from "./extension-catalog-cache";
 
 import { getAuthConfig } from "@/lib/auth/config";
 import { hasMarketplaceAccess, refreshMarketplaceSession } from "@/lib/auth/marketplace";
@@ -81,6 +83,19 @@ function getMarketplaceBaseUrl() {
   return config.issuer;
 }
 
+function catalogScope(accessToken: string) {
+  return createHash("sha256").update(getMarketplaceBaseUrl()).update("\0").update(accessToken).digest("hex") + ":";
+}
+
+// Routes authenticate each request before consulting this cache. Token hashes
+// isolate logins and issuers without retaining credentials in cache keys.
+export function cachedOrganizationExtensions(type: OrganizationExtensionType, accessToken: string, force = false) {
+  return extensionCatalogCache.read(catalogScope(accessToken) + type, 30_000, () => listOrganizationExtensions(type, accessToken), force);
+}
+export function cachedOrganizationCategories(accessToken: string, force = false) {
+  return extensionCatalogCache.read(catalogScope(accessToken) + "categories", 300_000, () => listOrganizationExtensionCategories(accessToken), force);
+}
+
 function stringValue(value: unknown) {
   return typeof value === "string" ? value : "";
 }
@@ -131,6 +146,7 @@ async function fetchPage(type: OrganizationExtensionType, page: number, accessTo
   try {
     response = await fetch(`${getMarketplaceBaseUrl()}/api/marketplace/capabilities?${query}`, {
       headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/json" },
+      signal: AbortSignal.timeout(12_000),
       cache: "no-store",
     });
   } catch {
@@ -163,6 +179,7 @@ export async function listOrganizationExtensionCategories(accessToken: string): 
   try {
     response = await fetch(`${getMarketplaceBaseUrl()}/api/business-categories`, {
       headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/json" },
+      signal: AbortSignal.timeout(12_000),
       cache: "no-store",
     });
   } catch {
@@ -233,6 +250,7 @@ export async function toggleOrganizationExtensionFavorite(id: string, accessToke
   const response = await fetchHazeResponse(`/api/marketplace/capabilities/${encodeURIComponent(id)}/favorite`, accessToken, { method: "POST" });
   const payload = await response.json().catch(() => null) as { data?: { is_favorite?: unknown } } | null;
   if (typeof payload?.data?.is_favorite !== "boolean") throw new OrganizationExtensionsError("unavailable");
+  extensionCatalogCache.invalidate(catalogScope(accessToken));
   return payload.data.is_favorite;
 }
 

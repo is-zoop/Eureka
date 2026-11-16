@@ -12,7 +12,7 @@ export async function GET(
 ) {
   const { id } = await params;
   if (req.signal.aborted) return new Response(null, { status: 204 });
-  try{await authorizeCreationSessionId(id);}catch{return new Response("请登录创建该自动化的 Haze 账号",{status:403});}
+  try{await authorizeCreationSessionId(id);}catch{return new Response("本地自动化创建目录不可用",{status:403});}
 
   // Fast path: already-running session
   const session = getRpcSession(id);

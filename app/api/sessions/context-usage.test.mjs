@@ -16,6 +16,40 @@ const usage = { input: 500, output: 100, cacheRead: 0, cacheWrite: 0, totalToken
 const assistant = (tokens = usage) => ({ role: "assistant", content: [{ type: "text", text: "reply" }], provider: "fixture", model: "fixture-model", api: "openai-completions", usage: tokens, stopReason: "stop", timestamp: Date.now() });
 const read = (id, leaf) => GET(new Request(`http://localhost/api/sessions/${id}/context-usage${leaf ? `?leafId=${leaf}` : ""}`), { params: Promise.resolve({ id }) });
 
+async function readDetails(id, leaf) {
+  const response = await read(id, leaf);
+  const data = await response.json();
+  assert.equal(response.status, 200, JSON.stringify(data));
+  return data;
+}
+
+async function installHistoryRuntime(t) {
+  const directory = await mkdtemp(resolve(tmpdir(), "eureka-context-models-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const authPath = resolve(directory, "auth.json");
+  const modelsPath = resolve(directory, "models.json");
+  await writeFile(authPath, "{}");
+  await writeFile(modelsPath, JSON.stringify({ providers: { fixture: {
+    baseUrl: "https://unused.invalid/v1", api: "openai-completions",
+    models: ["fixture-model", "other-model"].map((id) => ({ id, name: id, contextWindow: 1000, maxTokens: 100 })),
+  } } }));
+  // Exercise the real SDK runtime and the Azure compatibility adapter, while
+  // keeping credentials, catalogs and model definitions inside this fixture.
+  const runtime = await sdk.ModelRuntime.create({
+    authPath, modelsPath, modelsStorePath: resolve(directory, "models-store.json"),
+    allowModelNetwork: false, refreshOnCreate: false,
+  });
+  assert.equal(runtime.getError(), undefined);
+  assert.equal(runtime.getModel("fixture", "fixture-model").contextWindow, 1000);
+  t.mock.method(sdk.ModelRuntime, "create", async (options) => {
+    assert.equal(options.allowModelNetwork, false);
+    assert.equal(options.refreshOnCreate, false);
+    return runtime;
+  });
+  t.mock.method(sdk.SettingsManager, "create", () => ({ getCompactionSettings: () => settings }));
+  return runtime;
+}
+
 function install(t, { messages, reported, manager, prompt = "fixture prompt", tools = [], file = "" }) {
   const previous = globalThis.__piSessions;
   const inner = {
@@ -56,21 +90,31 @@ test("history respects branch selection and discards pre-compaction usage", asyn
   const compacted = manager.appendCompaction("Short context summary", userId, 600);
   manager.appendMessage({ role: "user", content: "new branch", timestamp: Date.now() });
   install(t, { messages: [], reported: undefined, manager, file: "fixture-never-read.jsonl" });
-  t.mock.method(sdk.ModelRuntime, "create", async (options) => {
-    assert.equal(options.allowModelNetwork, false);
-    assert.equal(options.refreshOnCreate, false);
-    return { getModel: () => ({ contextWindow: 1000 }) };
-  });
-  t.mock.method(sdk.SettingsManager, "create", () => ({ getCompactionSettings: () => settings }));
-  const old = await (await read("context-fixture", before)).json();
+  await installHistoryRuntime(t);
+  const old = await readDetails("context-fixture", before);
   assert.equal(old.source, "history");
   assert.equal(old.usage.tokens, 600);
   assert.equal(old.canCompact, false);
-  const after = await (await read("context-fixture", compacted)).json();
+  const after = await readDetails("context-fixture", compacted);
   assert.equal(after.usageEstimated, true);
   assert.ok(after.usage.tokens < 600);
   assert.equal(after.breakdown.find((part) => part.id === "system").tokens, null);
   assert.equal((await read("context-fixture", "missing")).status, 404);
+});
+
+test("context edits invalidate earlier reported usage instead of displaying pre-edit tokens", async (t) => {
+  const manager = sdk.SessionManager.inMemory(process.cwd());
+  manager.appendModelChange("fixture", "fixture-model");
+  const user = manager.appendMessage({ role: "user", content: "Large original request".repeat(50), timestamp: Date.now() });
+  const before = manager.appendMessage(assistant());
+  const edited = manager.appendContextEdit(user, { content: "Short" });
+  manager.appendMessage({ role: "user", content: "Next request", timestamp: Date.now() });
+  install(t, { messages: [], reported: undefined, manager, file: "fixture-never-read.jsonl" });
+  await installHistoryRuntime(t);
+  assert.equal((await readDetails("context-fixture", before)).usage.tokens, 600);
+  const details = await readDetails("context-fixture", edited);
+  assert.equal(details.usageEstimated, true);
+  assert.ok(details.usage.tokens < 600);
 });
 
 test("switching back restores numeric categories after the live session is gone", async (t) => {
@@ -87,25 +131,52 @@ test("switching back restores numeric categories after the live session is gone"
   const stored = await readFile(`${file}.context-usage.json`, "utf8");
   assert.doesNotMatch(stored, /private instructions|private skills|private schema|reply/);
   globalThis.__piSessions = new Map();
-  t.mock.method(sdk.ModelRuntime, "create", async () => ({ getModel: () => ({ contextWindow: 1000 }) }));
-  t.mock.method(sdk.SettingsManager, "create", () => ({ getCompactionSettings: () => settings }));
-  const restored = await (await read("context-fixture")).json();
+  await installHistoryRuntime(t);
+  const restored = await readDetails("context-fixture");
   assert.equal(restored.source, "snapshot");
   assert.equal(restored.usageEstimated, true);
   assert.equal(restored.usage.tokens, live.usage.tokens);
   assert.deepEqual(restored.breakdown, live.breakdown);
   for (const part of restored.breakdown) assert.equal(typeof part.tokens, "number");
   // A different branch must not borrow this snapshot.
-  const historical = await (await read("context-fixture", userId)).json();
+  const historical = await readDetails("context-fixture", userId);
   assert.equal(historical.source, "history");
   assert.equal(historical.breakdown.find((part) => part.id === "system").tokens, null);
   // Neither a model change nor a compaction may reuse the old totals.
   manager.appendModelChange("fixture", "other-model");
-  assert.equal((await (await read("context-fixture")).json()).source, "history");
+  assert.equal((await readDetails("context-fixture")).source, "history");
   manager.appendCompaction("summary", userId, 600);
-  const compacted = await (await read("context-fixture")).json();
+  const compacted = await readDetails("context-fixture");
   assert.equal(compacted.source, "history");
   assert.ok(compacted.usage.tokens < 600);
+});
+
+test("switching sibling branches and reopening preserves each branch's own usage", async (t) => {
+  const directory = await mkdtemp(resolve(tmpdir(), "eureka-context-branches-"));
+  t.after(async () => { invalidateSessionPathCache("context-fixture"); await rm(directory, { recursive: true, force: true }); });
+  const manager = sdk.SessionManager.create(process.cwd(), directory);
+  manager.appendModelChange("fixture", "fixture-model");
+  const root = manager.appendMessage({ role: "user", content: "choose a branch", timestamp: Date.now() });
+  const first = manager.appendMessage(assistant());
+  manager.branch(root);
+  const second = manager.appendMessage(assistant({ ...usage, input: 125, output: 25, totalTokens: 150 }));
+  manager.branch(first);
+  const file = manager.getSessionFile();
+  cacheSessionPath("context-fixture", file);
+  install(t, { messages: manager.buildSessionContext().messages, reported: { tokens: 600, contextWindow: 1000, percent: 60 }, manager, file });
+  assert.equal((await readDetails("context-fixture", first)).source, "live");
+  globalThis.__piSessions = new Map();
+  await installHistoryRuntime(t);
+
+  const firstRestored = await readDetails("context-fixture", first);
+  assert.equal(firstRestored.source, "snapshot");
+  assert.equal(firstRestored.usage.tokens, 600);
+  const secondRestored = await readDetails("context-fixture", second);
+  assert.equal(secondRestored.source, "history");
+  assert.equal(secondRestored.usage.tokens, 150);
+  assert.equal(secondRestored.usage.contextWindow, 1000);
+  assert.equal(secondRestored.usage.percent, 15);
+  assert.equal((await readDetails("context-fixture", first)).usage.tokens, 600);
 });
 
 test("renaming a live session does not make its existing message leaf lose runtime categories", async (t) => {

@@ -26,7 +26,7 @@ export function validateUserInputResponse(question: UserInputQuestion, response:
   if ((question.selection ?? "single") === "single" && optionIds.length !== 1) throw new Error("This question accepts exactly one option");
   const selected = optionIds.map((id) => question.options.find((option) => option.id === id));
   if (selected.some((option) => !option)) throw new Error("The selected option is not available for this question");
-  return { optionId: optionIds.length === 1 ? optionIds[0] : undefined, optionIds, text: selected.map((option) => option!.label).join("、"), custom: false, skipped: false };
+  return { ...(optionIds.length === 1 ? { optionId: optionIds[0] } : {}), optionIds, text: selected.map((option) => option!.label).join("、"), custom: false, skipped: false };
 }
 
 export function userInputSummary(questions: UserInputQuestion[], skippedLabel = "已跳过"): string {

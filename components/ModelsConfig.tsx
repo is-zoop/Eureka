@@ -58,6 +58,7 @@ import NvidiaColorIcon from "@lobehub/icons/es/Nvidia/components/Color";
 import OpenCodeIcon from "@lobehub/icons/es/OpenCode/components/Mono";
 import XiaomiMiMoIcon from "@lobehub/icons/es/XiaomiMiMo/components/Mono";
 import ZAIIcon from "@lobehub/icons/es/ZAI/components/Mono";
+import MetaIcon from "@lobehub/icons/es/Meta/components/Mono";
 
 type IconComponent = React.ComponentType<{ size?: number | string; style?: React.CSSProperties }>;
 
@@ -88,12 +89,17 @@ const PROVIDER_ICONS: Record<string, { Icon: IconComponent; hasColor: boolean }>
   "vercel-ai-gateway":      { Icon: VercelIcon,           hasColor: false },
   "github-copilot":         { Icon: GithubCopilotIcon,    hasColor: false },
   "amazon-bedrock":         { Icon: AwsColorIcon,         hasColor: true },
+  "azure":                  { Icon: AzureColorIcon,       hasColor: true },
   "azure-openai-responses": { Icon: AzureColorIcon,       hasColor: true },
   "kimi-coding":            { Icon: KimiColorIcon,        hasColor: true },
   "nvidia":                 { Icon: NvidiaColorIcon,      hasColor: true },
   "opencode":               { Icon: OpenCodeIcon,         hasColor: false },
   "opencode-go":            { Icon: OpenCodeIcon,         hasColor: false },
   "qwen":                   { Icon: QwenColorIcon,        hasColor: true },
+  "qwen-token-plan":        { Icon: QwenColorIcon,        hasColor: true },
+  "qwen-token-plan-cn":     { Icon: QwenColorIcon,        hasColor: true },
+  "qwen-token-plan-individual": { Icon: QwenColorIcon,     hasColor: true },
+  "meta":                   { Icon: MetaIcon,             hasColor: false },
   "xiaomi":                 { Icon: XiaomiMiMoIcon,       hasColor: false },
   "xiaomi-token-plan-ams":  { Icon: XiaomiMiMoIcon,       hasColor: false },
   "xiaomi-token-plan-cn":   { Icon: XiaomiMiMoIcon,       hasColor: false },

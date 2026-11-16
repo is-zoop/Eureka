@@ -2,14 +2,20 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { join } from "node:path";
 import lockfile from "proper-lockfile";
 import type { AutomationAppDetail } from "./automation-app";
-import { appBrowserSessionId, appSiteAllows, parseAppLocator, parseAppPageField, type AppBrowserApproval, type AppBrowserBinding, type AppBrowserSite, type AppWebGrant, type AppWebOperation } from "./automation-app-browser";
-import { appJsonValue, type AppJson } from "./automation-app-run";
+import { appBrowserEnvironment, appBrowserSessionId, appSiteAllows, parseAppLocator, parseAppPageField, type AppBrowserApproval, type AppBrowserBinding, type AppBrowserSite, type AppWebGrant, type AppWebOperation } from "./automation-app-browser";
+import { appJsonValue } from "./automation-app-run";
 import type { AutomationAppStore } from "./automation-app-store";
 import { AutomationAppError } from "./automation-app-package";
 import type { NativeBrowserSpec } from "./native-browser";
+import { parseAppSessionRequestInput } from "./automation-session-request";
+import { APP_EXECUTION_VALUE_MAX_BYTES } from "./automation-data-limits";
 
 export interface AppBrowserSession { siteId: string; native: NativeBrowserSpec }
 interface Options {
+  beforeMutation?: () => Promise<void>;
+  expectedBindings?: import("./automation-app-browser").AppBrowserBinding[];
+  expectedCredentials?: Record<string, string>;
+  prepareUpload?: (request: NonNullable<AppWebOperation["request"]>, input: import("./automation-session-request").AppSessionRequestInput, browser?: boolean) => Promise<{ input: unknown; dispose: () => Promise<void> }>;
   taskId?: string;
   captureReads?: boolean;
   connection?: (waiting: boolean) => Promise<void>;
@@ -23,11 +29,13 @@ interface Options {
 interface Command {
   id: string; method: string; payload: string; siteId: string; native: NativeBrowserSpec;
   expiresAt: number; phase: "pending" | "claimed" | "armed" | "dispatched" | "done" | "cancelled";
-  bridgeId?: string; lease?: string; operation?: AppWebOperation; result?: unknown; error?: string; dispatched?: boolean;
+  bridgeId?: string; lease?: string; operation?: AppWebOperation; result?: unknown; error?: string; errorPhase?: Command["phase"]; dispatched?: boolean;
 }
 type Ticket = { service: ApplicationBrowserRuntime; command: Command; expiresAt: number; payload: string; lease:string; bridgeId:string };
-const shared = globalThis as typeof globalThis & { __eurekaAppWeb?: { services: Map<string, ApplicationBrowserRuntime>; tickets: Map<string, Ticket>; slot?: string } };
+const shared = globalThis as typeof globalThis & { __eurekaAppWeb?: { services: Map<string, ApplicationBrowserRuntime>; tickets: Map<string, Ticket> } };
 const globalWeb = shared.__eurekaAppWeb ??= { services: new Map<string, ApplicationBrowserRuntime>(), tickets: new Map<string, Ticket>() };
+const activeShared = globalThis as typeof globalThis & { __eurekaActiveWebTickets?: Map<string, Ticket> };
+const activeTickets = activeShared.__eurekaActiveWebTickets ??= new Map<string, Ticket>();
 const hash = (v: unknown) => createHash("sha256").update(JSON.stringify(v)).digest("hex");
 function fail(message: string): never { throw new AutomationAppError(message, 409); }
 export class ApplicationBrowserRuntime {
@@ -35,6 +43,10 @@ export class ApplicationBrowserRuntime {
   private closed = false;
   private commands = new Map<string, Command>();
   private binding: AppBrowserBinding | null = null;
+  private bindings = new Map<string, AppBrowserBinding>();
+  checkpointBindings() { return [...this.bindings.values()]; }
+  private credentials: Record<string, string> = {};
+  checkpointCredentials() { return { ...this.credentials }; }
   private activeSite: AppBrowserSite | null = null;
   private sessions = new Map<string, AppBrowserSession>();
   private bridge: { id: string; at: number; available: boolean } | null = null;
@@ -45,7 +57,7 @@ export class ApplicationBrowserRuntime {
   private readEvidenceCount = 0;
   private readEvidenceOmitted = false;
   private approval: { value: AppBrowserApproval; resolve: () => void; reject: (e: Error) => void; busy?: boolean } | null = null;
-  constructor(readonly options: Options) { globalWeb.services.set(options.runId, this); }
+  constructor(readonly options: Options) { globalWeb.services.set(options.runId, this); this.credentials = { ...options.expectedCredentials }; }
   private check() { this.options.check(); if (this.closed) fail("网页运行已停止，不会重放任何操作。"); }
   get nativeSession() { return this.activeSite ? this.sessions.get(this.activeSite.id)?.native : undefined; }
   get hasOpened() { return Boolean(this.activeSite&&this.openedSites.has(this.activeSite.id)&&![...this.commands.values()].some(command=>command.siteId===this.activeSite!.id&&command.method==="open"&&!["done","cancelled"].includes(command.phase))); }
@@ -93,19 +105,19 @@ export class ApplicationBrowserRuntime {
   }
   async session(site: AppBrowserSite) {
     const old = this.sessions.get(site.id); if (old) return old;
-    let environmentId = "00000000000000000000000000000000";
-    try { const raw = JSON.parse((await this.options.store.privateBytes(join(this.options.detail.dataDirectory, "browser-settings.json"), 8192)).toString("utf8")); environmentId = raw.environments?.[site.id] ?? environmentId; } catch (e) { if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e; }
+    let environmentId = appBrowserEnvironment({}, site.id);
+    try { const raw = JSON.parse((await this.options.store.privateBytes(join(this.options.detail.dataDirectory, "browser-settings.json"), 8192)).toString("utf8")); environmentId = appBrowserEnvironment(raw.environments ?? {}, site.id); } catch (e) { if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e; }
     if (typeof environmentId!=="string" || environmentId !== "temporary" && !/^[a-f0-9]{32}$/.test(environmentId)) fail("浏览环境引用无效。");
     // Task identity changes per run; the native profile is reused separately by
     // owner/environment. Late close/pause calls must not reach the next run.
-    const native: NativeBrowserSpec = { ownerKey: this.options.ownerKey, sessionId: appBrowserSessionId(hash([this.options.detail.install.id, this.options.runId])), websiteUrl: site.startUrl, applicationId: this.options.detail.install.id, applicationRunId: this.options.runId, applicationSiteId: site.id, ...(this.options.taskId?{applicationTaskId:this.options.taskId}:{}), ...(environmentId === "temporary" ? { browserMode: "temporary" as const } : { accountId: environmentId }) };
+    const native: NativeBrowserSpec = { ownerKey: this.options.ownerKey, sessionId: appBrowserSessionId(hash([this.options.detail.install.id, this.options.runId, site.id])), websiteUrl: site.startUrl, applicationId: this.options.detail.install.id, applicationRunId: this.options.runId, applicationSiteId: site.id, ...(this.options.taskId?{applicationTaskId:this.options.taskId}:{}), ...(environmentId === "temporary" ? { browserMode: "temporary" as const } : { accountId: environmentId }) };
     const session = { siteId: site.id, native }; this.sessions.set(site.id, session); await this.options.saveSession(session); return session;
   }
   private async command(method: string, site: AppBrowserSite, args: Record<string, unknown> = {}, operation?: AppWebOperation) {
     this.check(); const { native } = await this.session(site);
-    const payload = JSON.stringify({ method, site, args, expected: this.binding?.siteId === site.id ? { account: this.binding.account, environment: this.binding.environment } : null });
+    const payload = JSON.stringify({ method, appId: this.options.detail.install.id, site, args, expected: this.binding?.siteId === site.id ? { account: this.binding.account, environment: this.binding.environment } : null });
     if (Buffer.byteLength(payload) > 100000) fail("网页请求过大，请缩小读取范围。");
-    const c: Command = { id: randomUUID(), method, payload, siteId: site.id, native, expiresAt: Date.now() + 60000, phase: "pending", operation }; this.commands.set(c.id, c);
+    const c: Command = { id: randomUUID(), method, payload, siteId: site.id, native, expiresAt: Date.now() + (method === "request" && args.stream ? Number((args.stream as {timeoutMs:number}).timeoutMs) + 10000 : operation?.request?.timeoutMs ?? (operation?.request?.multipart ? 190000 : 60000)), phase: "pending", operation }; this.commands.set(c.id, c);
     try {
       for (;;) {
         this.check();
@@ -120,9 +132,18 @@ export class ApplicationBrowserRuntime {
       }
       fail(c.phase === "dispatched" ? "网页请求已经派发，但结果未知；请人工核对，不自动重试。" : "网页面板连接超时，未收到本次运行的操作回执；这不是等待用户回答。请保持当前对话及侧边浏览器可见。");
     } catch (e) {
-      if (c.dispatched && c.operation?.effect === "mutation") await this.interrupt("网页变更可能已执行，但结果未确认；已中断运行，请人工核对，不会自动重试。");
+      const cause = (e instanceof Error ? e.message : String(e)).slice(0, 1500);
+      const message = `${method === "request" ? "API 请求" : "网页操作"}${operation ? ` ${operation.id}` : ""}失败：${cause}`;
+      // Preserve the native/bridge error BEFORE stopping the worker. Stopping
+      // first replaces it with an abort and leaves the failed node output empty.
+      try { await this.options.audit(message, { method, operationId: operation?.id ?? null, phase: c.errorPhase ?? c.phase, dispatched: Boolean(c.dispatched), error: cause }); } catch { /* Diagnostics must not hide the original failure. */ }
+      if (c.dispatched && c.operation?.effect === "mutation") await this.interrupt(`${message}；变更结果未确认，已中断运行，不会自动重试。`);
       throw e;
-    } finally { if (c.phase !== "done") c.phase = "cancelled"; }
+    } finally {
+      if (c.phase !== "done") c.phase = "cancelled";
+      // Keep the receipt, not every full API response, for the lifetime of a run.
+      delete c.result;
+    }
   }
   presence(bridgeId: string, available = true) {
     this.check();
@@ -141,12 +162,19 @@ export class ApplicationBrowserRuntime {
   }
   async policy(c: Command) {
     this.check(); if (c.expiresAt < Date.now() || c.phase === "cancelled" || !this.connected() || this.bridge!.id !== c.bridgeId) fail("网页请求或面板连接已失效。");
-    if (c.operation?.effect === "mutation" && !await this.hasGrant(this.site(c.siteId), c.operation)) fail("网页变更授权已撤销或范围已变化。");
+    if (c.operation?.effect === "mutation" && c.operation.kind !== "request" && !await this.hasGrant(this.site(c.siteId), c.operation)) fail("网页变更授权已撤销或范围已变化。");
     this.check();
   }
   complete(id: string, lease: string, result: unknown, error?: string) {
     const c = this.current(id, lease); if (c.phase !== "dispatched" && !(c.phase === "claimed" && (["open", "release"].includes(c.method) || error)) && !(c.phase === "armed" && error)) fail("网页结果不属于已派发操作。");
-    if (error) c.error = error.slice(0, 1500); else { c.result = appJsonValue(result); if(c.method==="open")this.openedSites.add(c.siteId); } c.phase = "done";
+    for (const [token,ticket] of activeTickets) if (ticket.command === c) activeTickets.delete(token);
+    if (error) { c.error = error.slice(0, 1500); c.errorPhase = c.phase; } else {
+      try { c.result = appJsonValue(result, c.method === "request" ? APP_EXECUTION_VALUE_MAX_BYTES : undefined); if(c.method==="open")this.openedSites.add(c.siteId); }
+      catch (error) { c.error = error instanceof Error ? error.message : "网页结果格式或大小无效。"; c.errorPhase = c.phase; }
+    }
+    // A rejected response is terminal too; never leave a dispatched request
+    // waiting until timeout or replay it to try obtaining a smaller response.
+    c.phase = "done";
   }
   private async probe(site: AppBrowserSite, allowLogin = false, settleUntil = allowLogin ? Date.now() + 5000 : 0): Promise<AppBrowserBinding> {
     type Probe = { origin: string; environment: string; account: string | null; outOfScope?: boolean; authRequired?: boolean; error?: string };
@@ -180,35 +208,57 @@ export class ApplicationBrowserRuntime {
       this.eventContext = context;
       this.check();
       if (method === "connect") {
-        if (globalWeb.slot && globalWeb.slot !== this.options.runId) fail("另一个应用正在使用原生浏览器，请先结束它。");
-        globalWeb.slot = this.options.runId; const site = this.site(args[0]); this.activeSite = site; this.binding = null;
+        const site = this.site(args[0]); this.activeSite = site; this.binding = null;
         await this.command("open", site); let binding = await this.probe(site, true);
         if (site.account && !binding.account) { await this.command("release", site); await this.options.askLogin(`请在右侧完成“${site.label}”的登录或人工验证，确认账号后继续。`); binding = await this.probe(site); }
         if (site.account && !binding.account) fail("仍未读取到账号标记，请核对登录及应用中的账号定位规则。");
+        const expected = this.options.expectedBindings?.find(item => item.siteId === site.id);
+        if (expected && (expected.origin !== binding.origin || expected.environment !== binding.environment || expected.accountHash !== binding.accountHash)) fail("检查点的浏览环境或账号已变化，不能继续恢复运行。");
+        this.bindings.set(site.id, binding);
         this.binding = binding; await this.options.audit("已连接网站与当前账号环境", binding); return binding;
       }
       const site = this.activeSite; if (!site || !this.binding) fail("请先调用 browser.connect 连接网站。");
       if (method === "release") { await this.command("release", site); return { released: true }; }
       if (method === "observe") return (await this.command("observe",site) as {value:unknown}).value;
-      if (method === "operation") {
+      if (method === "operation" || method === "request" || method === "download") {
+        const isRequest=method!=="operation";
         const op = site.operations.find(o => o.id === args[0]); if (!op) fail("操作未在应用包中声明。");
-        const input = args[1] === undefined ? {} : args[1] as Record<string, unknown>;
-        if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).some(k => !["key", "value"].includes(k))) fail("网页操作参数无效。");
+        if (isRequest !== (op.kind === "request")) fail("API 与网页控件需要使用对应的 SDK 方法。");
+        if(method==="download"&&(this.options.captureReads||op.request?.response!=="bytes"))fail("下载只能在应用运行时用于 response:bytes 声明。");
+        if(method==="request"&&op.request?.response==="bytes")fail("二进制响应请在应用运行时使用 ctx.browser.download 保存，不作为 JSON 返回。");
+        if (op.effect === "mutation" && !this.options.detail.manifest.automation.capabilities.includes("browser.write")) fail("当前功能未声明网页或 API 变更能力。");
+        const input = (isRequest ? parseAppSessionRequestInput(args[1], op.request!) : args[1] === undefined ? {} : args[1]) as Record<string, unknown>;
+        if (!input || typeof input !== "object" || Array.isArray(input) || !isRequest && Object.keys(input).some(k => !(op.kind === "upload" ? ["key", "files"] : ["key", "value"]).includes(k))) fail("网页操作参数无效。");
         if (op.row && (typeof input.key !== "string" || !input.key || input.key.length > 1000)) fail("需要明确的记录匹配值。");
         if (["fill", "select"].includes(op.kind) && (typeof input.value !== "string" || input.value.length > 4000)) fail("填写值必须为不超过 4000 字的文本。");
         if (op.kind === "check" && typeof input.value !== "boolean") fail("勾选值必须为布尔值。");
-        if (op.effect === "mutation" && !await this.hasGrant(site, op)) {
+        if (op.effect === "mutation" && op.kind !== "request" && !await this.hasGrant(site, op)) {
           if (!this.binding.account) fail("没有可核对的账号标记，不能保存持续网页变更授权。");
           await this.command("release", site);
-          const approval: AppBrowserApproval = { id: randomUUID(), siteId: site.id, siteLabel: site.label, origin: this.binding.origin, version: this.options.detail.manifest.version, digest: this.digest, environment: this.binding.environment, account: this.binding.account, requestedOperation: op.id, operations: site.operations.filter(o => o.effect === "mutation"), ...(op.row ? { target: String(input.key) } : {}), ...(input.value !== undefined ? { value: appJsonValue(input.value) } : {}) };
+          const approval: AppBrowserApproval = { id: randomUUID(), siteId: site.id, siteLabel: site.label, origin: this.binding.origin, version: this.options.detail.manifest.version, digest: this.digest, environment: this.binding.environment, account: this.binding.account, requestedOperation: op.id, operations: site.operations.filter(o => o.effect === "mutation" && o.kind !== "request"), ...(op.row ? { target: String(input.key) } : {}), ...(input.value !== undefined ? { value: appJsonValue(input.value) } : {}) };
           const wait = new Promise<void>((resolve, reject) => { this.approval = { value: approval, resolve, reject }; }); void wait.catch(() => {});
           await this.options.showApproval(approval); await wait; this.check();
         }
-        const result = await this.command("operation", site, { operationId: op.id, input }, op) as Record<string, unknown>;
+        if (op.request?.redirects && op.effect !== "query") fail("变更请求不跟随重定向。");
+        if (input.multipart && (this.options.captureReads || !this.options.prepareUpload)) fail("文件上传仅由用户在应用运行中执行。");
+        let upload = input.multipart ? await this.options.prepareUpload!(op.request!, input) : undefined;
+        if (op.kind === "upload") {
+          if (this.options.captureReads || !this.options.prepareUpload || !op.upload || !Array.isArray(input.files) || !input.files.length || input.files.length > (op.upload.multiple ? 16 : 1)) fail("浏览器上传仅用于用户运行和显式授权的文件引用。");
+          const specification = { url: site.startUrl, method: "POST" as const, multipart: { files: [{ name: "file", ...op.upload }], maxBytes: op.upload.maxBytes } };
+          const parsed = parseAppSessionRequestInput({ multipart: { files: input.files.map(value => { if (!value || typeof value !== "object" || Array.isArray(value) || Object.keys(value).some(key => !["ref", "filename", "contentType"].includes(key))) fail("上传文件引用无效。"); return { ...value, name: "file" }; }) } }, specification);
+          upload = await this.options.prepareUpload(specification, parsed, true);
+        }
+        let result: Record<string, unknown>;
+        try { if (op.effect === "mutation" || method === "download") await this.options.beforeMutation?.(); const preparedInput = op.kind === "upload" ? { key: input.key, files: (upload!.input as { multipart: { files: unknown[] } }).multipart.files } : upload?.input ?? input; result = await this.command(isRequest?"request":method, site, { operationId: op.id, input: preparedInput, ...(op.request?.auth && this.options.expectedCredentials?.[op.request.auth.credentialId] ? { expectedCredentialRevision: this.options.expectedCredentials[op.request.auth.credentialId] } : {}), ...(method === "download" && args[2] ? { stream: args[2] } : {}) }, op) as Record<string, unknown>; }
+        finally { await upload?.dispose(); }
         if (result?.error) fail(String(result.error));
-        if (op.effect === "mutation" && result?.verified !== true) { await this.interrupt("变更已派发，但未确认预期页面状态；运行已中断，请人工核对，不自动重试。"); fail("网页变更结果未知。"); }
-        try { await this.options.audit(op.effect === "mutation" ? "网页变更的页面状态已校验" : "网页查询动作已派发，结果需另行读取", { operationId: op.id, effect: op.effect, result }); }
-        catch (e) { if(op.effect === "mutation") await this.interrupt("网页变更的校验结果未能保存；运行已中断，请人工核对，不会重复提交。"); throw e; }
+        if (op.request?.auth && typeof result.credentialRevision === "string") this.credentials[op.request.auth.credentialId] = result.credentialRevision;
+        if (op.effect === "mutation" && op.kind !== "request" && result?.verified !== true) { await this.interrupt("变更已派发，但未确认预期页面状态；运行已中断，请人工核对，不自动重试。"); fail("网页变更结果未知。"); }
+        const binary=result.data as {encoding?:unknown;bytes?:unknown;contentType?:unknown}|undefined;
+        const audited=method==="download"?{status:result.status,data:{encoding:binary?.encoding,bytes:binary?.bytes,contentType:binary?.contentType}}:result;
+        try { await this.options.audit(isRequest ? "API 响应已返回，业务结果由应用判断" : op.effect === "mutation" ? "网页变更的页面状态已校验" : "网页查询动作已派发，结果需另行读取", { operationId: op.id, effect: op.effect, result:audited }); }
+        catch (e) { if(op.effect === "mutation") await this.interrupt("变更结果未能保存；运行已中断，请人工核对，不会重复提交。"); throw e; }
+        if (method === "request") return this.captureRead("read", site, { requestId: op.id, input }, result);
         return result;
       }
       if (method === "navigate") { if (typeof args[0] !== "string" || !appSiteAllows(site, args[0])) fail("目标 URL 超出网站声明范围。"); return this.command("navigate", site, { url: args[0] }); }
@@ -248,7 +298,8 @@ export class ApplicationBrowserRuntime {
     this.closed = true; for (const c of this.commands.values()) if (c.phase !== "done") c.phase = "cancelled";
     this.approval?.reject(new Error(reason)); this.approval = null;
     for (const [token, ticket] of globalWeb.tickets) if (ticket.service === this) globalWeb.tickets.delete(token);
-    if (globalWeb.slot === this.options.runId) globalWeb.slot = undefined; globalWeb.services.delete(this.options.runId);
+    for (const [token,ticket] of activeTickets) if (ticket.service===this) activeTickets.delete(token);
+    globalWeb.services.delete(this.options.runId);
   }
 }
 export function appWebServices(ownerKey: string, appId: string) { return [...globalWeb.services.values()].filter(s => s.options.ownerKey === ownerKey && s.options.detail.install.id === appId); }
@@ -260,5 +311,15 @@ export async function consumeAppBrowserTicket(token: string, payload: string) {
   await ticket.service.policy(ticket.command);
   if(ticket.command.phase!=="armed"||ticket.command.expiresAt<Date.now()||ticket.command.lease!==ticket.lease||ticket.command.bridgeId!==ticket.bridgeId)fail("网页命令已完成或过期，不派发迟到操作。");
   ticket.command.phase = "dispatched"; ticket.command.dispatched = true;
+  activeTickets.set(token,ticket);
+  if (ticket.command.operation?.request?.timeoutMs || ticket.command.operation?.request?.multipart) ticket.command.expiresAt = Date.now() + (ticket.command.operation.request.timeoutMs ?? 180000) + 10000;
+  const stream = JSON.parse(ticket.payload).args?.stream as { timeoutMs?: number } | undefined;
+  if (stream && Number.isSafeInteger(stream.timeoutMs) && stream.timeoutMs! >= 1000 && stream.timeoutMs! <= 1800000) ticket.command.expiresAt = Date.now() + stream.timeoutMs! + 10000;
+}
+/** Read-only liveness check; never consumes a new dispatch or repeats an action. */
+export async function checkAppBrowserTicket(token: string, payload: string) {
+  const ticket=activeTickets.get(token);
+  if(!ticket||ticket.payload!==payload||ticket.command.phase!=="dispatched"||ticket.command.expiresAt<Date.now()) {activeTickets.delete(token);fail("请求已结束或撤销。");}
+  try { await ticket.service.policy(ticket.command); } catch(error) {activeTickets.delete(token);throw error;}
 }
 export async function lockAppBrowserGrants(directory: string) { return lockfile.lock(join(directory, "browser-grants"), { realpath: false, retries: { retries: 10, minTimeout: 50, maxTimeout: 200 }, stale: 15000 }); }

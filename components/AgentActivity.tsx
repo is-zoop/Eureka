@@ -23,6 +23,6 @@ export function AgentActivityStatus({ phase }: { phase?: AgentPhase }) {
   const waiting = phase.kind === "waiting_model";
   return <span className="agent-activity-label" aria-live="polite">
     {waiting && <AgentActivityIndicator />}
-    <span className="agent-activity-text">{t(waiting ? "chat.waitingModel" : "taskPhase.running")}</span>
+    <span className="agent-activity-text">{t(phase.kind === "waiting_user" ? "taskPhase.waiting_input" : waiting ? "chat.waitingModel" : "taskPhase.running")}</span>
   </span>;
 }

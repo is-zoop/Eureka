@@ -48,12 +48,13 @@ export function clearMcpRuntime(sessionId: string) { runtime.delete(sessionId); 
 export function installMcpStatusRuntime(pi: Pick<ExtensionAPI, "events" | "on">) {
   let sessionId: string | undefined;
   let pending: Snapshot | undefined;
-  const unsubscribe = pi.events.on(MCP_STATUS_EVENT, (value: unknown) => {
+  const receive = (value: unknown) => {
     if (!value || typeof value !== "object" || !Array.isArray((value as Snapshot).servers)) return;
     const snapshot = value as Snapshot;
     if (sessionId) updateMcpRuntime(sessionId, snapshot);
     else pending = snapshot;
-  });
+  };
+  const subscriptions = [MCP_STATUS_EVENT, "eureka:mcp-status/v1"].map((event) => pi.events.on(event, receive));
   pi.on("session_start", (_event, context) => {
     const nextId = context.sessionManager.getSessionId();
     if (sessionId && sessionId !== nextId) clearMcpRuntime(sessionId);
@@ -61,7 +62,7 @@ export function installMcpStatusRuntime(pi: Pick<ExtensionAPI, "events" | "on">)
     if (pending) { updateMcpRuntime(sessionId, pending); pending = undefined; }
   });
   pi.on("session_shutdown", () => {
-    unsubscribe();
+    for (const unsubscribe of subscriptions) unsubscribe();
     if (sessionId) clearMcpRuntime(sessionId);
     sessionId = undefined;
     pending = undefined;

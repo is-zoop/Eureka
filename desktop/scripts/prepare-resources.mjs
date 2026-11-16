@@ -4,6 +4,7 @@ import { cpSync, existsSync, mkdirSync, rmSync, copyFileSync, statSync } from "n
 import { fileURLToPath } from "node:url";
 import { dirname, resolve, join } from "node:path";
 import { copyStandaloneResources, copyStandaloneServerAssets, isRuntimeAsset } from "./standalone-resources.mjs";
+import { copySdkRuntimeResources } from "./sdk-resources.mjs";
 import { verifyStandaloneResources } from "./verify-resources.mjs";
 import { syncVersions } from "../../scripts/sync-version.mjs";
 import { readPublicRuntimeConfig, writeRuntimeEnvironment, withoutSigningSecrets } from "./runtime-config.mjs";
@@ -29,6 +30,9 @@ const piPackagesDir = join(rootDir, "node_modules", "@earendil-works");
 // production bundle. On Windows the real profile contains protected legacy
 // junctions such as "Application Data", so isolate build-time discovery.
 const buildHome = join(desktopDir, ".build-home");
+// Dependency tracing also evaluates os.tmpdir(). Never scan the real Windows
+// temp tree: it can contain protected package-manager directories such as WinGet.
+const buildTemp = join(buildHome, "tmp");
 const skipBuild = process.argv.includes("--skip-build");
 
 if (!existsSync(nextBin)) {
@@ -48,7 +52,7 @@ const { chromium } = require(join(rootDir, "node_modules", "playwright"));
 const chromiumExecutable = chromium.executablePath();
 if (!existsSync(chromiumExecutable)) throw new Error("Chromium is missing. Run npm run browser:install before packaging.");
 const chromiumRevisionDir = dirname(dirname(chromiumExecutable));
-mkdirSync(buildHome, { recursive: true });
+mkdirSync(buildTemp, { recursive: true });
 
 if (!skipBuild) {
   const build = spawnSync(process.execPath, [nextBin, "build", "--webpack"], {
@@ -60,6 +64,8 @@ if (!skipBuild) {
       USERPROFILE: buildHome,
       APPDATA: buildHome,
       LOCALAPPDATA: buildHome,
+      TEMP: buildTemp,
+      TMP: buildTemp,
     },
     stdio: "inherit",
   });
@@ -87,17 +93,10 @@ copyStandaloneServerAssets(join(rootDir, ".next"), appDir);
 // Pi reads themes and other interactive-mode resources from disk at runtime.
 // Those JSON assets are accessed dynamically and therefore omitted by Next's
 // standalone tracer unless the SDK packages are copied in full.
-for (const packageName of piPackageNames) {
-  cpSync(
-    join(piPackagesDir, packageName),
-    join(appDir, "node_modules", "@earendil-works", packageName),
-    { recursive: true, filter: isRuntimeAsset },
-  );
-}
+copySdkRuntimeResources(rootDir, appDir);
 // The MCP adapter is loaded through jiti at runtime, which Next's standalone
 // output tracer cannot discover. Copy the package (and its nested production
 // dependencies) explicitly so AgentSession startup works after installation.
-cpSync(mcpAdapterDir, join(appDir, "node_modules", "pi-mcp-adapter"), { recursive: true, filter: isRuntimeAsset });
 // Header hooks run as plain Node children, outside Next's bundled modules.
 mkdirSync(join(appDir, "lib", "auth"), { recursive: true });
 for (const file of ["haze-mcp-request-headers.mjs", "haze-plugin-auth.mjs", "auth/haze-runtime-store.mjs"]) {

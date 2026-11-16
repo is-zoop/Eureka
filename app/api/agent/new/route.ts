@@ -1,3 +1,4 @@
+import { requiresCloudPluginSelection } from "@/lib/plugin-selection";
 import { readAuthSession } from "@/lib/auth/session";
 import { NextResponse } from "next/server";
 import { automationAccess } from "@/lib/automation-access";
@@ -29,8 +30,8 @@ export async function POST(req: Request) {
   try {
     const body = await req.json() as { cwd?: string; [key: string]: unknown };
     const { cwd, ...command } = body;
-    if (command.automationTask !== undefined) { const auth = await automationAccess(), ref = parseAutomationTaskRef(command.automationTask); if (ref.ownerKey !== auth.ownerKey) throw new Error("自动化任务不属于当前账号。"); auth.assertIdentity(); assertAutomationTaskIdentity(ref); }
-    if (command.selectedPlugins && !await readAuthSession()) return NextResponse.json({ error: "请先登录 Haze", code: "prompt_rejected", accepted: false }, { status: 401 });
+    if (command.automationTask !== undefined) { const auth = await automationAccess(), ref = parseAutomationTaskRef(command.automationTask); auth.assertIdentity(); assertAutomationTaskIdentity(ref); }
+    if (command.selectedPlugins && requiresCloudPluginSelection(command.selectedPlugins) && !await readAuthSession()) return NextResponse.json({ error: "请先登录 Haze", code: "prompt_rejected", accepted: false }, { status: 401 });
     commandType = typeof command.type === "string" ? command.type : undefined;
 
     if (!cwd || typeof cwd !== "string") {

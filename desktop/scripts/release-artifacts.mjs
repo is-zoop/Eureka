@@ -31,6 +31,8 @@ export function releaseMetadata(root = project, env = process.env) {
   if (!existsSync(notesFile)) throw new Error(`Add reviewed release notes at docs/releases/${tag}.md before building.`);
   const config = JSON.parse(readFileSync(join(root, "desktop/src-tauri/tauri.conf.json"), "utf8"));
   if (config.plugins?.updater?.endpoints?.[0] !== `https://github.com/${repo}/releases/latest/download/latest.json`) throw new Error("Updater endpoint differs from the release repository.");
+  // Quiet NSIS updates cannot request elevation; keep releases in the user's directory.
+  if (config.plugins?.updater?.windows?.installMode === "quiet" && config.bundle?.windows?.nsis?.installMode !== "currentUser") throw new Error("Quiet updates require current-user NSIS installation.");
   readPublicRuntimeConfig(root);
   return { version: pkg.version, tag, repo, name: `Eureka_${pkg.version}_x64-setup.exe`, notes: readFileSync(notesFile, "utf8").trim(), publicKey: config.plugins.updater.pubkey };
 }

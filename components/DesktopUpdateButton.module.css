@@ -54,8 +54,26 @@
 .fill { height: 100%; border-radius: inherit; background: #0075ef; transition: width 150ms ease; }
 .indeterminate { width: 35%; animation: traverse 1.4s ease-in-out infinite; }
 .size { display: flex; justify-content: space-between; margin-top: 7px; font-size: 12px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
-.notes { margin-top: 22px; padding-top: 16px; border-top: 1px solid var(--border); }
-.notesTitle { margin: 0 0 10px; font-size: 12px; font-weight: 500; color: var(--text-muted); }
+.dialog .body { display: flex; flex-direction: column; overflow: hidden; }
+.summary { flex-shrink: 0; }
+.notes { display: flex; flex: 1 1 auto; flex-direction: column; min-height: 0; overflow: hidden; margin-top: 20px; padding-top: 14px; border-top: 1px solid var(--border); }
+.notesTitle { flex-shrink: 0; margin: 0 0 10px; font-size: 12px; font-weight: 500; color: var(--text-muted); }
+.notesScroll { min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding-right: 8px; scrollbar-gutter: stable; scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--text-muted) 45%, transparent) var(--bg-hover); }
+.notesScroll:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 4px; }
+.notesScroll::-webkit-scrollbar { width: 6px; }
+.notesScroll::-webkit-scrollbar-track { background: var(--bg-hover); }
+.notesScroll::-webkit-scrollbar-thumb { border-radius: 8px; background: color-mix(in srgb, var(--text-muted) 45%, transparent); }
+.notes .notesBody {
+  --message-font-size: 12px;
+  --message-line-height: 1.7;
+  --message-h1-size: 14px;
+  --message-h2-size: 13px;
+  --message-h3-size: 12px;
+  font-size: 12px;
+  line-height: 1.7;
+}
+.notesBody :global(p) { margin-bottom: 8px; }
+.notesBody :global(ul), .notesBody :global(ol) { padding-left: 18px; }
 .error { margin-top: 16px; padding: 10px 12px; border: 1px solid color-mix(in srgb, var(--danger) 20%, var(--border)); border-radius: 8px; background: color-mix(in srgb, var(--danger) 4%, var(--bg-panel)); color: var(--danger); font-size: 13px; line-height: 21px; }
 .spin { animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }

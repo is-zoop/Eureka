@@ -1,6 +1,6 @@
 {
   "name": "eureka",
-  "version": "0.8.8",
+  "version": "0.9.0",
   "description": "Web UI for the pi coding agent",
   "homepage": "https://github.com/is-zoop/Eureka#readme",
   "repository": {
@@ -28,9 +28,9 @@
     "package.json"
   ],
   "scripts": {
-    "dev": "next dev -H 127.0.0.1 -p 8080",
-    "dev:lan": "next dev -H 0.0.0.0 -p 8080",
-    "prebuild": "npm run version:sync",
+    "dev": "next dev --webpack -H 127.0.0.1 -p 8080",
+    "dev:lan": "next dev --webpack -H 0.0.0.0 -p 8080",
+    "prebuild": "npm run version:sync && npm run sdk:contract:check",
     "build": "next build --webpack",
     "start": "next start -H 127.0.0.1 -p 8080",
     "start:lan": "next start -H 0.0.0.0 -p 8080",
@@ -46,32 +46,47 @@
     "release": "npm run version:check && npm run desktop:build",
     "release:check": "node desktop/scripts/release-artifacts.mjs --check",
     "release:artifacts": "node desktop/scripts/release-artifacts.mjs",
-    "browser:install": "playwright install chromium --no-shell"
+    "browser:install": "playwright install chromium --no-shell",
+    "sdk:contract": "node scripts/export-automation-sdk-contract.mjs",
+    "sdk:contract:check": "node scripts/export-automation-sdk-contract.mjs --check"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",
-    "@earendil-works/pi-agent-core": "0.84.1",
-    "@earendil-works/pi-ai": "0.84.1",
-    "@earendil-works/pi-coding-agent": "0.84.1",
-    "@earendil-works/pi-tui": "0.84.1",
+    "@earendil-works/pi-agent-core": "1.5.0",
+    "@earendil-works/pi-ai": "1.5.0",
+    "@earendil-works/pi-coding-agent": "1.5.0",
+    "@earendil-works/pi-mcp": "1.5.0",
+    "@earendil-works/pi-tui": "1.5.0",
     "@radix-ui/react-radio-group": "^1.4.7",
     "@radix-ui/react-switch": "^1.3.7",
     "@tauri-apps/api": "^2.11.1",
+    "ajv": "^8.20.0",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
+    "csv-parse": "^6.2.1",
+    "csv-stringify": "^6.9.0",
+    "date-fns": "^4.4.0",
     "es-toolkit": "^1.51.0",
+    "exceljs": "^4.4.0",
     "js-yaml": "^5.2.3",
     "lucide-react": "^1.34.0",
     "material-file-icons": "^2.4.0",
+    "morphicons": "^2.0.2",
     "next": "16.2.12",
     "pi-mcp-adapter": "2.33.0",
     "playwright": "1.64.1",
     "proper-lockfile": "4.1.2",
     "react": "^19.2.4",
+    "react-day-picker": "^9.14.0",
     "react-dom": "^19.2.4",
     "remark-frontmatter": "^5.0.0",
     "tailwind-merge": "^3.6.0",
     "undici": "8.5.0"
+  },
+  "overrides": {
+    "pi-mcp-adapter": {
+      "@earendil-works/pi-ai": "$@earendil-works/pi-ai"
+    }
   },
   "devDependencies": {
     "@lobehub/icons": "^5.6.0",

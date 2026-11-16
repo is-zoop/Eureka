@@ -1,4 +1,5 @@
 "use client";
+import { GeneratedImageResult, generatedImageId } from "./GeneratedImageResult";
 
 import { useEffect, useState, type ReactNode, type Ref } from "react";
 import { useI18n } from "@/hooks/useI18n";
@@ -54,6 +55,12 @@ export function TaskTurnView({ turn, toolResults, runningToolIds, agentPhase, cw
   const outerExpanded = !foldable || phaseExpanded(outerStatus, outerChoice);
   const toolCallCount = turn.phases.reduce((count, phase) => count + phase.toolCallCount, 0);
   const common = { toolResults, runningToolIds, cwd, onOpenFile, sessionId, modelNames };
+  const imageIds = [...new Set(turn.phases.flatMap(phase => [...phase.summary, ...phase.items]).flatMap(ref => {
+    if (ref.block.type !== "toolCall") return [];
+    const result = toolResults.get(ref.block.toolCallId);
+    const id = !result?.isError ? generatedImageId(ref.block.toolName, result?.details) : undefined;
+    return id ? [id] : [];
+  }))];
 
   return <div className="task-turn-view" data-status={turn.status} data-turn-id={turnId}>
     {foldable && turn.phases.length > 0 && <button type="button" className="task-phase-toggle" aria-expanded={outerExpanded}
@@ -69,7 +76,7 @@ export function TaskTurnView({ turn, toolResults, runningToolIds, agentPhase, cw
     <Collapse open={outerExpanded}>{() => turn.phases.map((phase, phaseIndex) => {
       const expanded = phaseExpanded(phase.status, choices[phase.id]);
       const running = phase.status === "running";
-      const waiting = running && phaseIndex === turn.phases.length - 1 && agentPhase?.kind === "waiting_model";
+      const waiting = running && phaseIndex === turn.phases.length - 1 && (agentPhase?.kind === "waiting_model" || agentPhase?.kind === "waiting_user");
       return <div className="task-phase" data-status={phase.status} key={phase.id} ref={phaseRef?.(phase)}>
         <div className="task-phase-description">
           {phase.summary.length > 0 ? phase.summary.map((ref) => <ProcessBlockView key={(ref.source.entryId ?? ref.source.messageIndex) + ":" + ref.blockIndex} reference={ref} {...common} />)
@@ -79,7 +86,7 @@ export function TaskTurnView({ turn, toolResults, runningToolIds, agentPhase, cw
           onClick={() => setChoices((current) => ({ ...current, [phase.id]: { status: phase.status, expanded: !expanded } }))}>
           <PhaseArrow expanded={expanded} />
           <span className="task-phase-heading">
-            <span className="task-phase-status">{waiting ? <><AgentActivityIndicator /><span className="task-phase-status-text">{t("chat.waitingModel")}</span></> : t("taskPhase." + phase.status)}</span>
+            <span className="task-phase-status">{waiting ? <><AgentActivityIndicator /><span className="task-phase-status-text">{t(agentPhase?.kind === "waiting_user" ? "taskPhase.waiting_input" : "chat.waitingModel")}</span></> : t("taskPhase." + phase.status)}</span>
             {phase.toolCallCount > 0 && <span className="task-phase-count">· {t("taskPhase.toolCount", { count: phase.toolCallCount })}</span>}
             {phase.thinkingCount > 0 && <span className="task-phase-count">· {t("taskPhase.thinkingCount", { count: phase.thinkingCount })}</span>}
           </span>
@@ -92,5 +99,6 @@ export function TaskTurnView({ turn, toolResults, runningToolIds, agentPhase, cw
         </div>}</Collapse>
       </div>;
     })}</Collapse>
+    {imageIds.map(id => <GeneratedImageResult key={id} id={id}/>)}
   </div>;
 }

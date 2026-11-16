@@ -1,6 +1,7 @@
+import { createCompatibleModelRuntime } from "@/lib/model-runtime-compat";
 import { NextResponse } from "next/server";
 import { authorizeCreationSessionId } from "@/lib/automation-creation-auth";
-import { SessionManager, SettingsManager, ModelRuntime, getAgentDir, calculateContextTokens, buildSessionContext } from "@earendil-works/pi-coding-agent";
+import { SessionManager, SettingsManager, getAgentDir, calculateContextTokens, buildSessionContext } from "@earendil-works/pi-coding-agent";
 import { getRpcSession } from "@/lib/rpc-manager";
 import { resolveSessionPath } from "@/lib/session-reader";
 import { buildContextDetails, estimateMessageTokens } from "@/lib/context-details";
@@ -33,7 +34,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     const context = buildSessionContext(manager.getEntries(), leafId ?? manager.getLeafId());
     const agentDir = getAgentDir();
     const settings = SettingsManager.create(manager.getCwd(), agentDir).getCompactionSettings();
-    const runtime = await ModelRuntime.create({ allowModelNetwork: false, refreshOnCreate: false });
+    const runtime = await createCompatibleModelRuntime({ allowModelNetwork: false, refreshOnCreate: false });
     const model = context.model ? runtime.getModel(context.model.provider, context.model.modelId) : undefined;
     const modelId = context.model ? `${context.model.provider}/${context.model.modelId}` : null;
     const snapshot = await readContextSnapshot(path, id, contextRevision(branch), modelId);
@@ -51,6 +52,9 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       if (entry.type !== "message" || entry.message.role !== "assistant" || !entry.message.usage || ["error", "aborted"].includes(entry.message.stopReason)) continue;
       const tokens = calculateContextTokens(entry.message.usage);
       if (tokens > 0) {
+        // A later context edit changes what the model sees, so this response's
+        // reported usage no longer measures the current projected context.
+        if (branch.slice(index + 1).some((item) => item.type === "context_edit")) break;
         const trailing = branch.slice(index + 1).flatMap((item) => item.type === "message" ? [item.message] : []);
         usage = { tokens: tokens + estimateMessageTokens(trailing), contextWindow: model?.contextWindow ?? 0, percent: null, estimated: trailing.length > 0 || entry.message.provider !== context.model?.provider || entry.message.model !== context.model?.modelId };
         break;

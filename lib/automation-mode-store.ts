@@ -4,18 +4,21 @@ import { randomUUID } from "node:crypto";
 import lockfile from "proper-lockfile";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { assertCreationIdentity } from "./automation-creation-runtime";
-import { AUTOMATION_MODE_ENTRY, parseAutomationTaskRef, readAutomationMode, sameAutomationTask, type AutomationTaskRef, type AutomationModeRecord } from "./automation-mode";
-export interface AutomationTaskDocument extends AutomationModeRecord { version: 1; createdAt: string; goal: string }
+import { AUTOMATION_MODE_ENTRY, parseAutomationTaskRef, readAutomationMode, type AutomationTaskRef, type AutomationModeRecord } from "./automation-mode";
+import { legacySourcePaths, mergeSourcePaths } from "./automation-authoring-source";
+import { assertLocalAutomationNamespace, localAutomationPath } from "./automation-local-context";
+export interface AutomationTaskDocument extends AutomationModeRecord { version: 1; createdAt: string; goal: string; sourcePaths?: string[] }
 interface Manager { getSessionId(): string; getBranch(): { type: string; customType?: string; data?: unknown }[]; appendCustomEntry(type: string, data: unknown): unknown }
 export function assertAutomationTaskIdentity(task: AutomationTaskRef) { const ref = parseAutomationTaskRef(task); assertCreationIdentity({ version: 1, ownerKey: ref.ownerKey, runtimeId: ref.runtimeId }); }
-export function taskDirectory(task: AutomationTaskRef) { const ref = parseAutomationTaskRef(task); return join(getAgentDir(), "app-data", ref.ownerKey, "creation", ref.id); }
+export function localAutomationTask(raw: unknown): AutomationTaskRef { const task = parseAutomationTaskRef(raw), local = assertLocalAutomationNamespace(task.ownerKey); return { ...task, runtimeId: local.runtimeId }; }
+export function taskDirectory(task: AutomationTaskRef) { const ref = parseAutomationTaskRef(task); return localAutomationPath(getAgentDir(), join(getAgentDir(), "app-data", ref.ownerKey, "creation", ref.id)); }
 export async function readAutomationTask(task: AutomationTaskRef): Promise<AutomationTaskDocument | null> {
   assertAutomationTaskIdentity(task);
-  try { const v = JSON.parse(await readFile(join(taskDirectory(task), "task.json"), "utf8")) as AutomationTaskDocument; const ref = parseAutomationTaskRef(v.task); if (v.version !== 1 || ref.id !== task.id || ref.ownerKey !== task.ownerKey || ref.runtimeId !== task.runtimeId || typeof v.sessionId !== "string" || !["active", "paused", "exited"].includes(v.status)) throw new Error(); assertAutomationTaskIdentity(task); return v; }
+  try { const v = JSON.parse(await readFile(join(taskDirectory(task), "task.json"), "utf8")) as AutomationTaskDocument; const ref = parseAutomationTaskRef(v.task); if (v.version !== 1 || ref.id !== task.id || ref.ownerKey !== task.ownerKey || typeof v.sessionId !== "string" || !["active", "paused", "exited"].includes(v.status)) throw new Error(); assertAutomationTaskIdentity(task); return { ...v, task: localAutomationTask(ref) }; }
   catch (e) { if ((e as NodeJS.ErrnoException).code === "ENOENT") return null; throw new Error("自动化任务已变化或不可读取，请重新选择命令。"); }
 }
 export async function changeAutomationTask(manager: Manager, raw: unknown, status: AutomationModeRecord["status"], goal?: string) {
-  const task = parseAutomationTaskRef(raw); assertAutomationTaskIdentity(task); const directory = taskDirectory(task);
+  const task = localAutomationTask(raw); assertAutomationTaskIdentity(task); const directory = taskDirectory(task);
   if(status!=="active"){await(await import("./automation-authoring")).stopAuthor(task).catch(()=>{});}
   if (status !== "active" && !await readAutomationTask(task)) return null;
   await mkdir(directory, { recursive: true, mode: 0o700 }); const file = join(directory, "task.json"), temp = `${file}.${randomUUID()}.tmp`;
@@ -25,11 +28,13 @@ export async function changeAutomationTask(manager: Manager, raw: unknown, statu
     if (!old && (status !== "active" || goal === undefined)) return null;
     if (old?.status === "exited") { if(status === "active")throw new Error("该创建任务已退出，请重新选择自动化命令。"); return old; }
     if (old && JSON.stringify(old.task.baseApp) !== JSON.stringify(task.baseApp)) throw new Error("创建任务的原应用引用已变化。");
-    if (!old && task.baseApp) { const {AutomationAppStore}=await import("./automation-app-store");const app=await new AutomationAppStore(getAgentDir(),task.ownerKey,()=>assertAutomationTaskIdentity(task)).find(task.baseApp.id);if(!app||app.revision!==task.baseApp.revision||app.activeVersion!==task.baseApp.version)throw new Error("原应用版本已变化，请重新打开修改。"); }
-    const now = new Date().toISOString(), document: AutomationTaskDocument = { version: 1, task, sessionId: manager.getSessionId(), status, updatedAt: now, createdAt: old?.createdAt ?? now, goal: old?.goal ?? String(goal).slice(0, 10000) };
+    if (!old && task.baseApp) { const {LocalAutomationAppStore}=await import("./automation-local-store");const app=await new LocalAutomationAppStore(getAgentDir(),task.ownerKey,()=>assertAutomationTaskIdentity(task)).find(task.baseApp.id);if(!app||app.revision!==task.baseApp.revision||!app.versions.some(item=>item.version===task.baseApp!.version))throw new Error("原应用版本已变化，请重新打开修改。"); }
+    const sourcePaths = mergeSourcePaths(old?.sourcePaths ?? (old ? legacySourcePaths(manager.getBranch(), task) : []), old?.goal ?? "", goal ?? "");
+    const now = new Date().toISOString(), document: AutomationTaskDocument = { version: 1, task, sessionId: manager.getSessionId(), status, updatedAt: now, createdAt: old?.createdAt ?? now, goal: old?.goal ?? String(goal).slice(0, 10000), sourcePaths };
     await writeFile(temp, JSON.stringify(document, null, 2), { flag: "wx", mode: 0o600 }); assertAutomationTaskIdentity(task); await rename(temp, file);
     // A late pause from another page must not replace a newer task's session marker.
-    if (status === "active" || sameAutomationTask(readAutomationMode(manager.getBranch())?.task, task)) manager.appendCustomEntry(AUTOMATION_MODE_ENTRY, { task, sessionId: document.sessionId, status, updatedAt: now } satisfies AutomationModeRecord);
+    const current = readAutomationMode(manager.getBranch())?.task;
+    if (status === "active" || current?.id === task.id && current.ownerKey === task.ownerKey) manager.appendCustomEntry(AUTOMATION_MODE_ENTRY, { task, sessionId: document.sessionId, status, updatedAt: now } satisfies AutomationModeRecord);
     return document;
   } finally { try { await rm(temp, { force: true }); } finally { await unlock(); } }
 }

@@ -1,3 +1,4 @@
+import { requiresCloudPluginSelection } from "@/lib/plugin-selection";
 import { readAuthSession } from "@/lib/auth/session";
 import { automationAccess } from "@/lib/automation-access";
 import { parseAutomationTaskRef } from "@/lib/automation-mode";
@@ -17,10 +18,10 @@ export async function POST(
   let promptAccepted = false;
 
   try {
-    try{await authorizeCreationSessionId(id);}catch{return NextResponse.json({error:"请登录创建该自动化的 Haze 账号",accepted:false,code:"prompt_rejected"},{status:403});}
+    try{await authorizeCreationSessionId(id);}catch{return NextResponse.json({error:"本地自动化创建目录不可用",accepted:false,code:"prompt_rejected"},{status:403});}
     const body = await req.json() as { type: string; [key: string]: unknown };
-    if (body.automationTask !== undefined) { const auth = await automationAccess(), ref = parseAutomationTaskRef(body.automationTask); if (ref.ownerKey !== auth.ownerKey) throw new Error("自动化任务不属于当前账号。"); auth.assertIdentity(); assertAutomationTaskIdentity(ref); }
-    if (body.selectedPlugins && !await readAuthSession()) return NextResponse.json({ error: "请先登录 Haze", code: "prompt_rejected", accepted: false }, { status: 401 });
+    if (body.automationTask !== undefined) { const auth = await automationAccess(), ref = parseAutomationTaskRef(body.automationTask); auth.assertIdentity(); assertAutomationTaskIdentity(ref); }
+    if (body.selectedPlugins && requiresCloudPluginSelection(body.selectedPlugins) && !await readAuthSession()) return NextResponse.json({ error: "请先登录 Haze", code: "prompt_rejected", accepted: false }, { status: 401 });
     commandType = typeof body.type === "string" ? body.type : undefined;
     const isPromptCommand = body.type === "prompt" || body.type === "execute_plan";
 
@@ -75,12 +76,13 @@ export async function GET(
   const { id } = await params;
 
   try {
-    try{await authorizeCreationSessionId(id);}catch{return NextResponse.json({error:"请登录创建该自动化的 Haze 账号"},{status:403});}
+    try{await authorizeCreationSessionId(id);}catch{return NextResponse.json({error:"本地自动化创建目录不可用"},{status:403});}
     const session = getRpcSession(id);
     if (!session || !session.isAlive()) {
       return NextResponse.json({ running: false });
     }
 
+    if (new URL(_req.url).searchParams.has("observations")) return NextResponse.json({ running: true, state: session.getObservationSnapshot() });
     const state = await session.send({ type: "get_state" });
     return NextResponse.json({ running: true, state });
   } catch (error) {

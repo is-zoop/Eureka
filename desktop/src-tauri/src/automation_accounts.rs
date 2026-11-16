@@ -212,4 +212,15 @@ mod tests {
         fs::remove_file(dir.join("use.lock")).unwrap();
         fs::remove_dir(dir).unwrap();
     }
+    #[test]
+    fn environment_lease_can_be_shared_by_pages_but_not_another_process_handle() {
+        let dir = std::env::temp_dir().join(format!("eureka-page-lease-{}-{}", std::process::id(), now()));
+        fs::create_dir(&dir).unwrap();
+        let first = std::sync::Arc::new(lease(&dir).unwrap());
+        let second = std::sync::Arc::clone(&first);
+        assert!(lease(&dir).is_err());
+        drop(first); assert!(lease(&dir).is_err());
+        drop(second); drop(lease(&dir).unwrap());
+        fs::remove_file(dir.join("use.lock")).unwrap(); fs::remove_dir(dir).unwrap();
+    }
 }

@@ -30,7 +30,7 @@ const index = { ownerKey: "owner", runtimeId: "runtime", apps: [], data: [] };
 const detail = {
   manifest: { name: "example", displayName: "Example app", version: "1.0.0", description: "User description", automation: { capabilities: ["files.read"] } },
   install: { id: "example", revision: 1, disabled: false, updatedAt: "2026-11-03T00:00:00Z" },
-  workflow: { nodes: [], edges: [] }, ui: { fields: [], buttons: [], results: { columns: [] } },
+  workflow: { nodes: [], edges: [] }, ui: { fields: [], buttons: [{ id: "run", label: "Run", action: "run", nodeId: "fixture" }], results: { columns: [] } },
   files: [], readme: "", codeDirectory: "/apps/example", dataDirectory: "/data/example",
 };
 

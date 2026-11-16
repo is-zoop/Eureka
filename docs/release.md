@@ -135,11 +135,14 @@ for private key backup and build configuration. Debug/development builds cannot
 check or install updates. The application version remains `0.8.8`.
 
 The blue button above the navigation rail's account avatar appears only when a
-newer version is known. Its first click downloads in the background; a second
-click after verification quits Eureka and installs the update. Clicking during
-download opens the progress dialog, and failures open recovery guidance.
-Help → Check for updates always opens the dialog for manual checks, notes,
-progress and retries. It is not part of Settings. `latest.json`
+newer version is known. Its first click opens the discovered release and notes
+without checking again. Start the background download from that page; after
+verification, clicking the rail button quits Eureka, installs silently using
+quiet NSIS mode and reopens it. This does not pre-install a second copy while
+the current copy runs. Help → Check for updates opens the same dialog, retaining
+known release information or checking when none is known. Notes have compact
+type and their own scroll container inside a bounded, wider window.
+It is not part of Settings. `latest.json`
 generation and the GitHub Actions draft publishing workflow are connected.
 Before distributing a signed release, upload its matching
 installer, `.sig`, and `latest.json`; the manifest's `signature` must contain the

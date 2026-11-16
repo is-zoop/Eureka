@@ -1,6 +1,7 @@
+import { createProviderModelRuntime } from "@/lib/provider-model-runtime";
 import type { AuthEvent, AuthPrompt } from "@earendil-works/pi-ai";
-import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import { invalidateModelsCache } from "@/lib/models-cache";
+import { createProviderLoginOptions } from "@/lib/provider-login";
 
 export const dynamic = "force-dynamic";
 
@@ -59,7 +60,9 @@ export async function GET(
 
   const stream = new ReadableStream({
     async start(controller) {
-      const modelRuntime = await ModelRuntime.create();
+      // OAuth owns a separate runtime: interactive login must not mutate a shared status reader.
+      const modelRuntime = await createProviderModelRuntime();
+      const loginOptions = createProviderLoginOptions();
       if (!modelRuntime.getProvider(provider)?.auth.oauth) {
         send(controller, { type: "error", message: `Unknown provider: ${provider}` });
         controller.close();
@@ -161,8 +164,9 @@ export async function GET(
             }
           },
           signal: abort.signal,
-        });
+        }, loginOptions.options);
 
+        await loginOptions.flush();
         invalidateModelsCache();
         send(controller, { type: "success" });
       } catch (err) {

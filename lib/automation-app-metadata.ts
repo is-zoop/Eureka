@@ -1,6 +1,17 @@
 import { AutomationAppError, inspectAutomationFiles, type AutomationAppPackage } from "./automation-app-package";
 import { isAppId } from "./automation-app";
 
+/** Update both version declarations, then recompute and validate the package digest. */
+export function withAutomationAppVersion(pkg: AutomationAppPackage, version: string): AutomationAppPackage {
+  if (pkg.manifest.version === version) return pkg;
+  const files = new Map(pkg.files);
+  for (const name of ["plugin.json", "package.json"]) {
+    const manifest = JSON.parse(files.get(name)!.toString("utf8")); manifest.version = version;
+    files.set(name, Buffer.from(JSON.stringify(manifest, null, 2) + "\n"));
+  }
+  return inspectAutomationFiles(files);
+}
+
 /** Only the display title is editable here; executable files and declarations stay identical. */
 export function withAutomationAppName(pkg: AutomationAppPackage, value?: unknown): AutomationAppPackage {
   if (value === undefined) return pkg;
@@ -18,11 +29,11 @@ export function copyAutomationAppPackage(pkg: AutomationAppPackage, targetId: un
   if (!isAppId(targetId) || targetId === pkg.manifest.automation.id) throw new AutomationAppError("另存应用需要新的应用 ID。", 400);
   if (typeof displayName !== "string") throw new AutomationAppError("请填写应用名称。", 400);
   const renamed = withAutomationAppName(pkg, displayName), files = new Map(renamed.files);
-  const manifest = JSON.parse(files.get("plugin.json")!.toString("utf8")), module = JSON.parse(files.get("package.json")!.toString("utf8"));
-  manifest.name = module.name = `automation-${targetId}`;
-  manifest.version = module.version = "1.0.0";
+  const manifest = JSON.parse(files.get("plugin.json")!.toString("utf8")), packageManifest = JSON.parse(files.get("package.json")!.toString("utf8"));
+  manifest.name = packageManifest.name = `automation-${targetId}`;
+  manifest.version = packageManifest.version = "1.0.0";
   manifest.extensions["com.eureka"].automation.id = targetId;
   files.set("plugin.json", Buffer.from(JSON.stringify(manifest, null, 2) + "\n"));
-  files.set("package.json", Buffer.from(JSON.stringify(module, null, 2) + "\n"));
+  files.set("package.json", Buffer.from(JSON.stringify(packageManifest, null, 2) + "\n"));
   return inspectAutomationFiles(files);
 }

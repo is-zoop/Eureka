@@ -2,7 +2,7 @@
 //! input events travel through Eureka's Node server. Explicit observation uses
 //! a fixed read-only collector, and only sends its preview to a model on request.
 use serde::{Deserialize, Serialize};
-use std::{path::PathBuf, sync::{atomic::{AtomicU64, Ordering}, Mutex}, time::{Duration, Instant}};
+use std::{path::PathBuf, sync::{atomic::{AtomicU64, Ordering}, Arc, Mutex}, time::{Duration, Instant}};
 use tauri::{webview::{NewWindowResponse, PageLoadEvent, WebviewBuilder}, LogicalPosition, LogicalSize, Manager, Rect, WebviewUrl};
 use crate::automation_accounts as accounts;
 use crate::browser_overlay::Overlay;
@@ -11,15 +11,17 @@ use crate::browser_overlay::Overlay;
 pub struct BrowserState {
     operation: tauri::async_runtime::Mutex<()>,
     session: Mutex<Option<Session>>,
-    // Browser-owned session cookies survive between runs. Parked views have
-    // no task identity or control token and cannot be used by IPC commands.
+    // Only `session` is presented. Inactive task pages retain their document
+    // and identity; blank environment keepers have an empty identity. Neither
+    // kind can execute IPC commands until explicitly presented and re-claimed.
     parked: Mutex<Vec<Session>>,
     next: AtomicU64,
 }
 struct Session {
     account_id: Option<String>,
     account_generation: u64,
-    _account_lease: Option<std::fs::File>,
+    // One OS lease per environment, shared by its independent page controllers.
+    _account_lease: Option<Arc<std::fs::File>>,
     control_token: Option<String>,
     control_sequence: u64,
     revision: u64,
@@ -32,11 +34,18 @@ struct Session {
     snapshot: Snapshot,
     ui_blocked: bool,
 }
+impl Session {
+    fn matches_task_page(&self, owner: &str, id: &str, account: &Option<String>, generation: u64, entry: &str) -> bool {
+        !self.id.is_empty() && self.owner == owner && self.id == id && &self.account_id == account
+            && self.account_generation == generation && self.initial_url == entry
+    }
+}
 #[derive(Clone, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Snapshot {
     controlled: bool,
     opened: bool,
+    active: bool,
     title: String,
     url: String,
     loading: bool,
@@ -84,7 +93,7 @@ fn display_url(url: &tauri::Url) -> String {
     // redacted URL collector and never consume this snapshot.
     url.to_string()
 }
-fn trusted_caller(view: &tauri::Webview) -> bool {
+pub(crate) fn trusted_caller(view: &tauri::Webview) -> bool {
     view.url().is_ok_and(|url| caller_allowed(view.label(), &url))
 }
 fn caller_allowed(label: &str, url: &tauri::Url) -> bool {
@@ -109,7 +118,10 @@ fn rect(bounds: &Bounds, width: f64, height: f64) -> Result<Rect, String> {
 fn update(app: &tauri::AppHandle, label: &str, change: impl FnOnce(&mut Snapshot)) {
     let state = app.state::<BrowserState>();
     let mut guard = state.session.lock().unwrap();
-    if let Some(session) = guard.as_mut().filter(|s| s.label == label) { session.revision += 1; change(&mut session.snapshot); }
+    if let Some(session) = guard.as_mut().filter(|s| s.label == label) { session.revision += 1; change(&mut session.snapshot); return; }
+    drop(guard);
+    let mut pages = state.parked.lock().unwrap();
+    if let Some(session) = pages.iter_mut().find(|s| s.label == label) { session.revision += 1; change(&mut session.snapshot); }
 }
 fn dispose(app: &tauri::AppHandle, session: Session) {
     if let Some(view) = app.get_webview(&session.label) {
@@ -137,16 +149,15 @@ pub fn close_all(app: &tauri::AppHandle) {
 }
 fn park(app: &tauri::AppHandle, mut session: Session) {
     session.control_token = None;
-    session.control_sequence = 0;
     session.snapshot.controlled = false;
+    session.snapshot.active = false;
     session.ui_blocked = true;
-    session.id.clear();
     session.revision += 1;
-    if session.account_id.is_some() {
+    if !session.id.is_empty() || session.account_id.is_some() {
         if let Some(view) = app.get_webview(&session.label) {
             if view.hide().is_ok() {
-                // Only the verified Wry child is disabled. A hidden view keeps
-                // native cookies; it never keeps an automation's authority.
+                // Hidden pages keep their document and cookies, but never keep
+                // automation authority or intercept another page's input.
                 let main = view.window().hwnd().ok().map(|h| h.0 as usize);
                 let callback_app = app.clone(); let label = session.label.clone();
                 let _ = view.with_webview(move |platform| unsafe {
@@ -163,7 +174,7 @@ fn park(app: &tauri::AppHandle, mut session: Session) {
             }
         }
     }
-    dispose(app, session); // Explicit temporary environments still close/clear.
+    dispose(app, session);
 }
 pub fn release_current(app: &tauri::AppHandle) {
     let old = app.state::<BrowserState>().session.lock().unwrap().take();
@@ -172,6 +183,38 @@ pub fn release_current(app: &tauri::AppHandle) {
 fn close_current(app: &tauri::AppHandle) {
     let old = app.state::<BrowserState>().session.lock().unwrap().take();
     if let Some(session) = old { dispose(app, session); }
+}
+fn page_snapshot(app: &tauri::AppHandle, owner: &str, id: &str) -> Snapshot {
+    let state = app.state::<BrowserState>();
+    if let Some(session) = state.session.lock().unwrap().as_ref().filter(|s| s.owner == owner && s.id == id && !s.id.is_empty()) {
+        return if app.get_webview(&session.label).is_some() { session.snapshot.clone() } else { Snapshot::default() };
+    }
+    let snapshot = state.parked.lock().unwrap().iter().find(|s| s.owner == owner && s.id == id && !s.id.is_empty() && app.get_webview(&s.label).is_some())
+        .map(|s| s.snapshot.clone()).unwrap_or_default();
+    snapshot
+}
+fn close_page(app: &tauri::AppHandle, owner: &str, id: &str) {
+    let state = app.state::<BrowserState>();
+    let mut removed = {
+        let mut current = state.session.lock().unwrap();
+        if current.as_ref().is_some_and(|s| s.owner == owner && s.id == id) { current.take() } else { None }
+    };
+    if removed.is_none() {
+        let mut pages = state.parked.lock().unwrap();
+        removed = pages.iter().position(|s| s.owner == owner && s.id == id && !s.id.is_empty()).map(|index| pages.remove(index));
+    }
+    let Some(mut session) = removed else { return; };
+    let same_environment = |s: &Session| s.owner == session.owner && s.account_id == session.account_id && s.account_generation == session.account_generation && app.get_webview(&s.label).is_some();
+    let another_current = state.session.lock().unwrap().as_ref().is_some_and(&same_environment);
+    let another = another_current || state.parked.lock().unwrap().iter().any(same_environment);
+    let valid_profile = session.account_id.as_ref().is_some_and(|account| accounts::active(app, owner, account).is_ok_and(|(_, profile)| profile.generation == session.account_generation));
+    if valid_profile && !another {
+        // The last page becomes a blank environment keeper so session cookies
+        // survive closing all tabs. A future task still gets a NEW page.
+        session.id.clear(); session.initial_url.clear(); session.snapshot.opened = false;
+        if let Some(view) = app.get_webview(&session.label) { let _ = view.navigate(tauri::Url::parse("about:blank").unwrap()); }
+        park(app, session);
+    } else { dispose(app, session); }
 }
 fn discard_parked(app: &tauri::AppHandle, predicate: impl Fn(&Session) -> bool) {
     let state = app.state::<BrowserState>();
@@ -189,12 +232,15 @@ fn discard_parked(app: &tauri::AppHandle, predicate: impl Fn(&Session) -> bool) 
 fn account_items(app: &tauri::AppHandle, owner: &str) -> Result<Vec<serde_json::Value>, String> {
     let mut items = accounts::list(app, owner)?;
     let state = app.state::<BrowserState>();
+    let current = state.session.lock().unwrap();
     let parked = state.parked.lock().unwrap();
-    // The profile lease remains held while its WebView exists. Our own dormant
-    // profiles can be managed under the operation lock using our lease; another
-    // process's lease must still be reported busy.
+    // Blank keepers are browser-owned, not an active task. Retained task pages
+    // still count as users of the environment for reset/delete management.
     for item in &mut items {
-        if parked.iter().any(|s| s.owner == owner && s.account_id.as_deref() == item["id"].as_str()) {
+        let matches = |s: &Session| s.owner == owner && s.account_id.as_deref() == item["id"].as_str();
+        let owned = current.as_ref().is_some_and(&matches) || parked.iter().any(&matches);
+        let task_page = current.as_ref().is_some_and(|s| matches(s) && !s.id.is_empty()) || parked.iter().any(|s| matches(s) && !s.id.is_empty());
+        if owned && !task_page {
             item["inUse"] = false.into();
         }
     }
@@ -242,6 +288,16 @@ pub async fn desktop_automation_browser(
     let _operation = state.operation.lock().await;
     if temporary.unwrap_or(false) && account_id.is_some() { return Err("accountInvalid".into()); }
     let account_id = if temporary.unwrap_or(false) { None } else { Some(account_id.unwrap_or_else(|| accounts::DEFAULT_ID.into())) };
+    if action == "close" { close_page(&app, &owner, &session_id); return Ok(Snapshot::default()); }
+    let is_current = state.session.lock().unwrap().as_ref().is_some_and(|s| s.owner == owner && s.id == session_id);
+    if !is_current && matches!(action.as_str(), "status" | "hide" | "renew" | "bounds") {
+        // A late hide/renew from an old React component must never act on the
+        // newly selected task page. Status can discover a retained page.
+        if action == "renew" {
+            if let Some(page) = state.parked.lock().unwrap().iter_mut().find(|s| s.owner == owner && s.id == session_id) { page.touched = Instant::now(); }
+        }
+        return Ok(page_snapshot(&app, &owner, &session_id));
+    }
     let window = webview.window();
     // Windows can report a zero/tiny client area during minimization. Retain
     // the last valid child rectangle instead of failing the frontend layout loop.
@@ -266,44 +322,35 @@ pub async fn desktop_automation_browser(
             Some((dir, account))
         } else { None };
         let account_generation = account.as_ref().map(|(_, a)| a.generation).unwrap_or(0);
-        if state.session.lock().unwrap().as_ref().is_some_and(|s| s.owner == owner && account_id.as_deref().is_some_and(|id| id != accounts::DEFAULT_ID) && s.account_id == account_id && s.id != session_id) {
-            return Err("accountBusy".into());
-        }
-        let reuse = state.session.lock().unwrap().as_ref().is_some_and(|s| s.owner == owner && s.id == session_id && s.initial_url == raw && s.account_id == account_id && s.account_generation == account_generation && app.get_webview(&s.label).is_some());
+        let reuse = state.session.lock().unwrap().as_ref().is_some_and(|s| s.matches_task_page(&owner, &session_id, &account_id, account_generation, &raw) && app.get_webview(&s.label).is_some());
         if !reuse {
             release_current(&app);
             // Never transfer a live profile to another signed-in Eureka user,
             // nor revive a generation retired by clear-login/delete.
             discard_parked(&app, |s| s.owner != owner || app.get_webview(&s.label).is_none()
-                || s.account_id == account_id && s.account_generation != account_generation);
+                || s.account_id == account_id && s.account_generation != account_generation
+                || s.owner == owner && s.id == session_id && !s.matches_task_page(&owner, &session_id, &account_id, account_generation, &raw));
             let cached = {
                 let mut parked = state.parked.lock().unwrap();
-                parked.iter().position(|s| s.owner == owner && account_id.is_some() && s.account_id == account_id
-                    && s.account_generation == account_generation && app.get_webview(&s.label).is_some()).map(|i| parked.remove(i))
+                parked.iter().position(|s| s.matches_task_page(&owner, &session_id, &account_id, account_generation, &raw)
+                    && app.get_webview(&s.label).is_some()).map(|i| parked.remove(i))
             };
             if let Some(mut session) = cached {
-                let (dir, _) = account.as_ref().ok_or("accountMissing")?;
-                let mut latest = match accounts::read(dir) { Ok(account) => account, Err(error) => { dispose(&app, session); return Err(error); } };
-                if latest.deleted || latest.generation != account_generation { dispose(&app, session); return Err("accountMissing".into()); }
-                latest.last_used_at = Some(accounts::now());
-                if let Err(error) = accounts::write(dir, &latest) { park(&app, session); return Err(error); }
-                session.id = session_id.clone();
-                session.initial_url = raw;
                 session.touched = Instant::now();
                 session.ui_blocked = overlay.as_ref().is_some_and(Overlay::blocks_input);
                 session.snapshot.notice = None;
-                session.snapshot.loading = true;
-                session.snapshot.url = display_url(&target);
-                let label = session.label.clone();
+                session.snapshot.active = true;
                 *state.session.lock().unwrap() = Some(session);
-                let view = app.get_webview(&label).ok_or("accountNotOpen")?;
-                if view.navigate(target).is_err() { release_current(&app); return Err("无法打开网站入口，请重试".into()); }
+                // Re-present the existing document; do not navigate or repeat
+                // a query just because the user returned to this task.
             } else {
             let n = state.next.fetch_add(1, Ordering::Relaxed);
             let label = format!("automation-browser-{}-{n}", std::process::id());
             let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos();
             let (profile, account_lease) = if let Some((dir, mut account)) = account {
-                let lease = accounts::lease(&dir)?;
+                let shared_lease = state.parked.lock().unwrap().iter().find(|s| s.owner == owner && s.account_id == account_id && s.account_generation == account_generation)
+                    .and_then(|s| s._account_lease.clone());
+                let lease = if let Some(lease) = shared_lease { lease } else { Arc::new(accounts::lease(&dir)?) };
                 // Re-read under the cross-process lease: reset/delete may have won the race.
                 let latest = accounts::read(&dir)?;
                 if latest.deleted || latest.generation != account.generation { return Err("accountMissing".into()); }
@@ -322,7 +369,7 @@ pub async fn desktop_automation_browser(
                 revision: 0,
                 owner: owner.clone(), id: session_id.clone(), label: label.clone(), initial_url: raw,
                 profile: profile.clone(), touched: Instant::now(),
-                snapshot: Snapshot { controlled: false, opened: true, title: "网页".into(), url: display_url(&target), loading: true, notice: None, zoom_percent: 100 },
+                snapshot: Snapshot { controlled: false, opened: true, active: true, title: "网页".into(), url: display_url(&target), loading: true, notice: None, zoom_percent: 100 },
             });
             let nav_app = app.clone(); let nav_label = label.clone();
             let popup_app = app.clone(); let popup_label = label.clone();
@@ -360,13 +407,13 @@ pub async fn desktop_automation_browser(
                     NewWindowResponse::Deny
                 });
             if window.add_child(builder, area.position, area.size).is_err() {
-                close_all(&app); return Err("原生网站视图创建失败，请检查 WebView2 运行时".into());
+                close_current(&app); return Err("原生网站视图创建失败，请检查 WebView2 运行时".into());
             }
             }
             let enabled = account_id.as_deref().map(|id| accounts::active(&app, &owner, id).map(|(_, a)| a.password_autosave)).transpose()?.unwrap_or(false);
             let label = state.session.lock().unwrap().as_ref().ok_or("accountNotOpen")?.label.clone();
             let view = app.get_webview(&label).ok_or("accountNotOpen")?;
-            if let Err(error) = set_password_autosave(&view, enabled).await { close_all(&app); return Err(error); }
+            if let Err(error) = set_password_autosave(&view, enabled).await { close_current(&app); return Err(error); }
         }
     }
     let label = {
@@ -379,8 +426,7 @@ pub async fn desktop_automation_browser(
         if action == "open" && session.snapshot.controlled && zoom_percent.is_some_and(|percent| percent != session.snapshot.zoom_percent) { return Err("请先暂停 AI 再调整网页缩放".into()); }
         session.label.clone()
     };
-    if action == "close" { release_current(&app); return Ok(Snapshot::default()); }
-    if validate_account_session(&app, false).is_err() { close_all(&app); return Err("accountMissing".into()); }
+    if validate_account_session(&app, false).is_err() { close_current(&app); return Err("accountMissing".into()); }
     if matches!(action.as_str(), "navigate" | "back" | "forward" | "reload" | "zoom") && state.session.lock().unwrap().as_ref().is_some_and(|s| s.snapshot.controlled) {
         return Err("请先暂停 AI 并接管网页".into());
     }
@@ -459,14 +505,15 @@ async fn evaluate_page(view: &tauri::Webview, script: String) -> Result<serde_js
     Ok(value)
 }
 
-fn consume_application_ticket(ticket: &str, payload: &str) -> Result<(), String> {
+fn consume_application_ticket(ticket: &str, payload: &str) -> Result<(), String> { application_ticket(ticket,payload,false) }
+fn application_ticket(ticket: &str, payload: &str, check_only:bool) -> Result<(), String> {
     use std::{io::{Read, Write}, net::{SocketAddr, TcpStream}};
     if ticket.len() != 64 || !ticket.bytes().all(|b| b.is_ascii_hexdigit()) { return Err("网页派发凭证无效".into()); }
     let address: SocketAddr = "127.0.0.1:8080".parse().map_err(|_| "本机地址无效")?;
     let mut stream = TcpStream::connect_timeout(&address, Duration::from_secs(2)).map_err(|_| "本机网页授权服务未连接")?;
     stream.set_read_timeout(Some(Duration::from_secs(6))).map_err(|_| "网页授权读取失败")?;
     stream.set_write_timeout(Some(Duration::from_secs(3))).map_err(|_| "网页授权写入失败")?;
-    let header = format!("POST /api/automation/browser-ticket HTTP/1.1\r\nHost: 127.0.0.1:8080\r\nContent-Type: application/json\r\nX-Eureka-Browser-Ticket: {ticket}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", payload.len());
+    let header = format!("POST /api/automation/browser-ticket HTTP/1.1\r\nHost: 127.0.0.1:8080\r\nContent-Type: application/json\r\nX-Eureka-Browser-Ticket: {ticket}\r\nX-Eureka-Browser-Ticket-Check: {}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", if check_only {1}else{0}, payload.len());
     stream.write_all(header.as_bytes()).and_then(|_| stream.write_all(payload.as_bytes())).map_err(|_| "网页授权发送失败")?;
     let mut reply = Vec::new(); stream.take(4096).read_to_end(&mut reply).map_err(|_| "网页授权响应未知，本次不会重复派发")?;
     let text = String::from_utf8_lossy(&reply);
@@ -481,9 +528,9 @@ pub async fn desktop_automation_app(webview: tauri::Webview, owner: String, sess
     if !trusted_caller(&webview) || !session_id.starts_with("automation:app:") || payload.len() > 100000 { return Err("应用网页请求无效".into()); }
     let request: serde_json::Value = serde_json::from_str(&payload).map_err(|_| "应用网页请求格式无效")?;
     let method = request.get("method").and_then(|v| v.as_str()).unwrap_or("");
-    if !matches!(method, "probe" | "observe" | "read" | "locate" | "extract" | "operation" | "navigate") { return Err("应用网页方法不支持".into()); }
+    if !matches!(method, "probe" | "observe" | "read" | "locate" | "extract" | "operation" | "navigate" | "request") { return Err("应用网页方法不支持".into()); }
     let app = webview.app_handle().clone(); let state = app.state::<BrowserState>();
-    let _operation = state.operation.lock().await;
+    let mut operation_guard = Some(state.operation.lock().await);
     validate_account_session(&app, method != "probe")?;
     let (view, _) = observation_identity(&app, &owner, &session_id)?;
     let (sequence, environment) = {
@@ -493,9 +540,11 @@ pub async fn desktop_automation_app(webview: tauri::Webview, owner: String, sess
         (s.control_sequence, s.account_id.as_ref().map(|id| format!("account:{id}:{}", s.account_generation)).unwrap_or_else(|| format!("temporary:{}", s.label)))
     };
     if let Some(expected) = request.get("expected").and_then(|v| v.get("environment")).and_then(|v| v.as_str()) {
-        if expected != environment { return Err("浏览环境已重置或切换，请重新授权".into()); }
+        if expected != environment { return Err("浏览环境已重置或切换，请重新连接".into()); }
     }
-    let script = |phase: &str, key: &str, before: &serde_json::Value| format!("{}({},{},{},{});", include_str!("app-browser.js"), request, serde_json::json!(phase), serde_json::json!(key), before);
+    let mut page_request=request.clone();
+    for pointer in ["/args/input/files","/args/input/multipart/files"] {if let Some(files)=page_request.pointer_mut(pointer).and_then(|v|v.as_array_mut()){for file in files{if let Some(file)=file.as_object_mut(){file.remove("path");file.remove("sha256");}}}}
+    let script = |phase: &str, key: &str, before: &serde_json::Value| format!("{}({},{},{},{});", include_str!("app-browser.js"), page_request, serde_json::json!(phase), serde_json::json!(key), before);
     let before = evaluate_page(&view, script("preflight", "", &serde_json::Value::Null)).await?;
     if let Some(error) = before.get("error").and_then(|v| v.as_str()) { return Err(error.into()); }
     let gate_ticket = ticket.clone(); let gate_payload = payload.clone();
@@ -504,10 +553,37 @@ pub async fn desktop_automation_app(webview: tauri::Webview, owner: String, sess
         let guard = state.session.lock().unwrap(); let s = guard.as_ref().filter(|s| s.owner == owner && s.id == session_id && s.control_sequence == sequence).ok_or("网页控制已变化")?;
         if method != "probe" && s.control_token.as_deref() != Some(token.as_str()) { return Err("网页控制已暂停，结果未重复派发".into()); }
     }
-    let mut result = if matches!(method, "operation" | "navigate") {
+    if method == "request" && (request.pointer("/args/stream").is_some() || request.pointer("/args/input/multipart").is_some() || request.pointer("/site/operations").and_then(|v|v.as_array()).is_some_and(|ops|ops.iter().any(|op|op.pointer("/request/auth").is_some()))) { drop(operation_guard.take()); }
+    let mut result = if method == "request" {
+        let operation_id = request.pointer("/args/operationId").and_then(|v| v.as_str()).ok_or("API 操作引用缺失")?;
+        let operation = request.pointer("/site/operations").and_then(|v| v.as_array()).and_then(|ops| ops.iter().find(|o| o.get("id").and_then(|v| v.as_str()) == Some(operation_id))).ok_or("API 操作未声明")?;
+        let declaration = operation.get("request").cloned().ok_or("API 请求声明缺失")?;
+        let input = request.pointer("/args/input").cloned().unwrap_or(serde_json::json!({}));
+        let origin = tauri::Url::parse(request.pointer("/site/startUrl").and_then(|v| v.as_str()).ok_or("网站入口缺失")?).map_err(|_| "网站入口无效")?.origin().ascii_serialization();
+        // Return the business response without DOM verification. Applications
+        // decide success from the endpoint's contract (for example data.ok).
+        let sink = request.pointer("/args/stream").cloned().map(serde_json::from_value).transpose().map_err(|_|"Invalid download staging options")?;
+        let app_id=request.get("appId").and_then(|value|value.as_str()).unwrap_or("");
+        let extended=declaration.get("auth").is_some()||input.get("multipart").is_some();
+        let checked_at=std::sync::Mutex::new(Instant::now());
+        crate::automation_session_request::execute_with_stream(&view, declaration, input, &origin, sink, Some((&app,&owner,app_id,request.pointer("/args/expectedCredentialRevision").and_then(|v|v.as_str()))), || {
+            if extended && checked_at.lock().unwrap().elapsed()>Duration::from_secs(1) {application_ticket(&ticket,&payload,true)?;*checked_at.lock().unwrap()=Instant::now();}
+            let guard=state.session.lock().map_err(|_|"Browser state unavailable")?;
+            let current=guard.as_ref().filter(|s|s.owner==owner && s.id==session_id && s.control_sequence==sequence).ok_or("Download cancelled: browser session changed")?;
+            if current.control_token.as_deref()!=Some(token.as_str()){return Err("Download cancelled: browser control revoked".into());} Ok(())
+        }).await?
+    } else if matches!(method, "operation" | "navigate") {
         let key = before.get("key").and_then(|v| v.as_str()).ok_or("网页预检查缺少引用")?;
         let baseline = before.get("before").cloned().unwrap_or(serde_json::Value::Null);
         let mut value = evaluate_page(&view, script("execute", key, &baseline)).await.map_err(|_| "网页操作结果未知，不会自动重试")?;
+        if value.get("nativeUpload").and_then(|v|v.as_bool())==Some(true) {
+            let operation_id=request.pointer("/args/operationId").and_then(|v|v.as_str()).ok_or("上传操作缺失")?;
+            let operation=request.pointer("/site/operations").and_then(|v|v.as_array()).and_then(|ops|ops.iter().find(|op|op["id"].as_str()==Some(operation_id))).ok_or("上传未声明")?;
+            if operation["kind"]!="upload"||operation["effect"]!="mutation"||operation.get("verify").is_none(){return Err("浏览器上传需要变更声明与校验".into());}
+            let files=request.pointer("/args/input/files").and_then(|v|v.as_array()).ok_or("上传文件缺失")?;
+            native_upload_files(&view,key,operation,files).await?;
+            value=evaluate_page(&view,script("verify",key,&baseline)).await.map_err(|_|"上传已派发，校验结果未知，不自动重试")?;
+        }
         if method == "operation" {
             let operation_id = request.pointer("/args/operationId").and_then(|v| v.as_str()).unwrap_or("");
             let verified = request.pointer("/site/operations").and_then(|v| v.as_array()).and_then(|ops| ops.iter().find(|o| o.get("id").and_then(|v| v.as_str()) == Some(operation_id))).is_some_and(|o| o.get("verify").is_some());
@@ -522,8 +598,51 @@ pub async fn desktop_automation_app(webview: tauri::Webview, owner: String, sess
         }
         value
     } else { evaluate_page(&view, script("read", "", &serde_json::Value::Null)).await? };
+    if method == "request" && !state.session.lock().unwrap().as_ref().is_some_and(|s| s.owner == owner && s.id == session_id && s.control_sequence == sequence && s.control_token.as_deref() == Some(token.as_str())) { return Err("API 已派发但网页连接已变化，结果未知，不重复提交".into()); }
     result["environment"] = serde_json::json!(environment);
     Ok(result)
+}
+
+// Fixed internal operations only; no CDP method or JavaScript supplied by an application.
+async fn upload_protocol(view:&tauri::Webview,method:&'static str,parameters:serde_json::Value)->Result<serde_json::Value,String>{
+    let(tx,rx)=std::sync::mpsc::channel();let parameters=parameters.to_string();
+    view.with_webview(move|platform|unsafe{
+        let completion=tx.clone();let callback=webview2_com::CallDevToolsProtocolMethodCompletedHandler::create(Box::new(move|status,result|{let _=completion.send(if status.is_ok(){Ok(result)}else{Err(())});Ok(())}));
+        let method=windows::core::HSTRING::from(method);let parameters=windows::core::HSTRING::from(parameters);
+        if platform.controller().CoreWebView2().and_then(|core|core.CallDevToolsProtocolMethod(&method,&parameters,&callback)).is_err(){let _=tx.send(Err(()));}
+    }).map_err(|_|"浏览器上传不可用")?;
+    let raw=tauri::async_runtime::spawn_blocking(move||rx.recv_timeout(Duration::from_secs(6))).await.map_err(|_|"浏览器上传不可用")?.map_err(|_|"浏览器上传结果未知，不自动重试")?.map_err(|_|"浏览器上传未确认，不自动重试")?;
+    if raw.len()>32000{return Err("浏览器上传回执过大".into());}
+    let value:serde_json::Value=serde_json::from_str(&raw).map_err(|_|"浏览器上传回执无效")?;
+    if value.get("error").is_some()||value.get("exceptionDetails").is_some(){return Err("浏览器上传未完成，不自动重试".into());}Ok(value)
+}
+fn browser_upload_paths(operation:&serde_json::Value,files:&[serde_json::Value])->Result<(Vec<String>,Vec<std::fs::File>),String>{
+    use std::os::windows::fs::{MetadataExt,OpenOptionsExt};
+    let max=operation.pointer("/upload/maxBytes").and_then(|v|v.as_u64()).unwrap_or(536870912);
+    if max==0||max>536870912||files.is_empty()||files.len()>16||files.len()>1&&operation.pointer("/upload/multiple").and_then(|v|v.as_bool())!=Some(true){return Err("浏览器上传大小或数量无效".into());}
+    let mut paths=Vec::new();let mut handles=Vec::new();let mut total=0u64;
+    for file in files {
+        let path=std::path::Path::new(file["path"].as_str().ok_or("上传快照缺失")?);
+        let folder=path.parent().and_then(|v|v.file_name()).and_then(|v|v.to_str()).and_then(|v|v.strip_prefix(".eureka-upload-")).unwrap_or("");
+        if !path.is_absolute()||folder.len()!=32||!folder.bytes().all(|v|v.is_ascii_hexdigit())||path.file_name().and_then(|v|v.to_str())!=file["filename"].as_str(){return Err("上传快照路径无效".into());}
+        for parent in path.ancestors(){let meta=std::fs::symlink_metadata(parent).map_err(|_|"上传快照不可读取")?;if meta.file_attributes()&0x400!=0{return Err("上传快照不能是链接".into());}}
+        if operation.pointer("/upload/contentTypes").and_then(|v|v.as_array()).is_some_and(|values|!values.contains(&file["contentType"])){return Err("上传文件类型未授权".into());}
+        let handle=std::fs::OpenOptions::new().read(true).share_mode(0x1|0x4).open(path).map_err(|_|"上传快照不可读取")?;let meta=handle.metadata().map_err(|_|"上传快照不可读取")?;
+        if !meta.is_file()||Some(meta.len())!=file["size"].as_u64()||meta.len()>max-total{return Err("上传快照大小已变化或超出限制".into());}total+=meta.len();paths.push(path.to_string_lossy().into_owned());handles.push(handle);
+    }Ok((paths,handles))
+}
+async fn native_upload_files(view:&tauri::Webview,key:&str,operation:&serde_json::Value,files:&[serde_json::Value])->Result<(),String>{
+    let(paths,_handles)=browser_upload_paths(operation,files)?;
+    let expression=format!("(()=>{{const s=window.__eurekaAppUpload;delete window.__eurekaAppUpload;return s&&s.id==={}&&s.target?.isConnected?s.target:null;}})()",serde_json::json!(key));
+    let remote=upload_protocol(view,"Runtime.evaluate",serde_json::json!({"expression":expression,"returnByValue":false,"objectGroup":"eureka-upload"})).await?;
+    let object=remote.pointer("/result/objectId").and_then(|v|v.as_str()).ok_or("上传控件已变化，未派发")?;
+    let outcome=async{
+        let node=upload_protocol(view,"DOM.describeNode",serde_json::json!({"objectId":object})).await?;
+        let backend=node.pointer("/node/backendNodeId").and_then(|v|v.as_u64()).ok_or("上传控件已失效")?;
+        if node.pointer("/node/nodeName").and_then(|v|v.as_str())!=Some("INPUT"){return Err("上传目标不是文件控件".into());}
+        upload_protocol(view,"DOM.setFileInputFiles",serde_json::json!({"files":paths,"backendNodeId":backend})).await?;Ok(())
+    }.await;
+    let _=upload_protocol(view,"Runtime.releaseObject",serde_json::json!({"objectId":object})).await;outcome
 }
 
 // Browser-owned password storage and prompts only; no credentials cross IPC.
@@ -637,7 +756,7 @@ pub async fn desktop_automation_control(webview: tauri::Webview, owner: String, 
     };
     let view = app.get_webview(&label).ok_or("browserClosed")?;
     if set_manual_input(&view, mode == "pause").await.is_err() {
-        close_all(&app); return Err("inputLockFailed".into());
+        close_current(&app); return Err("inputLockFailed".into());
     }
     let mut guard = state.session.lock().unwrap();
     let s = guard.as_mut().filter(|s| s.label == label && s.control_sequence == sequence).ok_or("staleControl")?;
@@ -686,7 +805,7 @@ pub async fn desktop_automation_accounts(webview: tauri::Webview, owner: String,
         let current_label = state.session.lock().unwrap().as_ref().filter(|s| s.owner == owner && s.account_id.as_deref() == Some(id.as_str())).map(|s| s.label.clone());
         let parked_label = state.parked.lock().unwrap().iter().find(|s| s.owner == owner && s.account_id.as_deref() == Some(id.as_str())).map(|s| s.label.clone());
         if action == "update" {
-            if current_label.is_some() { return Err("accountBusy".into()); }
+            if current_label.is_some() || state.parked.lock().unwrap().iter().any(|s| s.owner == owner && s.account_id.as_deref() == Some(id.as_str()) && !s.id.is_empty()) { return Err("accountBusy".into()); }
             let name = name.ok_or("accountInvalid")?; let origin = origin.ok_or("accountInvalid")?;
             if parked_label.is_some() { accounts::update_leased(&dir, &id, &name, &origin)?; }
             else { accounts::update(&app, &owner, &id, &name, &origin)?; }
@@ -695,15 +814,20 @@ pub async fn desktop_automation_accounts(webview: tauri::Webview, owner: String,
             let _lease = if current_label.is_some() || parked_label.is_some() { None } else { Some(accounts::lease(&dir)?) };
             let mut account = accounts::read(&dir)?;
             if account.deleted { return Err("accountMissing".into()); }
-            let view = current_label.as_ref().or(parked_label.as_ref()).and_then(|label| app.get_webview(label));
-            if let Some(view) = &view {
-                if state.session.lock().unwrap().as_ref().is_some_and(|s| s.snapshot.controlled) { return Err("accountBusy".into()); }
-                set_password_autosave(view, enabled).await?;
-            }
             let previous = account.password_autosave;
+            if state.session.lock().unwrap().as_ref().is_some_and(|s| s.owner == owner && s.account_id.as_deref() == Some(id.as_str()) && s.snapshot.controlled) { return Err("accountBusy".into()); }
+            let mut labels = state.parked.lock().unwrap().iter().filter(|s| s.owner == owner && s.account_id.as_deref() == Some(id.as_str())).map(|s| s.label.clone()).collect::<Vec<_>>();
+            if let Some(label) = &current_label { labels.push(label.clone()); }
+            let views = labels.iter().filter_map(|label| app.get_webview(label)).collect::<Vec<_>>();
+            for view in &views {
+                if let Err(error) = set_password_autosave(view, enabled).await {
+                    for old in &views { let _ = set_password_autosave(old, previous).await; }
+                    return Err(error);
+                }
+            }
             account.password_autosave = enabled;
             if let Err(error) = accounts::write(&dir, &account) {
-                if let Some(view) = &view { let _ = set_password_autosave(view, previous).await; }
+                for view in &views { let _ = set_password_autosave(view, previous).await; }
                 return Err(error);
             }
         } else if matches!(action.as_str(), "reset" | "delete") {
@@ -735,6 +859,28 @@ pub async fn desktop_automation_accounts(webview: tauri::Webview, owner: String,
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn browser_uploads_require_private_snapshots_and_enforce_size_and_type() {
+        let root=std::env::temp_dir().join(format!(".eureka-upload-{}",uuid::Uuid::new_v4().simple()));std::fs::create_dir(&root).unwrap();let path=root.join("report.csv");std::fs::write(&path,[0x81u8,0,0xff]).unwrap();
+        let operation=serde_json::json!({"upload":{"maxBytes":3,"contentTypes":["text/csv"]}});
+        let file=serde_json::json!({"path":path.to_string_lossy(),"filename":"report.csv","size":3,"contentType":"text/csv"});
+        {let(paths,handles)=browser_upload_paths(&operation,&[file.clone()]).unwrap();assert_eq!(paths.len(),1);assert_eq!(handles.len(),1);}
+        for invalid in [serde_json::json!({"size":4}),serde_json::json!({"contentType":"text/plain"}),serde_json::json!({"filename":"other.csv"}),serde_json::json!({"path":"C:/outside.csv"})] {let mut changed=file.clone();for(key,value)in invalid.as_object().unwrap(){changed[key]=value.clone();}assert!(browser_upload_paths(&operation,&[changed]).is_err());}
+        assert!(browser_upload_paths(&operation,&[file.clone(),file]).is_err());std::fs::remove_file(path).unwrap();std::fs::remove_dir(root).unwrap();
+    }
+    #[test]
+    fn task_pages_are_not_retargeted_by_environment_or_empty_keeper_identity() {
+        let mut page = Session { account_id: Some("profile-a".into()), account_generation: 1, _account_lease: None,
+            control_token: None, control_sequence: 7, revision: 0, owner: "owner-a".into(), id: "task-a".into(),
+            label: "page-a".into(), initial_url: "https://example.com/start".into(), profile: PathBuf::from("fixture"),
+            touched: Instant::now(), snapshot: Snapshot::default(), ui_blocked: true };
+        assert!(page.matches_task_page("owner-a", "task-a", &Some("profile-a".into()), 1, "https://example.com/start"));
+        assert!(!page.matches_task_page("owner-a", "task-b", &Some("profile-a".into()), 1, "https://example.com/start"));
+        assert!(!page.matches_task_page("owner-b", "task-a", &Some("profile-a".into()), 1, "https://example.com/start"));
+        assert!(!page.matches_task_page("owner-a", "task-a", &Some("profile-a".into()), 2, "https://example.com/start"));
+        page.id.clear();
+        assert!(!page.matches_task_page("owner-a", "", &Some("profile-a".into()), 1, "https://example.com/start"));
+    }
     #[test]
     fn urls_do_not_allow_files_credentials_or_script() {
         for raw in ["file:///C:/secret", "javascript:alert(1)", "https://a:b@example.com", "not a URL"] { assert!(destination(raw).is_err()); }

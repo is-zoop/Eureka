@@ -1,9 +1,9 @@
+import { createCompatibleModelRuntime } from "@/lib/model-runtime-compat";
 import { NextResponse } from "next/server";
 import { mkdtempSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
-import { completeSimple, type AssistantMessage } from "@earendil-works/pi-ai/compat";
-import { ModelRuntime } from "@earendil-works/pi-coding-agent";
+import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { hasJsonContentType, isApiRequestAllowed } from "@/lib/request-security";
 
 export const dynamic = "force-dynamic";
@@ -59,7 +59,7 @@ export async function POST(req: Request) {
       },
     }, null, 2), "utf8");
 
-    const modelRuntime = await ModelRuntime.create({ modelsPath });
+    const modelRuntime = await createCompatibleModelRuntime({ modelsPath, allowModelNetwork: false, refreshOnCreate: false });
     const loadError = modelRuntime.getError();
     if (loadError) return NextResponse.json({ ok: false, error: loadError });
 
@@ -67,7 +67,7 @@ export async function POST(req: Request) {
     if (!model) return NextResponse.json({ ok: false, error: `Model not found: ${providerName}/${modelId}` });
 
     const resolved = await modelRuntime.getAuth(model);
-    if (!resolved?.auth.apiKey) {
+    if (!resolved) {
       return NextResponse.json({ ok: false, error: `No API key found for "${providerName}"` });
     }
 
@@ -77,15 +77,13 @@ export async function POST(req: Request) {
     const startedAt = Date.now();
 
     try {
-      const message = await completeSimple(model, {
+      const message = await modelRuntime.completeSimple(model, {
         messages: [{
           role: "user",
           content: "Reply with OK only.",
           timestamp: Date.now(),
         }],
       }, {
-        apiKey: resolved.auth.apiKey,
-        headers: resolved.auth.headers,
         maxTokens: 16,
         timeoutMs: TEST_TIMEOUT_MS,
         maxRetries: 0,

@@ -750,7 +750,7 @@ function AssistantMessageView({
       )}
 
       <div style={{
-        display: "flex", alignItems: "center", gap: 8, marginTop: 4,
+        display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, marginTop: 4,
       }}>
         {message.usage && !isStreaming && (
           <div style={{ fontSize: 11, color: "var(--text-dim)" }}>
@@ -830,7 +830,7 @@ export const ProcessBlockView = memo(function ProcessBlockView({ reference, tool
 export function ProcessMessageMetadata({ message, modelNames }: { message: AssistantMessage; modelNames?: Record<string, string> }) {
   const { t } = useI18n();
   return <div className="task-phase-message-info" aria-label={t("taskPhase.messageInfo")}>
-    <span>{modelNames?.[message.model] ?? message.model}</span>
+    <span>{modelNames?.[`${message.provider}:${message.model}`] ?? modelNames?.[message.model] ?? message.model}</span>
     {message.usage && <span>{formatUsage(message.usage)}</span>}
     {message.timestamp && <span>{formatTime(message.timestamp)}</span>}
   </div>;
@@ -949,6 +949,7 @@ function ToolCallBlock({ block, result, duration, isRunning = false, metadata }:
   const labelKeys: Record<string, string> = {
     read: "toolActivity.read",
     bash: "toolActivity.command",
+    powershell: "toolActivity.command",
     "bash (local)": "toolActivity.localCommand",
     grep: "toolActivity.search",
     find: "toolActivity.find",
@@ -956,11 +957,15 @@ function ToolCallBlock({ block, result, duration, isRunning = false, metadata }:
     load_tool: "toolActivity.load",
     load_tools: "toolActivity.load",
     request_user_input: "clarification.title",
+    eureka_generate_image: "imageGeneration.title",
   };
   const labelKey = isEditTool ? "toolActivity.edit" : isWriteTool ? "toolActivity.write" : labelKeys[toolName] ?? "toolActivity.generic";
   const label = t(labelKey);
-  const preview = toolName === "request_user_input" && isRecord(result?.details) && typeof result.details.eurekaClarificationSummary === "string"
-    ? result.details.eurekaClarificationSummary : getToolPreview(block);
+  const writeFailure = toolName === "eureka_app_write" && result?.isError
+    ? result.content.find(item => item.type === "text" && item.text.trim()) : undefined;
+  const preview = writeFailure?.type === "text" ? writeFailure.text.trim().split(/\r?\n/)[0].slice(0, 240)
+    : toolName === "request_user_input" && isRecord(result?.details) && typeof result.details.eurekaClarificationSummary === "string"
+      ? result.details.eurekaClarificationSummary : getToolPreview(block);
   const filePath = block.input?.path ?? block.input?.file_path;
   const isFile = (toolName === "read" || isEditTool || isWriteTool) && typeof filePath === "string" && filePath.length > 0;
   const summary = isFile ? filePath.split(/[\\/]/).at(-1) || filePath
@@ -1400,7 +1405,7 @@ function formatUsage(usage: {
   if (usage.output) parts.push(`${usage.output.toLocaleString()} out`);
   if (usage.cacheRead) parts.push(`${usage.cacheRead.toLocaleString()} cache R`);
   if (usage.cacheWrite) parts.push(`${usage.cacheWrite.toLocaleString()} cache W`);
-  if (usage.cost?.total) parts.push(`$${usage.cost.total.toFixed(4)}`);
+  if (typeof usage.cost?.total === "number" && Number.isFinite(usage.cost.total) && usage.cost.total >= 0) parts.push(`$${usage.cost.total.toFixed(4)}`);
   return parts.join(" · ");
 }
 

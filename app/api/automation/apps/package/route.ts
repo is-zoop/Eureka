@@ -22,8 +22,8 @@ export async function GET(request: Request) {
     }
     const id = query.get("id"); if (!id) throw new AutomationAppError("缺少应用 ID");
     await auth.store.useLatest(); const install = await auth.store.find(id), version = query.get("version");
-    if (version && version !== install?.activeVersion) throw new AutomationAppError("仅支持导出最新应用版本", 409);
-    const result = await auth.store.export(id); auth.assertIdentity(); return appDownload(result.bytes, result.filename);
+    if(install?.managedPlugin&&version&&version!==install.activeVersion)throw new AutomationAppError("组织插件仅能导出当前安装版本",403);
+    const result = await auth.store.export(id,version??undefined); auth.assertIdentity(); return appDownload(result.bytes, result.filename);
   } catch (e) { return appFailure(e); }
 }
 export async function POST(request: Request) {

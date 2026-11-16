@@ -10,6 +10,7 @@ import { Input } from "./ui/input";
 import { Switch } from "./ui/switch";
 import { Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "./ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "./ui/dropdown-menu";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { SettingsCard, SettingsLayout, SettingsRow, SettingsSection } from "./SettingsLayout";
 
 type AccountAction = Parameters<typeof accountCommand>[1];
@@ -23,12 +24,13 @@ async function readOwner() {
   return identity.ownerKey as string;
 }
 
-export function BrowserSettings() {
+export function BrowserSettings({ embedded = false }: { embedded?: boolean }) {
   const { t } = useI18n();
   const [desktop, setDesktop] = useState<boolean | null>(null);
   const [owner, setOwner] = useState<string | null>(null), [accounts, setAccounts] = useState<WebsiteAccount[]>([]);
   const [loading, setLoading] = useState(true), [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [selectedId, setSelectedId] = useState(DEFAULT_BROWSER_ID);
   const [createOpen, setCreateOpen] = useState(false), [name, setName] = useState(""), [website, setWebsite] = useState("");
   const [editing, setEditing] = useState<{ id: string; owner: string } | null>(null);
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
@@ -99,12 +101,12 @@ export function BrowserSettings() {
       origin = url.origin;
     } catch { setError(t("browserSettings.invalidInput")); return; }
     const target = editing, id = target?.id ?? crypto.randomUUID().replaceAll("-", "");
-    if (await change(target ? "update" : "create", { id, name: name.trim(), origin }, target?.owner ?? owner)) { setCreateOpen(false); setEditing(null); setName(""); setWebsite(""); }
+    if (await change(target ? "update" : "create", { id, name: name.trim(), origin }, target?.owner ?? owner)) { setSelectedId(id); setCreateOpen(false); setEditing(null); setName(""); setWebsite(""); }
   }
 
   const disabled = loading || busy || !owner;
-  const defaultAccount = accounts.find(account => account.id === DEFAULT_BROWSER_ID && !account.deleted);
-  const environments = accounts.filter(account => account.id !== DEFAULT_BROWSER_ID && !account.deleted);
+  const available = accounts.filter(account => !account.deleted);
+  const selectedAccount = available.find(account => account.id === selectedId) ?? available.find(account => account.id === DEFAULT_BROWSER_ID) ?? available[0];
   const pending = accounts.filter(account => account.cleanupPending);
   const accountName = (account: WebsiteAccount) => account.id === DEFAULT_BROWSER_ID ? t("browserSettings.default") : account.name;
 
@@ -121,24 +123,22 @@ export function BrowserSettings() {
     </DropdownMenuContent></DropdownMenu>;
   }
 
-  return <SettingsLayout title={t("settings.browser")} description={t("browserSettings.description")} actions={desktop && <>
+  const actions = desktop && <>
     <Button variant="outline" size="icon" disabled={loading || busy} aria-label={t("browserSettings.refresh")} onClick={() => void reload()}><RefreshCwIcon size={15} /></Button>
     <Button type="button" size="sm" className="gap-1.5" disabled={disabled} onClick={() => { setError(""); setEditing(null); setName(""); setWebsite(""); setCreateOpen(true); }}><PlusIcon size={13} strokeWidth={1.6} aria-hidden="true" />{t("browserSettings.create")}</Button>
-  </>}>
+  </>;
+  const content = <>
     {error && !createOpen && !confirmation && <p role="alert" className="m-0 text-sm text-[var(--danger,#b42318)]">{error}</p>}
     {desktop === null || loading && !accounts.length ? <p role="status" className="text-sm text-[var(--text-muted)]">{t("browserSettings.loading")}</p> : !desktop ? <SettingsCard className="px-4"><SettingsRow label={t("browserSettings.desktopOnly")} description={t("browserSettings.desktopDescription")}><span /></SettingsRow></SettingsCard> : <>
-      {defaultAccount && <SettingsSection title={t("browserSettings.default")}>
-        <SettingsCard className="divide-y divide-[var(--border)] px-4">
-          <SettingsRow label={t("browserSettings.default")} description={defaultAccount.inUse ? t("browserSettings.inUseHint") : t("browserSettings.defaultDescription")}>{management(defaultAccount)}</SettingsRow>
-          {passwordRow(defaultAccount)}
-        </SettingsCard>
-      </SettingsSection>}
-      {owner && <SettingsSection title={t("browserSettings.environments")} description={t("browserSettings.environmentsDescription")} meta={environments.length}>
-        {environments.length ? <div className="flex flex-col gap-3">{environments.map(account => <SettingsCard key={account.id} className="divide-y divide-[var(--border)] px-4">
-          <SettingsRow label={account.name} description={`${account.origin}${account.inUse ? ` · ${t("browserSettings.inUseHint")}` : ""}`}>{management(account)}</SettingsRow>
-          {passwordRow(account)}
-        </SettingsCard>)}</div> : <SettingsCard className="px-4"><SettingsRow label={t("browserSettings.empty")} description={t("browserSettings.emptyDescription")}><span /></SettingsRow></SettingsCard>}
-      </SettingsSection>}
+      {owner && <SettingsCard className="divide-y divide-[var(--border)] px-4">
+        <SettingsRow label={t("browserSettings.selectEnvironment")} description={t("browserSettings.environmentsDescription")} htmlFor="managed-browser-environment">
+          <Select items={available.map(account => ({ value: account.id, label: accountName(account) }))} value={selectedAccount?.id ?? null} disabled={disabled || !available.length} onValueChange={value => { if (value) setSelectedId(value); }}>
+            <SelectTrigger id="managed-browser-environment" className="h-9 w-[220px] max-w-[65vw]"><SelectValue placeholder={t("browserSettings.empty")}/></SelectTrigger>
+            <SelectContent>{available.map(account => <SelectItem key={account.id} value={account.id}>{accountName(account)}</SelectItem>)}</SelectContent>
+          </Select>
+        </SettingsRow>
+        {selectedAccount ? <><SettingsRow label={accountName(selectedAccount)} description={selectedAccount.id === DEFAULT_BROWSER_ID ? t(selectedAccount.inUse ? "browserSettings.inUseHint" : "browserSettings.defaultDescription") : `${selectedAccount.origin}${selectedAccount.inUse ? ` · ${t("browserSettings.inUseHint")}` : ""}`}>{management(selectedAccount)}</SettingsRow>{passwordRow(selectedAccount)}</> : <SettingsRow label={t("browserSettings.empty")} description={t("browserSettings.emptyDescription")}><span /></SettingsRow>}
+      </SettingsCard>}
       {pending.length > 0 && <SettingsSection title={t("browserSettings.pendingCleanup")} description={t("browserSettings.cleanupDescription")}>
         <SettingsCard className="divide-y divide-[var(--border)] px-4">{pending.map(account => <SettingsRow key={account.id} label={accountName(account)} description={account.deleted ? t("browserSettings.deletedPending") : t("browserSettings.retiredPending")}>
           <Button variant="outline" size="sm" disabled={disabled || account.inUse} onClick={() => void change("cleanup", { id: account.id })}>{t("browserSettings.retryCleanup")}</Button>
@@ -159,5 +159,6 @@ export function BrowserSettings() {
       <DialogBody>{confirmation && <p className="m-0 text-sm leading-6">{t(confirmation.action === "delete" ? "browserSettings.confirmDelete" : "browserSettings.confirmClear", { name: accountName(confirmation.account) })}</p>}{error && <p role="alert" className="mt-3 text-sm text-[var(--danger,#b42318)]">{error}</p>}</DialogBody>
       <DialogFooter><Button variant="outline" disabled={busy} onClick={() => setConfirmation(null)}>{t("browserSettings.cancel")}</Button><Button variant="destructive" disabled={disabled} onClick={() => { const target = confirmation; if (target) void change(target.action, { id: target.account.id }, target.owner).then(ok => { if (ok && alive.current) setConfirmation(null); }); }}>{t("browserSettings.confirm")}</Button></DialogFooter>
     </DialogContent></Dialog>
-  </SettingsLayout>;
+  </>;
+  return embedded ? <SettingsSection title={t("settings.browser")} description={t("browserSettings.description")} actions={actions}>{content}</SettingsSection> : <SettingsLayout title={t("settings.browser")} description={t("browserSettings.description")} actions={actions}>{content}</SettingsLayout>;
 }

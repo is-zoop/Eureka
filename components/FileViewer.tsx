@@ -4,11 +4,9 @@ import { NotificationNotice } from "@/components/Notifications";
 
 
 import { useEffect, useState, useRef, useCallback, useMemo, type CSSProperties, type MouseEvent, type ReactElement } from "react";
-import {
-  Prism as SyntaxHighlighter,
-  createElement as renderSyntaxNode,
-  type SyntaxHighlighterProps,
-} from "react-syntax-highlighter";
+import SyntaxHighlighter from "react-syntax-highlighter/dist/esm/prism-async";
+import renderSyntaxNode from "react-syntax-highlighter/dist/esm/create-element";
+import type { SyntaxHighlighterProps } from "react-syntax-highlighter";
 import { editorDarkTheme, editorLightTheme } from "@/lib/code-theme";
 import ReactMarkdown from "react-markdown";
 import { useTheme } from "@/hooks/useTheme";

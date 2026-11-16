@@ -1,5 +1,5 @@
-import { createJiti } from "jiti";
 import { readFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { getAgentDir, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
@@ -7,17 +7,11 @@ import { effectivePlugins, pluginStorageRoot, withHazeRegistryLock } from "./haz
 import { cleanupPluginDirectories, clearPluginSnapshot, pluginMcpName, setPluginSnapshot, validatedPluginRoot, installedPluginComposer, type PluginSnapshot } from "./haze-plugin-resources";
 import { installPluginSelectionRuntime } from "./plugin-selection-runtime";
 import { getProjectTrustStatus } from "./project-trust";
+import { readRuntimeHazeSession } from "./auth/runtime-session";
+import { assertHazeMcpIdentity, type HazeMcpIdentity } from "./haze-native-mcp-auth";
+import { setHazeNativeMcpBindings, clearHazeNativeMcpBindings, type HazeNativeMcpBinding } from "./haze-native-mcp-bindings";
 
-type McpAdapter = { registerMcpServer: (options: { pi: unknown; name: string; definition: Record<string, unknown> }) => unknown };
-
-let adapterModule: Promise<McpAdapter> | null = null;
-
-type ManagedMcp = { capabilityId: string; name: string; serverUrl?: string; type: "MCP" | "Skill"; disabled?: boolean; lifecycle?: "lazy" | "eager" | "keep-alive"; idleTimeout?: number };
-
-function adapter() {
-  adapterModule ??= createJiti(import.meta.url, { interopDefault: true }).import("pi-mcp-adapter") as Promise<McpAdapter>;
-  return adapterModule;
-}
+type ManagedMcp = { exposure?: "direct" | "deferred" | "codemode"; capabilityId: string; name: string; serverUrl?: string; type: "MCP" | "Skill"; disabled?: boolean; scope?: "global" | "project"; lifecycle?: "lazy" | "eager" | "keep-alive"; idleTimeout?: number };
 
 async function readInstalls(path: string): Promise<ManagedMcp[]> {
   try {
@@ -31,51 +25,54 @@ async function listEffectiveManagedMcps(cwd: string) {
     readInstalls(resolve(getAgentDir(), "eureka-haze-capabilities.json")),
     readInstalls(resolve(cwd, ".pi", "eureka-haze-capabilities.json")),
   ]);
-  const effective = new Map(global.filter((item) => item.type === "MCP").map((item) => [item.capabilityId, item]));
-  for (const item of project) if (item.type === "MCP") effective.set(item.capabilityId, item);
+  const effective = new Map<string, ManagedMcp>(global.filter((item) => item.type === "MCP").map((item) => [item.capabilityId, { ...item, scope: "global" as const }]));
+  for (const item of project) if (item.type === "MCP") effective.set(item.capabilityId, { ...item, scope: "project" as const });
   return [...effective.values()];
 }
 
 /** Registers Haze MCPs for one AgentSession without ever persisting their key. */
 export async function installHazeManagedMcpRuntime(pi: ExtensionAPI) {
   installPluginSelectionRuntime(pi);
-  let registrations: Array<{ dispose: () => unknown }> = [];
+  let registrations: string[] = [];
   let activeSessionId: string | undefined;
   let activeCwd: string | undefined;
-  const release = () => { for (const registration of registrations) { try { registration.dispose(); } catch { /* Adapter shutdown may already have released it. */ } } registrations = []; if (activeSessionId) clearPluginSnapshot(activeSessionId); };
+  const release = () => { if (activeSessionId) clearHazeNativeMcpBindings(activeSessionId); for (const name of registrations) pi.unregisterMcpServer(name); registrations = []; if (activeSessionId) clearPluginSnapshot(activeSessionId); };
   const cleanup = async (cwd: string) => { for (const scope of ["global", "project"] as const) if (existsSync(pluginStorageRoot(cwd, scope))) await withHazeRegistryLock(cwd, scope, () => cleanupPluginDirectories(cwd, scope)).catch(() => { /* Windows may still have a resource open; retry next time. */ }); };
   pi.on("session_shutdown", async () => { release(); if (activeCwd) await cleanup(activeCwd); });
   pi.on("session_start", async (_event, context) => {
     release();
     activeSessionId = context.sessionManager.getSessionId();
     activeCwd = context.cwd;
+    const source = process.env.EUREKA_AUTH_HAZE_ISSUER?.replace(/\/$/, "");
+    const login = readRuntimeHazeSession();
+    const identity: HazeMcpIdentity | null = source && login?.runtimeId ? { source, subject: login.principal.subject, runtimeId: login.runtimeId, providerId: login.providerId } : null;
+    const bindings: HazeNativeMcpBinding[] = [];
+    const register = (binding: HazeNativeMcpBinding, exposure: "direct" | "deferred" | "codemode" = "direct") => {
+      bindings.push(binding);
+      setHazeNativeMcpBindings(activeSessionId!, bindings);
+      pi.registerMcpServer(binding.name, { url: binding.url, exposure, timeout: 60 });
+      registrations.push(binding.name);
+    };
     const installs = (await listEffectiveManagedMcps(context.cwd)).filter((install) => !install.disabled && install.serverUrl);
-    const { registerMcpServer } = await adapter();
-    const headerHook = resolve(process.cwd(), "lib", "haze-mcp-request-headers.mjs");
     for (const install of installs) {
       try {
-        const registration = registerMcpServer({
-          pi,
-          name: install.name,
-          definition: {
-            url: install.serverUrl,
-            auth: false,
-            // The adapter runs this hook for each outbound HTTP request. It
-            // refreshes Haze OAuth and resolves the current personal MCP key
-            // inside the local process, so credential reset is picked up on
-            // the next connection without storing a token in env or config.
-            requestHeadersCommand: { command: process.execPath, args: [headerHook], timeoutMs: 30_000 },
-            lifecycle: install.lifecycle ?? "lazy",
-            idleTimeout: install.idleTimeout ?? 10,
+        if (install.scope === "project" && !getProjectTrustStatus(context.cwd, getAgentDir()).trusted) throw new Error("项目资源尚未受信任，Haze MCP 未加载。");
+        const name = /^[A-Za-z0-9_-]+$/.test(install.name) ? install.name : `haze_mcp_${createHash("sha256").update(install.capabilityId).digest("hex").slice(0, 12)}`;
+        register({
+          name, url: install.serverUrl!, authenticated: true, identity,
+          validate: async () => {
+            if (!identity) throw new Error("请登录 Haze 并重载会话。");
+            assertHazeMcpIdentity(identity);
+            const current = (await listEffectiveManagedMcps(context.cwd)).find((item) => item.capabilityId === install.capabilityId);
+            if (!current || current.disabled || current.serverUrl !== install.serverUrl || current.name !== install.name) throw new Error("Haze MCP 已变更或停用，请重载会话。");
+            if (current.scope === "project" && !getProjectTrustStatus(context.cwd, getAgentDir()).trusted) throw new Error("项目资源尚未受信任。");
           },
-        });
-        if (registration && typeof (registration as { dispose?: unknown }).dispose === "function") registrations.push(registration as { dispose: () => unknown });
+        }, install.exposure === "deferred" || install.exposure === "codemode" ? install.exposure : "direct");
       } catch (error) {
         console.warn(`[haze-mcp] Could not register ${install.name}:`, error instanceof Error ? error.message : String(error));
       }
     }
     const snapshots: PluginSnapshot[] = [];
-    const source = process.env.EUREKA_AUTH_HAZE_ISSUER?.replace(/\/$/, "");
     for (const install of source ? effectivePlugins(context.cwd, source) : []) {
       if (install.disabled || !install.plugin || install.plugin.manifest.automation) continue;
       const plugin = install.plugin;
@@ -88,9 +85,16 @@ export async function installHazeManagedMcpRuntime(pi: ExtensionAPI) {
         for (const server of plugin.manifest.servers) {
           if (server.auth && !plugin.approvedUrls.includes(server.url)) throw new Error("MCP 服务地址尚未授权");
           const name = pluginMcpName(install, server.name);
-          const guard = Buffer.from(JSON.stringify({ source: plugin.source, subject: plugin.subject, url: server.url })).toString("base64url");
-          const registration = registerMcpServer({ pi, name, definition: { url: server.url, httpTransport: "streamable-http", auth: false, ...(server.auth ? { requestHeadersCommand: { command: process.execPath, args: [headerHook, "--plugin-guard", guard], timeoutMs: 30_000 } } : {}), lifecycle: install.lifecycle ?? "lazy", idleTimeout: install.idleTimeout ?? 10 } });
-          if (registration && typeof (registration as { dispose?: unknown }).dispose === "function") registrations.push(registration as { dispose: () => unknown });
+          register({ name, url: server.url, authenticated: Boolean(server.auth), identity,
+            validate: () => {
+              if (!identity || plugin.source !== identity.source || plugin.subject !== identity.subject) throw new Error("插件登录身份已变化，请重新登录并重载会话。");
+              assertHazeMcpIdentity(identity);
+              const current = effectivePlugins(context.cwd, plugin.source).find((item) => item.capabilityId === install.capabilityId);
+              if (!current || current.disabled || current.plugin?.digest !== plugin.digest || current.plugin.subject !== identity.subject || !current.plugin.manifest.servers.some((entry) => entry.name === server.name && entry.url === server.url && entry.auth === server.auth)) throw new Error("插件已变更或停用，请重载会话。");
+              if (current.scope === "project" && !getProjectTrustStatus(context.cwd, getAgentDir()).trusted) throw new Error("项目插件尚未受信任。");
+              if (server.auth && !current.plugin.approvedUrls.includes(server.url)) throw new Error("MCP 服务地址尚未授权。");
+            },
+          });
           snapshot.servers.push(name);
         }
       } catch (error) { snapshot.error = error instanceof Error && !(error as NodeJS.ErrnoException).code ? error.message : "插件文件无法读取，请重新安装"; }

@@ -1,0 +1,565 @@
+[
+  [
+    "request",
+    {
+      "url": "https://download.example/reports/",
+      "method": "GET",
+      "response": "bytes",
+      "allowDynamicUrl": true,
+      "credentials": "omit"
+    },
+    true
+  ],
+  [
+    "request",
+    {
+      "url": "https://download.example/reports/",
+      "method": "GET",
+      "response": "bytes",
+      "allowDynamicUrl": "yes",
+      "credentials": "omit"
+    },
+    false
+  ],
+  [
+    "request",
+    {
+      "url": "https://download.example/reports/",
+      "method": "POST",
+      "response": "bytes",
+      "allowDynamicUrl": true,
+      "credentials": "omit"
+    },
+    false
+  ],
+  [
+    "request",
+    {
+      "url": "https://download.example/reports/?sign=1",
+      "method": "GET",
+      "response": "bytes",
+      "allowDynamicUrl": true,
+      "credentials": "omit"
+    },
+    false
+  ],
+  [
+    "request",
+    {
+      "url": "https://download.example/reports/",
+      "method": "GET",
+      "response": "bytes",
+      "allowDynamicUrl": true,
+      "credentials": "omit",
+      "headers": {
+        "Authorization": "private"
+      }
+    },
+    false
+  ],
+  [
+    "request",
+    {
+      "url": "https://download.example/reports/",
+      "method": "GET",
+      "response": "binary",
+      "allowDynamicUrl": true,
+      "credentials": "omit"
+    },
+    false
+  ],
+  [
+    "browser",
+    {
+      "schemaVersion": 1,
+      "sites": [
+        {
+          "id": "report",
+          "label": "Report",
+          "startUrl": "https://seller.example/",
+          "paths": [
+            "/*"
+          ],
+          "operations": [
+            {
+              "id": "download",
+              "label": "Download",
+              "description": "Report ZIP",
+              "effect": "query",
+              "kind": "request",
+              "request": {
+                "url": "https://download.example/reports/",
+                "method": "GET",
+                "response": "bytes",
+                "allowDynamicUrl": true,
+                "credentials": "omit"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    true
+  ],
+  [
+    "browser",
+    {
+      "schemaVersion": 1,
+      "sites": [
+        {
+          "id": "report",
+          "label": "Report",
+          "startUrl": "https://seller.example/",
+          "paths": [
+            "/*"
+          ],
+          "operations": [
+            {
+              "id": "download",
+              "label": "Download",
+              "description": "Report ZIP",
+              "effect": "query",
+              "kind": "request",
+              "request": {
+                "url": "https://download.example/reports/",
+                "method": "GET",
+                "response": "bytes",
+                "allowDynamicUrl": true,
+                "credentials": "omit"
+              },
+              "unexpected": true
+            }
+          ]
+        }
+      ]
+    },
+    false
+  ],
+  [
+    "ui",
+    {
+      "schemaVersion": 1,
+      "fields": [
+        {
+          "id": "start",
+          "label": "Start",
+          "type": "date",
+          "default": {
+            "relative": "yesterday"
+          }
+        }
+      ],
+      "layout": {
+        "columns": 2,
+        "order": [
+          "start"
+        ],
+        "spans": {
+          "start": 2
+        }
+      },
+      "buttons": [
+        {
+          "id": "run",
+          "label": "Run",
+          "action": "run"
+        }
+      ],
+      "results": {
+        "columns": []
+      }
+    },
+    true
+  ],
+  [
+    "ui",
+    {
+      "schemaVersion": 1,
+      "fields": [
+        {
+          "id": "start",
+          "label": "Start",
+          "type": "date",
+          "default": {
+            "relative": "yesterday"
+          }
+        }
+      ],
+      "layout": {
+        "columns": 5
+      },
+      "buttons": [
+        {
+          "id": "run",
+          "label": "Run",
+          "action": "run"
+        }
+      ],
+      "results": {
+        "columns": []
+      }
+    },
+    false
+  ],
+  [
+    "ui",
+    {
+      "schemaVersion": 1,
+      "fields": [
+        {
+          "id": "start",
+          "label": "Start",
+          "type": "date",
+          "default": {
+            "relative": "yesterday"
+          }
+        }
+      ],
+      "layout": {
+        "columns": 2,
+        "order": [
+          "start"
+        ],
+        "spans": {
+          "start": 2
+        }
+      },
+      "buttons": [
+        {
+          "id": "run",
+          "label": "Run",
+          "action": "run"
+        }
+      ],
+      "results": {
+        "columns": []
+      },
+      "unknown": true
+    },
+    false
+  ],
+  [
+    "automation",
+    {
+      "schemaVersion": 1,
+      "id": "11111111-1111-4111-8111-111111111111",
+      "runtime": "javascript-esm",
+      "entry": "scripts/main.mjs",
+      "ui": "ui.json",
+      "workflow": "workflow.json",
+      "capabilities": [
+        "browser.read",
+        "files.read",
+        "files.write"
+      ],
+      "files": [
+        "plugin.json",
+        "package.json",
+        "ui.json",
+        "workflow.json",
+        "README.md",
+        "scripts/main.mjs"
+      ],
+      "browser": {
+        "schemaVersion": 1,
+        "sites": [
+          {
+            "id": "report",
+            "label": "Report",
+            "startUrl": "https://seller.example/",
+            "paths": [
+              "/*"
+            ],
+            "operations": [
+              {
+                "id": "download",
+                "label": "Download",
+                "description": "Report ZIP",
+                "effect": "query",
+                "kind": "request",
+                "request": {
+                  "url": "https://download.example/reports/",
+                  "method": "GET",
+                  "response": "bytes",
+                  "allowDynamicUrl": true,
+                  "credentials": "omit"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "actions": [
+        {
+          "id": "download",
+          "label": "Download",
+          "entry": "scripts/main.mjs",
+          "ui": "ui.json",
+          "workflow": "workflow.json",
+          "capabilities": [
+            "browser.read",
+            "files.read",
+            "files.write"
+          ]
+        }
+      ]
+    },
+    true
+  ],
+  [
+    "automation",
+    {
+      "schemaVersion": 1,
+      "id": "11111111-1111-4111-8111-111111111111",
+      "runtime": "javascript-esm",
+      "entry": "scripts/main.mjs",
+      "ui": "ui.json",
+      "workflow": "workflow.json",
+      "capabilities": [
+        "network.unrestricted"
+      ],
+      "files": [
+        "plugin.json",
+        "package.json",
+        "ui.json",
+        "workflow.json",
+        "README.md",
+        "scripts/main.mjs"
+      ],
+      "browser": {
+        "schemaVersion": 1,
+        "sites": [
+          {
+            "id": "report",
+            "label": "Report",
+            "startUrl": "https://seller.example/",
+            "paths": [
+              "/*"
+            ],
+            "operations": [
+              {
+                "id": "download",
+                "label": "Download",
+                "description": "Report ZIP",
+                "effect": "query",
+                "kind": "request",
+                "request": {
+                  "url": "https://download.example/reports/",
+                  "method": "GET",
+                  "response": "bytes",
+                  "allowDynamicUrl": true,
+                  "credentials": "omit"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "actions": [
+        {
+          "id": "download",
+          "label": "Download",
+          "entry": "scripts/main.mjs",
+          "ui": "ui.json",
+          "workflow": "workflow.json",
+          "capabilities": [
+            "browser.read",
+            "files.read",
+            "files.write"
+          ]
+        }
+      ]
+    },
+    false
+  ],
+  [
+    "request",
+    {
+      "url": "https://api.example/upload",
+      "method": "POST",
+      "credentials": "omit",
+      "auth": {
+        "kind": "bearer",
+        "credentialId": "shop"
+      },
+      "multipart": {
+        "files": [
+          {
+            "name": "report",
+            "contentTypes": [
+              "text/csv"
+            ]
+          }
+        ]
+      },
+      "timeoutMs": 180000,
+      "responseHeaders": [
+        "etag"
+      ]
+    },
+    true
+  ],
+  [
+    "request",
+    {
+      "url": "https://api.example/read",
+      "method": "GET",
+      "redirects": 3,
+      "responseHeaders": [
+        "retry-after"
+      ]
+    },
+    true
+  ],
+  [
+    "request",
+    {
+      "url": "https://api.example/read",
+      "method": "GET",
+      "redirects": 4
+    },
+    false
+  ],
+  [
+    "request",
+    {
+      "url": "https://api.example/read",
+      "method": "GET",
+      "auth": {
+        "kind": "bearer",
+        "credentialId": "shop",
+        "unknown": "x"
+      }
+    },
+    false
+  ],
+  [
+    "request",
+    {
+      "url": "https://api.example/read",
+      "method": "GET",
+      "responseHeaders": [
+        "set-cookie"
+      ]
+    },
+    false
+  ],
+  [
+    "browser",
+    {
+      "schemaVersion": 1,
+      "sites": [
+        {
+          "id": "report",
+          "label": "Report",
+          "startUrl": "https://seller.example/",
+          "paths": [
+            "/*"
+          ],
+          "operations": [
+            {
+              "id": "upload",
+              "label": "Upload report",
+              "description": "Choose a CSV report",
+              "effect": "mutation",
+              "kind": "upload",
+              "locator": {
+                "css": "input",
+                "context": [
+                  {
+                    "kind": "frame",
+                    "locator": {
+                      "css": "#report"
+                    }
+                  },
+                  {
+                    "kind": "shadow",
+                    "locator": {
+                      "css": "report-grid"
+                    }
+                  }
+                ]
+              },
+              "upload": {
+                "multiple": false,
+                "contentTypes": [
+                  "text/csv"
+                ],
+                "maxBytes": 1048576
+              },
+              "verify": {
+                "field": {
+                  "locator": {
+                    "css": "#receipt"
+                  },
+                  "source": "text"
+                },
+                "mode": "changed"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    true
+  ],
+  [
+    "browser",
+    {
+      "schemaVersion": 1,
+      "sites": [
+        {
+          "id": "report",
+          "label": "Report",
+          "startUrl": "https://seller.example/",
+          "paths": [
+            "/*"
+          ],
+          "operations": [
+            {
+              "id": "upload",
+              "label": "Upload report",
+              "description": "Choose a CSV report",
+              "effect": "mutation",
+              "kind": "upload",
+              "locator": {
+                "css": "input",
+                "context": [
+                  {
+                    "kind": "cross-origin",
+                    "locator": {
+                      "css": "#report"
+                    }
+                  },
+                  {
+                    "kind": "shadow",
+                    "locator": {
+                      "css": "report-grid"
+                    }
+                  }
+                ]
+              },
+              "upload": {
+                "multiple": false,
+                "contentTypes": [
+                  "text/csv"
+                ],
+                "maxBytes": 1048576
+              },
+              "verify": {
+                "field": {
+                  "locator": {
+                    "css": "#receipt"
+                  },
+                  "source": "text"
+                },
+                "mode": "changed"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    false
+  ]
+]

@@ -59,6 +59,8 @@ export interface AssistantMessage {
   role: "assistant";
   content: AssistantContentBlock[];
   model: string;
+  /** Concrete model reported by the provider, when available. */
+  responseModel?: string;
   provider: string;
   stopReason?: string;
   errorMessage?: string;
@@ -76,6 +78,8 @@ export interface AssistantMessage {
       cacheRead: number;
       cacheWrite: number;
       total: number;
+      /** Missing in older sessions; do not infer a billing source from those records. */
+      totalFromProvider?: boolean;
     };
   };
 }
@@ -280,7 +284,9 @@ export type SessionEntry =
   | CustomEntry
   | CustomMessageEntry
   | LabelEntry
-  | SessionInfoEntry;
+  | SessionInfoEntry
+  | import("@earendil-works/pi-coding-agent").ContextEditEntry
+  | Extract<import("@earendil-works/pi-coding-agent").SessionEntry, { type: "usage" }>;
 
 export type FileEntry = SessionHeader | SessionEntry;
 

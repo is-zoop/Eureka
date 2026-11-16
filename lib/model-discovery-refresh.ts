@@ -159,8 +159,7 @@ export async function refreshConfiguredProvider(providerName: string): Promise<{
 
 export function refreshDueModelDiscoveries(): Promise<void> {
   if (globalThis.__piModelDiscoveryRefresh) return globalThis.__piModelDiscoveryRefresh;
-  let task: Promise<void>;
-  task = (async () => {
+  const task = (async () => {
     const state = readModelDiscoveryState();
     const now = Date.now();
     for (const [providerName, providerState] of Object.entries(state.providers)) {

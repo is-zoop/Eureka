@@ -29,7 +29,7 @@ export async function GET(request: Request) {
     return NextResponse.json({
       items: installs[selectedScope]
         .filter((item) => item.type === selectedType && (item.type !== "Plugin" || item.plugin?.source === getAuthConfig()?.issuer.replace(/\/$/, "")))
-        .map((item) => ({ capabilityId: item.capabilityId, name: item.name, type: item.type, version: item.version, scope: item.scope, installedAt: item.installedAt, disabled: Boolean(item.disabled), ...(item.type === "MCP" ? { lifecycle: item.lifecycle, idleTimeout: item.idleTimeout } : {}), ...(item.type === "Plugin" ? { plugin: pluginPresentation(item, searchParams.get("sessionId"), readRuntimeHazeSession()?.principal.subject ?? null) } : {}) })),
+        .map((item) => ({ capabilityId: item.capabilityId, name: item.name, type: item.type, version: item.version, scope: item.scope, installedAt: item.installedAt, disabled: Boolean(item.disabled), ...(item.type === "MCP" ? { lifecycle: item.lifecycle, idleTimeout: item.idleTimeout, exposure: item.exposure } : {}), ...(item.type === "Plugin" ? { plugin: pluginPresentation(item, searchParams.get("sessionId"), readRuntimeHazeSession()?.principal.subject ?? null) } : {}) })),
     });
   } catch {
     return NextResponse.json({ error: "Unable to read installed capabilities" }, { status: 500 });

@@ -13,6 +13,8 @@ import { getAllowedFileRoots, isExistingFilePathAllowed } from "@/lib/file-acces
 import { projectTrustReloadOptions } from "@/lib/project-trust";
 import { refreshDueModelDiscoveries } from "@/lib/model-discovery-refresh";
 import { schedulePiCatalogSync } from "@/lib/pi-catalog-sync";
+import { restoreLegacyAzureProvider, restoreKimiCodingCompatibility } from "@/lib/model-runtime-compat";
+import { isApiRequestAllowed } from "@/lib/request-security";
 
 export const dynamic = "force-dynamic";
 
@@ -27,7 +29,7 @@ function compareModelEntries(
     || modelNameCollator.compare(a.id, b.id);
 }
 
-async function loadModels(cwd: string): Promise<ModelsData> {
+async function loadModels(cwd: string, globalScope = false): Promise<ModelsData> {
   const nameMap = new Map<string, string>();
   let modelList: { id: string; name: string; provider: string }[] = [];
   let defaultModel: { provider: string; modelId: string } | null = null;
@@ -38,12 +40,16 @@ async function loadModels(cwd: string): Promise<ModelsData> {
   // Gate untrusted project extensions: enumerating models still imports and
   // runs a repository's .pi/extensions factories, so honor project trust here
   // too (see lib/project-trust.ts, #236).
-  const trustReloadOptions = projectTrustReloadOptions(cwd, agentDir);
+  const trustReloadOptions = globalScope ? { resolveProjectTrust: async () => false } : projectTrustReloadOptions(cwd, agentDir);
   const services = await createAgentSessionServices({
     cwd,
     agentDir,
+    // Model enumeration needs provider extensions, but never prompt resources.
+    resourceLoaderOptions: { noSkills: true, noPromptTemplates: true, noThemes: true, noContextFiles: true },
     ...(trustReloadOptions ? { resourceLoaderReloadOptions: trustReloadOptions } : {}),
   });
+  restoreKimiCodingCompatibility(services.modelRuntime);
+  await restoreLegacyAzureProvider(services.modelRuntime, services.settingsManager);
   const modelError = services.modelRuntime.getError();
   const settings: SettingsManager = services.settingsManager;
   // `enabledModels` supports globs and fuzzy patterns, so resolve it the same
@@ -100,6 +106,18 @@ const EMPTY_MODELS: ModelsData = {
 };
 
 export async function GET(req: Request) {
+  const params = new URL(req.url).searchParams;
+  if (params.get("scope") === "global") {
+    if (!isApiRequestAllowed(req)) return Response.json({ error: "Access denied" }, { status: 403 });
+    if (params.has("cwd")) return Response.json({ error: "Global models do not accept a project directory" }, { status: 400 });
+    // Settings belong to the installed user profile, not the packaged server's
+    // working directory. Do not add installation paths to the file allow-list.
+    const agentDir = getAgentDir();
+    try {
+      schedulePiCatalogSync();
+      return Response.json(await loadModelsWithCache(`global:${agentDir}`, () => loadModels(agentDir, true)));
+    } catch { return Response.json(withSafeModelLoadFailure(EMPTY_MODELS)); }
+  }
   // Request-driven background refresh: never delays opening a chat, and only
   // contacts providers the user explicitly enabled in discovery state.
   void refreshDueModelDiscoveries().catch(() => {

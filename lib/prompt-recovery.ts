@@ -46,3 +46,12 @@ export function userMessageKey(message: Partial<AgentMessage>): string {
     images: content.map(imageSignature).filter(Boolean),
   });
 }
+
+/** Consume only the pending optimistic echo; identical later queue messages are distinct. */
+export function appendDeliveredUserMessage(previous: AgentMessage[], delivered: AgentMessage, optimisticKey: string | null): AgentMessage[] {
+  const last = previous.at(-1);
+  if (optimisticKey && last?.role === "user" && userMessageKey(last) === optimisticKey) {
+    return optimisticKey === userMessageKey(delivered) ? previous : [...previous.slice(0, -1), delivered];
+  }
+  return [...previous, delivered];
+}

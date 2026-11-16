@@ -9,6 +9,15 @@ import type {
 export type ClientAssistantMessageEvent =
   ClientMessageUpdateEvent["assistantMessageEvent"];
 
+/** SDK transcript checkpoints are not chat bubbles or assistant completions. */
+export function chatMessageFromEvent(value: unknown): AgentMessage | undefined {
+  if (!value || typeof value !== "object") return;
+  const role = (value as { role?: unknown }).role;
+  if (role === "user" || role === "assistant" || role === "toolResult" || role === "custom" || role === "bashExecution") {
+    return value as AgentMessage;
+  }
+}
+
 export interface StreamingState {
   isStreaming: boolean;
   streamingMessage: AssistantMessage | null;

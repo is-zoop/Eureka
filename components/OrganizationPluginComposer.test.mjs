@@ -118,7 +118,12 @@ test("navigation-fixed installation dialogs never ask for the destination scope"
         assert.doesNotMatch(html, /(?:Confirm install|确认安装)/, "a known scope waits for preparation before asking for any actual approvals");
         assert.match(html, /role="status"/);
       } else assert.match(html, /(?:Confirm install|确认安装)/);
-      if (type === "MCP") assert.match(html, /type="number"/, "connector runtime configuration stays available");
+      if (type === "MCP") {
+        assert.match(html, /<div(?=[^>]*role="radiogroup")(?=[^>]*aria-label="(?:Tool exposure|工具提供方式)")/);
+        assert.equal((html.match(/role="radio"/g) ?? []).length, 3);
+        assert.match(html, /Provide tool definitions directly|直接向模型提供工具定义/);
+        assert.doesNotMatch(html, /type="number"|Idle disconnect|空闲断开|>Lifecycle<|>生命周期</);
+      }
     }
   }
 });

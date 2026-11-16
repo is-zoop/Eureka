@@ -1,5 +1,5 @@
-import { vs } from "react-syntax-highlighter/dist/esm/styles/prism";
-import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
+import vs from "react-syntax-highlighter/dist/esm/styles/prism/vs";
+import vscDarkPlus from "react-syntax-highlighter/dist/esm/styles/prism/vsc-dark-plus";
 
 // Shared Prism palette for chat code blocks and the file-source viewer.
 // CSS variables keep token colors aligned with the active application theme.

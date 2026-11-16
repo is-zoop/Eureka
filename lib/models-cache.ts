@@ -44,6 +44,11 @@ export function invalidateModelsCache(): void {
   state.inFlight.clear();
 }
 
+/** Auth/provider caches share invalidation without importing the SDK into this cache module. */
+export function modelsCacheGeneration(): number {
+  return globalThis.__piModelsCacheState?.generation ?? 0;
+}
+
 export function withModelRuntimeError(data: ModelsData, modelError: string | undefined): ModelsData {
   return modelError ? { ...data, modelError } : data;
 }

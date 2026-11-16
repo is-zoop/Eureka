@@ -1,7 +1,7 @@
+import { createCompatibleModelRuntime } from "./model-runtime-compat";
 import { mkdtempSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
-import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 
 export interface ModelDiscoveryAuth {
   apiKey?: string;
@@ -35,7 +35,11 @@ export async function resolveModelDiscoveryAuth(
       },
     }, null, 2), "utf8");
 
-    const modelRuntime = await ModelRuntime.create({ modelsPath });
+    // Discovery resolves this provider's credentials on demand. An initial
+    // availability/catalog pass would check unrelated providers and credentials.
+    const modelRuntime = await createCompatibleModelRuntime({
+      modelsPath, allowModelNetwork: false, refreshOnCreate: false,
+    });
     const loadError = modelRuntime.getError();
     if (loadError) throw new Error(loadError);
     const model = modelRuntime.getModel(providerName, discoveryModelId);

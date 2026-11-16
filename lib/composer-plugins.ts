@@ -8,6 +8,8 @@ import { isPathWithinRoots } from "./path-security";
 import { readRuntimeHazeSession } from "./auth/runtime-session";
 import { splitPluginSelection, selectionEnvelope, type SelectedPlugin, type ComposerPlugin } from "./plugin-selection";
 import type { ClarificationTask } from "./clarification";
+import { assertAutomationTaskOwner } from "./automation-task-owner";
+import { LOCAL_AUTOMATION_SOURCE } from "./plugin-selection";
 
 /** Resolve only explicit plugin/skill entrypoints, never names found in ordinary prose. */
 export function taskPluginSelection(cwd: string, sessionId: string, raw: unknown, skills: ReadonlyArray<{ name: string; filePath?: string }>, message: string): SelectedPlugin[] {
@@ -25,11 +27,10 @@ export function taskPluginSelection(cwd: string, sessionId: string, raw: unknown
 }
 
 export function taskAllowsClarification(cwd: string, sessionId: string, task: ClarificationTask): boolean {
-  const identity = readRuntimeHazeSession();
-  if (task.owner && (!identity || process.env.EUREKA_AUTH_HAZE_ISSUER?.replace(/\/$/, "") !== task.owner.source || identity.principal.subject !== task.owner.subject)) throw new Error("当前身份已变化，请重新调用插件；澄清回答已保留");
+  assertAutomationTaskOwner(task.owner);
   if (task.clarificationEnabled) return true;
   return task.plugins.some((ref) => {
-    if (/^automation:[a-f0-9-]{36}$/.test(ref.capabilityId) && ref.source === process.env.EUREKA_AUTH_HAZE_ISSUER?.replace(/\/$/, "")) return true;
+    if (/^automation:[a-f0-9-]{36}$/.test(ref.capabilityId) && ref.source === LOCAL_AUTOMATION_SOURCE) return true;
     const install = effectivePlugins(cwd, ref.source).find((item) => item.capabilityId === ref.capabilityId);
     if (install?.plugin?.manifest.automation) return !install.disabled && install.plugin.digest === ref.digest;
     const loaded = getPluginSnapshots(sessionId).find((p) => p.source === ref.source && p.capabilityId === ref.capabilityId);

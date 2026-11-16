@@ -1,17 +1,23 @@
+import { EUREKA_IMAGE_GENERATION_EXTENSION, IMAGE_GENERATION_TOOL } from "./image-generation-extension";
+import { notifyRunningChange } from "./rpc-session-registry";
+import { commandTools, saveSessionCommandEnvironment, sessionCommandEnvironment } from "./command-environment";
+import { readCommandEnvironment } from "./command-environment-store";
+import { installUiWaitRuntime, subscribeUiWait, setHostUiWait, clearUiWait } from "./ui-wait-runtime";
+export { getRpcSessionInfos, getRunningRpcSessionIds, subscribeRunningSessions, notifyRunningChange } from "./rpc-session-registry";
 import { selectionEnvelope } from "./plugin-selection";
 import { assertDesktopUpdateIdle, withDesktopUpdateAdmission } from "./desktop-update-gate";
 import { ClarificationRuntime, clarificationRuntime } from "./clarification-runtime";
 import { clarificationContinuationText, type ClarificationGroup, type ClarificationQueuedInput } from "./clarification";
 import { type UserInputResponse } from "./user-input";
-import { readRuntimeHazeSession } from "./auth/runtime-session";
+import { automationTaskOwner, assertAutomationTaskOwner } from "./automation-task-owner";
 import { installPluginBrowserHandoff } from "./plugin-browser";
 import { EUREKA_AUTOMATION_INTAKE_EXTENSION } from "./automation-intake-extension";
-import { AUTOMATION_INTAKE_TOOLS, parseAutomationTaskRef, sameAutomationTask } from "./automation-mode";
-import { activeAutomationTask, bindAutomationTask, changeAutomationTask, assertAutomationTaskIdentity, automationQueueGeneration } from "./automation-mode-store";
+import { AUTOMATION_INTAKE_TOOLS, sameAutomationTask } from "./automation-mode";
+import { activeAutomationTask, bindAutomationTask, changeAutomationTask, localAutomationTask, assertAutomationTaskIdentity, automationQueueGeneration } from "./automation-mode-store";
 import { creationBinding } from "./automation-creation";
 import { assertCreationIdentity } from "./automation-creation-runtime";
 import { taskPluginSelection, taskAllowsClarification } from "./composer-plugins";
-import { prepareComposerSelection, bindChatAutomations, stopChatTask, AUTOMATION_CHAT_TOOL } from "./automation-chat";
+import { prepareComposerSelection, bindChatAutomations, stopChatTask, cancelChatInteraction, AUTOMATION_CHAT_TOOL } from "./automation-chat";
 import { EUREKA_AUTOMATION_CHAT_EXTENSION } from "./automation-chat-extension";
 import { annotateOrganizationSkills } from "./haze-capability-presentation";
 import type { OrganizationCapabilityRef } from "./organization-capability";
@@ -21,9 +27,10 @@ import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import { createAgentSessionFromServices, createAgentSessionServices, getAgentDir, initTheme, SessionManager, Theme } from "@earendil-works/pi-coding-agent";
 import { KeybindingsManager as TuiKeybindingsManager, TUI_KEYBINDINGS } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
-import { installBuiltInMcpAdapter } from "./mcp-adapter";
+import { installNativeMcpRuntime, disposeNativeMcpRuntime } from "./native-mcp-runtime";
 import { installHazeManagedMcpRuntime } from "./haze-mcp-runtime";
 import { EUREKA_TASK_PROGRESS_EXTENSION } from "./task-progress";
+import { EUREKA_PROMPT_POLICY_EXTENSION, setSessionPromptSuppressed } from "./session-prompt-policy";
 import { EUREKA_WRITE_DIFF_EXTENSION } from "./write-diff";
 import { clearMcpRuntime, installMcpStatusRuntime } from "./mcp-runtime";
 import { randomUUID } from "crypto";
@@ -32,6 +39,7 @@ import { resolve } from "path";
 import { validateAgentImages } from "./image-attachments";
 import { invalidateModelsCache } from "./models-cache";
 import { schedulePiCatalogSync } from "./pi-catalog-sync";
+import { restoreLegacyAzureProvider, restoreKimiCodingCompatibility } from "./model-runtime-compat";
 import { resolveVisibleModels, selectInitialModelScope } from "./model-scope";
 import { cacheSessionPath, invalidateSessionListCache, readSessionHeader } from "./session-reader";
 import { observeContextSnapshots, persistLiveContextSnapshot } from "./context-snapshot";
@@ -65,7 +73,6 @@ import type {
   ExtensionUiRequest,
   ExtensionUiResponse,
   ExtensionWidgetItem,
-  SessionInfo,
   SessionEntry,
   SessionMessageEntry,
 } from "./types";
@@ -209,13 +216,13 @@ export interface RpcSessionStartOptions {
   thinkingLevel?: ThinkingLevel;
 }
 
-const CODING_TOOL_NAMES = ["read", "bash", "edit", "write", "grep", "find", "ls"];
+const CODING_TOOL_NAMES = ["read", "bash", "powershell", "edit", "write", "grep", "find", "ls"];
 
 // Extensions require a complete Theme, while the web UI applies its own styling.
 class PlainTextTheme extends Theme {
   constructor() {
     super(
-      { thinkingXhigh: "" } as ConstructorParameters<typeof Theme>[0],
+      { muted: "", text: "", thinkingXhigh: "" } as ConstructorParameters<typeof Theme>[0],
       { selectedBg: "" } as ConstructorParameters<typeof Theme>[1],
       "truecolor",
     );
@@ -403,11 +410,15 @@ export const EUREKA_NATIVE_PLAN_EXTENSION: InlineExtension = {
       return undefined;
     });
 
-    pi.on("before_agent_start", async (_event, ctx) => {
+    pi.on("before_agent_start", async (event, ctx) => {
       const entries = ctx.sessionManager.getEntries() as SessionEntry[];
       const state = readPlanState(entries);
+      const systemPrompt = state.planModeActive && ["planning", "reviewing"].includes(state.phase)
+        ? `${event.systemPrompt}\n\n${PLAN_MODE_SYSTEM_PROMPT}`
+        : undefined;
       if (state.planModeActive && state.phase === "planning") {
         return {
+          systemPrompt,
           message: {
             customType: "eureka-plan-framing",
             display: false,
@@ -415,6 +426,7 @@ export const EUREKA_NATIVE_PLAN_EXTENSION: InlineExtension = {
           },
         };
       }
+      if (systemPrompt !== undefined) return { systemPrompt };
       if (needsPlanModeExitFraming(entries, state)) {
         return {
           message: {
@@ -483,7 +495,7 @@ function withExtensionTools(session: AgentSessionLike, toolNames: string[]): str
   const extensionToolNames = session
     .getAllTools()
     .map((t) => t.name)
-    .filter((name) => !codingToolNames.has(name) && name !== PLAN_MODE_QUESTION_TOOL && name !== PLAN_MODE_COMPLETE_TOOL && name !== AUTOMATION_CHAT_TOOL);
+    .filter((name) => !codingToolNames.has(name) && name !== PLAN_MODE_QUESTION_TOOL && name !== PLAN_MODE_COMPLETE_TOOL && name !== AUTOMATION_CHAT_TOOL && name !== IMAGE_GENERATION_TOOL);
 
   return [...new Set([...toolNames, ...extensionToolNames])];
 }
@@ -494,6 +506,19 @@ function withExtensionTools(session: AgentSessionLike, toolNames: string[]): str
 // ============================================================================
 
 export class AgentSessionWrapper {
+  private warmingLeaf: string | null | undefined;
+  private warmingUsage = { count: 0, total: 0 };
+  getObservationSnapshot() {
+    const leaf = this.inner.sessionManager.getLeafId?.();
+    if (leaf !== this.warmingLeaf) {
+      this.warmingLeaf = leaf;
+      this.warmingUsage = (this.inner.sessionManager.getBranch?.() ?? []).reduce((sum, entry) => {
+        if (entry.type === "usage" && entry.kind === "cache_warm") { sum.count++; sum.total += entry.usage.cost.total; }
+        return sum;
+      }, { count: 0, total: 0 });
+    }
+    return { cacheWarming: { mode: this.inner.settingsManager?.getCacheWarmingMode() ?? "streaming", status: this.inner.cacheWarmingStatus, usage: this.warmingUsage } };
+  }
   private listeners: EventListener[] = [];
   private pendingUiResponses = new Map<string, PendingUiResponse>();
   private pendingUiRequests = new Map<string, AgentEvent>();
@@ -515,19 +540,31 @@ export class AgentSessionWrapper {
   private shutdownPromise: Promise<void> | null = null;
   private _alive = true;
   private planModeState: EurekaPlanState;
-  private baseSystemPrompt: string | null = null;
   private clarification: ClarificationRuntime;
   private queuePumpRunning = false;
   private planExecutionEntryOffset: number | null = null;
+  private waitingForUser = false;
+  private unsubscribeUiWait: (() => void) | null = null;
 
   constructor(public readonly inner: AgentSessionLike) {
+    const previousWait = [...inner.sessionManager.getEntries()].reverse().find(entry => entry.type === "custom" && entry.customType === "eureka_ui_wait");
+    if (previousWait?.type === "custom" && (previousWait.data as { waiting?: boolean } | undefined)?.waiting === true) inner.sessionManager.appendCustomEntry("eureka_ui_wait", { waiting: false, recovered: true });
+    this.unsubscribeUiWait = subscribeUiWait(inner.sessionManager, waiting => {
+      if (!this._alive || this.waitingForUser === waiting) return;
+      this.waitingForUser = waiting;
+      try { this.inner.sessionManager.appendCustomEntry("eureka_ui_wait", { waiting, active: this.isRunning() }); } catch { console.warn("Unable to persist UI wait timing"); }
+      this.emit({ type: "ui_wait_state", waitingForUser: waiting });
+    });
     this.clarification = new ClarificationRuntime(inner.sessionManager, (state) => {
       invalidateSessionListCache();
       this.emit({ type: "clarification_state", state });
       this.emit({ type: "queue_update", steering: state.queue.filter((q) => q.behavior === "steer").map((q) => selectionEnvelope(q.message, q.selectedPlugins ?? [])), followUp: state.queue.filter((q) => q.behavior === "followUp").map((q) => selectionEnvelope(q.message, q.selectedPlugins ?? [])) });
     });
-    const previousStop = inner.agent.shouldStopAfterTurn;
-    inner.agent.shouldStopAfterTurn = async (context, signal) => {
+    const previousFinish = inner.agent.finishTurn;
+    inner.agent.finishTurn = async (turn, signal) => {
+      // Error and aborted responses are hard exits in Pi; do not apply normal
+      // continuation policy or invoke a previous normal-response predicate.
+      if (turn.message.stopReason === "error" || turn.message.stopReason === "aborted") return;
       if (this.clarification.pauseRequested || this.clarification.blocked || getPendingPlanQuestion(readPlanState(inner.sessionManager.getEntries() as SessionEntry[]))) {
         // External requests are owned by the durable host queue. Hold any SDK
         // extension-injected continuations too, before the SDK drains them.
@@ -535,9 +572,10 @@ export class AgentSessionWrapper {
         for (const [behavior, messages] of [["steer", held.steering], ["followUp", held.followUp]] as const) {
           for (const message of messages) this.clarification.enqueue({ id: randomUUID(), behavior, message, clarificationEnabled: false });
         }
-        return true;
+        return { action: "end" };
       }
-      return this.clarification.state.queue.some((q) => !q.paused && q.behavior === "steer") || (await previousStop?.(context, signal)) === true;
+      if (this.clarification.state.queue.some((q) => !q.paused && q.behavior === "steer")) return { action: "end" };
+      return (await previousFinish?.(turn, signal)) ?? undefined;
     };
     this.planModeState = readPlanState(this.inner.sessionManager.getEntries() as SessionEntry[]);
     // A live execution cannot survive a server/session recreation. Archive it
@@ -651,10 +689,7 @@ export class AgentSessionWrapper {
       const queued = this.clarification.shift();
       if (!queued) return;
       try {
-        if (queued.owner) {
-          const identity = readRuntimeHazeSession();
-          if (!identity || queued.owner.subject !== identity.principal.subject || queued.owner.source !== process.env.EUREKA_AUTH_HAZE_ISSUER?.replace(/\/$/, "")) throw new Error("排队请求的身份已变化");
-        }
+        assertAutomationTaskOwner(queued.owner);
         await this.send({ ...queued, type: "prompt" });
       }
       catch (error) {
@@ -675,30 +710,18 @@ export class AgentSessionWrapper {
         ...state.originalToolNames.filter((name) => name !== PLAN_MODE_QUESTION_TOOL && name !== PLAN_MODE_COMPLETE_TOOL),
         PLAN_MODE_COMPLETE_TOOL,
       ]);
-      if (this.baseSystemPrompt !== null && this.inner.agent.state) {
-        this.inner.agent.state.systemPrompt = this.baseSystemPrompt;
-      }
       return;
     }
     if (!state.planModeActive) {
       if (state.originalToolNames.length > 0) {
         this.inner.setActiveToolsByName(state.originalToolNames.filter((name) => name !== PLAN_MODE_QUESTION_TOOL && name !== PLAN_MODE_COMPLETE_TOOL));
       }
-      if (this.baseSystemPrompt !== null && this.inner.agent.state) {
-        this.inner.agent.state.systemPrompt = this.baseSystemPrompt;
-      }
       return;
-    }
-    if (this.baseSystemPrompt === null) {
-      this.baseSystemPrompt = this.inner.agent.state?.systemPrompt ?? "";
     }
     if (state.phase === "planning" || state.phase === "reviewing") {
       this.inner.setActiveToolsByName(state.phase === "planning"
         ? [...PLAN_MODE_READ_TOOLS, PLAN_MODE_QUESTION_TOOL]
         : [...PLAN_MODE_READ_TOOLS]);
-      if (this.inner.agent.state) {
-        this.inner.agent.state.systemPrompt = `${this.baseSystemPrompt}\n\n${PLAN_MODE_SYSTEM_PROMPT}`;
-      }
       return;
     }
   }
@@ -859,9 +882,7 @@ export class AgentSessionWrapper {
   }
 
   private applyForcedEmptySystemPrompt(): void {
-    if (this.forceEmptySystemPrompt && this.inner.agent.state) {
-      this.inner.agent.state.systemPrompt = "";
-    }
+    setSessionPromptSuppressed(this.inner.sessionManager, this.forceEmptySystemPrompt);
   }
 
   private emit(event: AgentEvent): void {
@@ -922,7 +943,8 @@ export class AgentSessionWrapper {
 
   onEvent(listener: EventListener): () => void {
     this.listeners.push(listener);
-    for (const event of this.pendingUiRequests.values()) listener(event);
+    if (this.waitingForUser) { try { listener({ type: "ui_wait_state", waitingForUser: true }); } catch { console.warn("UI wait replay listener failed"); } }
+    for (const event of this.pendingUiRequests.values()) { try { listener(event); } catch { console.warn("UI prompt replay listener failed"); } }
     return () => {
       const i = this.listeners.indexOf(listener);
       if (i !== -1) this.listeners.splice(i, 1);
@@ -940,7 +962,7 @@ export class AgentSessionWrapper {
   private async sendCommand(command: Record<string, unknown>, continuation?: ClarificationGroup): Promise<unknown> {
     assertDesktopUpdateIdle();
     if (command.type === "pause_automation_task" || command.type === "exit_automation_task") {
-      const ref = parseAutomationTaskRef(command.automationTask);
+      const ref = localAutomationTask(command.automationTask);
       assertAutomationTaskIdentity(ref); automationQueueGeneration(this.inner.sessionManager, ref, true);
       const releaseAdmission = await this.acquirePromptAdmission();
       try {
@@ -975,7 +997,8 @@ export class AgentSessionWrapper {
         this.clarification.refresh();
         if (this.clarification.blocked && !continuation) throw new Error("请先回答、重试继续或取消当前澄清问题");
         this.refreshPlanModeState();
-        const automationTask = continuation?.task.automationTask ?? (command.automationTask === undefined ? undefined : parseAutomationTaskRef(command.automationTask));
+        const rawAutomationTask = continuation?.task.automationTask ?? command.automationTask;
+        const automationTask = rawAutomationTask === undefined ? undefined : localAutomationTask(rawAutomationTask);
         if (automationTask && /^[!/]/.test(String(command.message ?? "").trim())) throw new Error("自动化需求请直接描述，不执行其他斜杠或终端命令。");
         if (automationTask && (isPlanExecution || this.planModeState.planModeActive || this.planModeState.phase === "executing")) throw new Error("请先结束计划模式，再创建自动化。");
         if (isPlanExecution) {
@@ -1010,12 +1033,12 @@ export class AgentSessionWrapper {
           const promptMessage = selection.message;
           if (this.isRunning()) {
             if (!command.streamingBehavior || continuation) throw new Error("请等待当前运行结束");
-            const queueIdentity = readRuntimeHazeSession();
-            this.clarification.enqueue({ ...(queueIdentity ? { owner: { source: process.env.EUREKA_AUTH_HAZE_ISSUER?.replace(/\/$/, "") ?? "", subject: queueIdentity.principal.subject } } : {}), id: randomUUID(), message: String(command.message ?? ""), selectedPlugins, clarificationEnabled: command.clarificationEnabled === true || Boolean(automationTask), images: command.images as ClarificationQueuedInput["images"], behavior: command.streamingBehavior === "steer" ? "steer" : "followUp", automationTask, ...(automationTask ? { automationGeneration: automationQueueGeneration(this.inner.sessionManager, automationTask) } : {}) });
+            const owner = automationTaskOwner(Boolean(automationTask), selectedPlugins);
+            this.clarification.enqueue({ ...(owner ? { owner } : {}), id: randomUUID(), message: String(command.message ?? ""), selectedPlugins, clarificationEnabled: command.clarificationEnabled === true || Boolean(automationTask), images: command.images as ClarificationQueuedInput["images"], behavior: command.streamingBehavior === "steer" ? "steer" : "followUp", automationTask, ...(automationTask ? { automationGeneration: automationQueueGeneration(this.inner.sessionManager, automationTask) } : {}) });
             this.emit({ type: "queue_update", steering: this.queuedInput("steer"), followUp: this.queuedInput("followUp") });
             return null;
           }
-          const identity = readRuntimeHazeSession();
+          const owner = automationTaskOwner(Boolean(automationTask), selectedPlugins);
           let restoreAutomationTools: (() => void) | undefined;
           if (selection.automations.length) {
             if (this.forceEmptySystemPrompt || !this.inner.getActiveToolNames().some(name => name !== AUTOMATION_CHAT_TOOL && name !== PLAN_MODE_QUESTION_TOOL)) throw new Error("全部工具已关闭，请先开启工具权限再调用自动化。");
@@ -1028,12 +1051,12 @@ export class AgentSessionWrapper {
             if (this.forceEmptySystemPrompt || !this.inner.getActiveToolNames().some(name => !AUTOMATION_INTAKE_TOOLS.includes(name))) throw new Error("全部工具已关闭，请先开启工具权限再创建自动化。");
             const document = await changeAutomationTask(this.inner.sessionManager, automationTask, "active", String(command.message ?? ""));
             if (!document) throw new Error("自动化任务无法打开。");
-            const originalTools = this.inner.getActiveToolNames(), originalPrompt = this.inner.agent.state?.systemPrompt;
+            const originalTools = this.inner.getActiveToolNames();
             this.inner.setActiveToolsByName(AUTOMATION_INTAKE_TOOLS);
             bindAutomationTask(this.inner.sessionManager, document);
-            restoreAutomationTools = () => { bindAutomationTask(this.inner.sessionManager, null); this.inner.setActiveToolsByName(originalTools); if (this.inner.agent.state) this.inner.agent.state.systemPrompt = originalPrompt; };
+            restoreAutomationTools = () => { bindAutomationTask(this.inner.sessionManager, null); this.inner.setActiveToolsByName(originalTools); };
           }
-          const task = continuation?.task ?? { id: randomUUID(), plugins: automationTask ? [] : selectedPlugins, clarificationEnabled: command.clarificationEnabled === true || Boolean(automationTask), automationTask, ...(identity ? { owner: { source: process.env.EUREKA_AUTH_HAZE_ISSUER?.replace(/\/$/, "") ?? "", subject: identity.principal.subject } } : {}) };
+          const task = continuation?.task.automationTask ? { ...continuation.task, automationTask, owner } : continuation?.task ?? { id: randomUUID(), plugins: automationTask ? [] : selectedPlugins, clarificationEnabled: command.clarificationEnabled === true || Boolean(automationTask), automationTask, ...(owner ? { owner } : {}) };
           this.clarification.task = task;
           this.clarification.allowed = !this.forceEmptySystemPrompt && this.inner.getActiveToolNames().some((name) => name !== PLAN_MODE_QUESTION_TOOL) && !this.planModeState.planModeActive && !isPlanExecution && taskAllowsClarification(this.cwd, this.sessionId, task);
           const tools = this.inner.getActiveToolNames().filter((name) => name !== PLAN_MODE_QUESTION_TOOL);
@@ -1085,9 +1108,7 @@ export class AgentSessionWrapper {
               source: "rpc",
               // Match pi's RPC contract: acknowledge only after synchronous prompt
               // validation and extension preflight have accepted the submission.
-              preflightResult: (success) => {
-                if (success) acceptPreflight();
-              },
+              preflightResult: () => acceptPreflight(),
             });
           } catch (error) {
             if (isPlanExecution) {
@@ -1156,7 +1177,12 @@ export class AgentSessionWrapper {
         if (activePlanExecutionManagers.has(this.inner.sessionManager as object)) {
           abortedPlanExecutionManagers.add(this.inner.sessionManager as object);
         }
-        await this.withFinalRunningNotification(() => this.inner.abort());
+        await this.withFinalRunningNotification(() => {
+          const aborting = this.inner.abort();
+          for (const pending of this.pendingUiResponses.values()) pending.cancel();
+          for (const id of Array.from(this.activeCustomUis.keys())) this.closeCustomUi(id, undefined);
+          return aborting;
+        });
         await chatStop;
         return null;
       }
@@ -1183,10 +1209,12 @@ export class AgentSessionWrapper {
         const model = this.inner.model;
         const contextUsage = this.inner.getContextUsage();
         return {
+          ...this.getObservationSnapshot(),
           sessionId: this.inner.sessionId,
           sessionFile: this.inner.sessionFile ?? "",
           isStreaming: this.inner.isStreaming,
           isPromptRunning: this.pendingPromptCount > 0,
+          waitingForUser: this.waitingForUser,
           isBashRunning: this.inner.isBashRunning,
           isCompacting: this.inner.isCompacting,
           autoCompactionEnabled: this.inner.autoCompactionEnabled,
@@ -1201,7 +1229,7 @@ export class AgentSessionWrapper {
           contextUsage: contextUsage
             ? { percent: contextUsage.percent, contextWindow: contextUsage.contextWindow, tokens: contextUsage.tokens }
             : null,
-          systemPrompt: this.inner.agent.state?.systemPrompt ?? "",
+          systemPrompt: this.forceEmptySystemPrompt ? "" : this.inner.systemPrompt ?? this.inner.agent.state?.systemPrompt ?? "",
           thinkingLevel: this.inner.agent.state?.thinkingLevel ?? "off",
           extensionStatuses: this.getExtensionStatuses(),
           extensionWidgets: this.getExtensionWidgets(),
@@ -1225,6 +1253,9 @@ export class AgentSessionWrapper {
       case "cancel_clarification":
         this.clarification.refresh();
         this.clarification.cancel(command.groupId);
+        if (this.clarification.group(String(command.groupId)).task.plugins.some(ref => ref.capabilityId.startsWith("automation:"))) {
+          await cancelChatInteraction(this.sessionId, String(command.groupId));
+        }
         // Cancellation ends this task; queued requests remain visible for recall
         // or an explicit subsequent submission, and never query automatically.
         return this.clarification.state;
@@ -1536,11 +1567,13 @@ export class AgentSessionWrapper {
         if (this.planModeState.planModeActive || this.planModeState.phase === "executing") {
           throw new Error("Tool permissions are fixed while a plan is active");
         }
-        const toolNames = validateSessionToolNames(command.toolNames);
+        const environment = sessionCommandEnvironment(this.inner.sessionManager.getEntries(), readSessionToolNames(this.inner.sessionManager.getEntries()) ?? this.inner.getActiveToolNames());
+        const toolNames = commandTools(validateSessionToolNames(command.toolNames), environment);
         this.setForceEmptySystemPrompt(toolNames.length === 0);
         if (toolNames.length === 0) this.clarification.allowed = false;
         this.inner.setActiveToolsByName(withExtensionTools(this.inner, toolNames));
         this.applyForcedEmptySystemPrompt();
+        saveSessionCommandEnvironment(this.inner.sessionManager, environment);
         saveSessionToolNames(this.inner.sessionManager, toolNames);
         return null;
       }
@@ -1614,7 +1647,10 @@ export class AgentSessionWrapper {
 
   destroy(): void {
     if (!this._alive) return;
+    clearUiWait(this.inner.sessionManager);
     this._alive = false;
+    const nativeSessionId = disposeNativeMcpRuntime(this.inner.sessionManager);
+    if (nativeSessionId) { clearMcpRuntime(nativeSessionId); clearPluginSnapshot(nativeSessionId); }
     this.clarification.dispose();
     clearMcpRuntime(this.inner.sessionId);
     clearPluginSnapshot(this.inner.sessionId);
@@ -1625,6 +1661,8 @@ export class AgentSessionWrapper {
     for (const id of Array.from(this.activeCustomUis.keys())) this.closeCustomUi(id, undefined);
     this.pendingUiResponses.clear();
     this.pendingUiRequests.clear();
+    this.unsubscribeUiWait?.();
+    clearUiWait(this.inner.sessionManager);
     this.clearExtensionWidgets(false);
     try {
       this.inner.dispose();
@@ -1903,6 +1941,7 @@ export class AgentSessionWrapper {
     custom.settled = true;
     this.activeCustomUis.delete(id);
     this.pendingUiRequests.delete(id);
+    setHostUiWait(this.inner.sessionManager, id, false);
     try {
       custom.component.dispose?.();
     } catch {
@@ -1943,6 +1982,8 @@ export class AgentSessionWrapper {
 
     const id = randomUUID();
     const width = this.getCustomUiWidth(options);
+    const customOptions = options as { overlay?: boolean; blocked?: unknown } | undefined;
+    const reportBlocked = !customOptions?.overlay && Boolean(customOptions?.blocked);
 
     return new Promise<T>((resolve) => {
       let completed = false;
@@ -1988,6 +2029,7 @@ export class AgentSessionWrapper {
             settled: false,
           };
           this.activeCustomUis.set(id, custom);
+          if (reportBlocked) setHostUiWait(this.inner.sessionManager, id, true);
           this.emitCustomUiRender(id, custom);
         })
         .catch((error) => {
@@ -2027,6 +2069,8 @@ export class AgentSessionWrapper {
         signal?.removeEventListener("abort", onAbort);
         this.pendingUiRequests.delete(id);
         this.pendingUiResponses.delete(id);
+        this.emit({ type: "extension_ui_closed", id });
+        setHostUiWait(this.inner.sessionManager, id, false);
       };
       const settle = (value: T) => {
         cleanup();
@@ -2038,6 +2082,7 @@ export class AgentSessionWrapper {
       signal?.addEventListener("abort", onAbort, { once: true });
 
       this.pendingUiRequests.set(id, fullRequest as AgentEvent);
+      setHostUiWait(this.inner.sessionManager, id, true);
       this.pendingUiResponses.set(id, {
         resolve: (response) => settle(parseResponse(response)),
         cancel: () => settle(defaultValue),
@@ -2212,10 +2257,8 @@ export class AgentSessionWrapper {
 // ============================================================================
 
 declare global {
-  var __piSessions: Map<string, AgentSessionWrapper> | undefined;
   var __piStartLocks: Map<string, Promise<{ session: AgentSessionWrapper; realSessionId: string }>> | undefined;
   var __piStartingSessionCwds: Map<string, number> | undefined;
-  var __piRunningListeners: Set<(ids: string[]) => void> | undefined;
 }
 
 function getRegistry(): Map<string, AgentSessionWrapper> {
@@ -2280,7 +2323,9 @@ export async function sendSessionToolCommand(sessionId: string, sessionFile: str
   if (command.type === "get_tools") return sessionToolEntries(manager.getEntries());
   const plan = readPlanState(manager.getEntries() as SessionEntry[]);
   if (plan.planModeActive || plan.phase === "executing") throw new Error("Tool permissions are fixed while a plan is active");
-  saveSessionToolNames(manager, command.toolNames);
+  const environment = sessionCommandEnvironment(manager.getEntries(), readSessionToolNames(manager.getEntries()));
+  saveSessionCommandEnvironment(manager, environment);
+  saveSessionToolNames(manager, commandTools(validateSessionToolNames(command.toolNames), environment));
   return null;
 }
 
@@ -2291,72 +2336,6 @@ export async function readSessionCommands(sessionId: string, sessionFile: string
   if (!cwd) throw new Error("Session project not found");
   const { commands } = await loadCommandResources(cwd);
   return { commands };
-}
-
-function runtimeMessageText(entry: SessionMessageEntry): string {
-  if (entry.message.role === "bashExecution") return "";
-  const content = entry.message.content;
-  if (typeof content === "string") return content;
-  return content
-    .map((block) => block.type === "text" ? block.text : "")
-    .filter(Boolean)
-    .join(" ");
-}
-
-function runtimeMessageActivityMs(entry: SessionMessageEntry): number | undefined {
-  if (entry.message.role !== "user" && entry.message.role !== "assistant") return undefined;
-  if (typeof entry.message.timestamp === "number") return entry.message.timestamp;
-  const timestamp = new Date(entry.timestamp).getTime();
-  return Number.isNaN(timestamp) ? undefined : timestamp;
-}
-
-/**
- * Return live sessions that should be visible in the session list. Pi delays
- * the first JSONL flush until an assistant message exists, so an accepted new
- * prompt must temporarily be described from its in-memory SessionManager.
- */
-export function getRpcSessionInfos(): SessionInfo[] {
-  const sessions: SessionInfo[] = [];
-  for (const session of getRegistry().values()) {
-    if (!session.isAlive()) continue;
-
-    const manager = session.inner.sessionManager;
-    const header = manager.getHeader();
-    const entries = manager.getEntries() as unknown as Array<
-      { type: string; timestamp: string } | SessionMessageEntry
-    >;
-    const messages = entries.filter((entry): entry is SessionMessageEntry => entry.type === "message");
-    const firstUserMessage = messages.find((entry) => entry.message.role === "user");
-    const sessionFile = manager.getSessionFile() ?? session.sessionFile;
-    const persisted = Boolean(sessionFile && existsSync(sessionFile));
-
-    // An ensure_session call creates an idle, empty runtime while the composer
-    // loads commands. Do not leak it into history before a prompt is accepted.
-    if (!persisted && (!session.isRunning() || !firstUserMessage)) continue;
-
-    const created = header?.timestamp
-      ?? entries[0]?.timestamp
-      ?? new Date().toISOString();
-    const headerTimestamp = new Date(created).getTime();
-    let lastActivityMs = Number.isNaN(headerTimestamp) ? Date.now() : headerTimestamp;
-    for (const message of messages) {
-      const activityMs = runtimeMessageActivityMs(message);
-      if (activityMs !== undefined) lastActivityMs = Math.max(lastActivityMs, activityMs);
-    }
-
-    sessions.push({
-      path: sessionFile ?? "",
-      id: header?.id ?? session.sessionId,
-      cwd: header?.cwd ?? session.cwd,
-      name: manager.getSessionName(),
-      created,
-      modified: new Date(lastActivityMs).toISOString(),
-      messageCount: messages.length,
-      firstMessage: firstUserMessage ? runtimeMessageText(firstUserMessage) || "(no messages)" : "(no messages)",
-      transient: !persisted,
-    });
-  }
-  return sessions;
 }
 
 export function hasBusyRpcSessionForCwd(cwd: string): boolean {
@@ -2374,58 +2353,6 @@ export async function destroyRpcSessionsForCwd(cwd: string): Promise<number> {
   );
   await Promise.all(sessions.map((session) => session.shutdown()));
   return sessions.length;
-}
-
-export function getRunningRpcSessionIds(): string[] {
-  const ids = new Set<string>();
-  for (const [sessionId, session] of getRegistry()) {
-    if (session.isRunning()) ids.add(session.sessionId || sessionId);
-  }
-  return [...ids];
-}
-
-// ----------------------------------------------------------------------------
-// Running-status broadcaster
-//
-// Pushes the current set of running session ids to subscribers whenever any
-// session's running state may have changed. This lets the sidebar receive live
-// updates over SSE instead of polling. Listeners live on globalThis so they
-// survive Next.js hot-reload.
-// ----------------------------------------------------------------------------
-
-function getRunningListeners(): Set<(ids: string[]) => void> {
-  if (!globalThis.__piRunningListeners) globalThis.__piRunningListeners = new Set();
-  return globalThis.__piRunningListeners;
-}
-
-/** Subscribe to running-session-id changes. Returns an unsubscribe function. */
-export function subscribeRunningSessions(listener: (ids: string[]) => void): () => void {
-  const listeners = getRunningListeners();
-  listeners.add(listener);
-  return () => { listeners.delete(listener); };
-}
-
-let lastRunningSnapshot = "";
-
-/**
- * Recompute the running-session-id set and, if it changed since the last
- * notification, broadcast it to subscribers.
- */
-export function notifyRunningChange(): void {
-  const listeners = getRunningListeners();
-  if (listeners.size === 0) {
-    // A future subscriber receives its own initial snapshot. Clear this one so
-    // its first state transition cannot match stale state from an old listener.
-    lastRunningSnapshot = "";
-    return;
-  }
-  const ids = getRunningRpcSessionIds();
-  const snapshot = JSON.stringify([...ids].sort());
-  if (snapshot === lastRunningSnapshot) return;
-  lastRunningSnapshot = snapshot;
-  for (const listener of listeners) {
-    try { listener(ids); } catch { /* ignore listener errors */ }
-  }
 }
 
 /**
@@ -2462,9 +2389,12 @@ export async function startRpcSession(
   const sessionCwd = sessionManager.getCwd();
   const creation=creationBinding(sessionManager.getEntries());
   if(creation)assertCreationIdentity(creation);
-  const toolNames = options.toolNames ?? readSessionToolNames(sessionManager.getEntries());
+  const requestedTools = options.toolNames ?? readSessionToolNames(sessionManager.getEntries());
   const finishStartingSession = trackStartingSession(sessionCwd);
   const starting = (async () => {
+    const environment = sessionFile ? sessionCommandEnvironment(sessionManager.getEntries(), readSessionToolNames(sessionManager.getEntries())) : await readCommandEnvironment();
+    const toolNames = requestedTools !== undefined ? commandTools(requestedTools, environment) : !sessionFile && environment === "powershell" ? ["read", "powershell", "edit", "write"] : undefined;
+    if (!sessionFile && !creation) saveSessionCommandEnvironment(sessionManager, environment);
     schedulePiCatalogSync();
     // Some extensions access the SDK's global theme even outside the terminal UI.
     initTheme();
@@ -2494,12 +2424,18 @@ export async function startRpcSession(
       cwd: sessionCwd,
       agentDir,
       resourceLoaderOptions: {
-        extensionFactories: creation?[]:[EUREKA_NATIVE_PLAN_EXTENSION, EUREKA_AUTOMATION_INTAKE_EXTENSION, EUREKA_AUTOMATION_CHAT_EXTENSION, installBuiltInMcpAdapter, installHazeManagedMcpRuntime, installPluginBrowserHandoff, EUREKA_MCP_EXTENSION, EUREKA_TASK_PROGRESS_EXTENSION, EUREKA_WRITE_DIFF_EXTENSION],
+        extensionFactories: creation?[]:[EUREKA_NATIVE_PLAN_EXTENSION, EUREKA_AUTOMATION_INTAKE_EXTENSION, EUREKA_AUTOMATION_CHAT_EXTENSION, installHazeManagedMcpRuntime, installNativeMcpRuntime, installUiWaitRuntime, installPluginBrowserHandoff, EUREKA_MCP_EXTENSION, EUREKA_TASK_PROGRESS_EXTENSION, EUREKA_WRITE_DIFF_EXTENSION, EUREKA_IMAGE_GENERATION_EXTENSION, EUREKA_PROMPT_POLICY_EXTENSION],
         ...(creation?{noExtensions:true,noSkills:true,noPromptTemplates:true,noContextFiles:true}:{}),
         skillsOverride: (base) => applyOrganizationPluginSkills(sessionCwd, applyHazeProjectSkillOverrides(sessionCwd, base)),
       },
       ...(trustReloadOptions ? { resourceLoaderReloadOptions: trustReloadOptions } : {}),
     });
+    restoreKimiCodingCompatibility(services.modelRuntime);
+    await restoreLegacyAzureProvider(
+      services.modelRuntime,
+      services.settingsManager,
+      sessionManager.getBranch().some((entry) => entry.type === "model_change" && entry.provider === "azure-openai-responses"),
+    );
     const scope = await resolveVisibleModels(
       services.modelRuntime,
       services.settingsManager.getEnabledModels(),

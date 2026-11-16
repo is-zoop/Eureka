@@ -4,6 +4,7 @@ import { readFile, rename, unlink, writeFile } from "node:fs/promises";
 import { calculateContextTokens } from "@earendil-works/pi-coding-agent";
 import { buildContextDetails, type ContextDetails } from "./context-details";
 import type { AgentSessionLike } from "./pi-types";
+import { isSessionPromptSuppressed } from "./session-prompt-policy";
 
 interface SnapshotSession {
   inner: AgentSessionLike;
@@ -25,7 +26,7 @@ export function describeLiveContext(inner: AgentSessionLike, sessionId = inner.s
   return buildContextDetails({
     sessionId, source: "live", model: inner.model ? `${inner.model.provider}/${inner.model.id}` : undefined,
     usage: reported ? { ...reported, estimated } : undefined, messages,
-    systemPrompt: state?.systemPrompt, tools: state?.tools,
+    systemPrompt: isSessionPromptSuppressed(inner.sessionManager) ? "" : inner.systemPrompt ?? state?.systemPrompt, tools: state?.tools,
     reserveTokens: settings.reserveTokens, autoCompactionEnabled: inner.autoCompactionEnabled,
   });
 }

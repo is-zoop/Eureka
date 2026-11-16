@@ -8,12 +8,13 @@ import type { PluginManifest } from "./haze-plugin-package";
 export type HazeInstallScope = "global" | "project";
 export type HazeCapabilityType = "Skill" | "MCP" | "Plugin";
 export type HazeMcpLifecycle = "lazy" | "eager" | "keep-alive";
-export type HazeMcpRuntimeOptions = { lifecycle: HazeMcpLifecycle; idleTimeout: number };
+export type HazeMcpExposure = "direct" | "deferred" | "codemode";
+export type HazeMcpRuntimeOptions = { exposure?: HazeMcpExposure; lifecycle?: HazeMcpLifecycle; idleTimeout?: number };
 export type ManagedPlugin = { source: string; subject: string; digest: string; root: string; manifest: PluginManifest; approvedUrls: string[] };
 export type HazeManagedInstall = {
   capabilityId: string; name: string; type: HazeCapabilityType; version: string; scope: HazeInstallScope;
   installedAt: string; disabled?: boolean; skillPath?: string; serverUrl?: string;
-  lifecycle?: HazeMcpLifecycle; idleTimeout?: number; plugin?: ManagedPlugin;
+  exposure?: HazeMcpExposure; lifecycle?: HazeMcpLifecycle; idleTimeout?: number; plugin?: ManagedPlugin;
 };
 export type HazeRegistry = { version: 1; installs: HazeManagedInstall[] };
 

@@ -3,8 +3,13 @@ import { readFileSync } from "fs";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
 import { desktopTraceExcludes } from "./desktop/scripts/standalone-resources.mjs";
+import { prepareBrowserAssets } from "./scripts/browser-assets.mjs";
+import { configureDevWebpackMemory } from "./scripts/dev-webpack-memory.mjs";
 
 const configDir = dirname(fileURLToPath(import.meta.url));
+const automationContract = JSON.parse(readFileSync(join(configDir, "lib/automation-sdk-contract.json"), "utf8"));
+const APP_BROWSER_POST_MAX_BYTES = automationContract.limits.executionValueBytes + 64 * 1024;
+const browserAssets = prepareBrowserAssets(configDir);
 const { version } = JSON.parse(readFileSync(join(configDir, "package.json"), "utf8")) as { version: string };
 let piVersion = "unknown";
 try {
@@ -18,15 +23,29 @@ const nextConfig: NextConfig = {
   ...(process.env.EUREKA_DESKTOP_BUILD === "1" ? { output: "standalone" } : {}),
   outputFileTracingRoot: configDir,
   outputFileTracingExcludes: { "*": desktopTraceExcludes },
+  // The proxy clones request bodies before route-level streaming limits apply.
+  experimental: {
+    proxyClientMaxBodySize: APP_BROWSER_POST_MAX_BYTES,
+    webpackBuildWorker: true,
+    optimizePackageImports: ["date-fns/locale", "es-toolkit", "react-day-picker"],
+  },
+  // Dev-only cache/font settings and safe stylesheet replacement on hot reload.
+  webpack(config, { dev }) { return configureDevWebpackMemory(config, dev, configDir); },
   serverExternalPackages: [
     "playwright",
     "playwright-core",
     "undici",
+    // Host-only table/schema libraries retain their standard Node module loading.
+    "exceljs",
+    "csv-parse",
+    "csv-stringify",
+    "ajv",
     "@earendil-works/pi-coding-agent",
     "@earendil-works/pi-agent-core",
     "@earendil-works/pi-ai",
     "@earendil-works/pi-tui",
     "jiti",
+    "typebox",
   ],
   allowedDevOrigins: ["127.0.0.1", "192.168.*.*"],
   async headers() {
@@ -55,6 +74,7 @@ const nextConfig: NextConfig = {
   env: {
     NEXT_PUBLIC_APP_VERSION: version,
     NEXT_PUBLIC_PI_VERSION: piVersion,
+    NEXT_PUBLIC_MERMAID_ASSET_URL: browserAssets.mermaidUrl,
   },
 };
 

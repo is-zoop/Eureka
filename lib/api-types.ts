@@ -119,6 +119,7 @@ export interface PluginsResponse {
 export type McpConfigScope = "project" | "global";
 export type McpLifecycle = "lazy" | "eager" | "keep-alive";
 export type McpTransportKind = "stdio" | "http";
+export type McpToolExposure = "direct" | "deferred" | "codemode" | "hidden";
 export type McpServerRuntimeState = "connected" | "cached" | "failed" | "needs-auth" | "not-connected" | "disabled" | "unknown";
 
 export interface McpServerInput {
@@ -131,7 +132,11 @@ export interface McpServerInput {
   url?: string;
   headers?: Record<string, string>;
   bearerTokenEnv?: string;
+  exposure?: McpToolExposure;
+  toolExposure?: Record<string, McpToolExposure>;
+  description?: string;
   lifecycle?: McpLifecycle;
+  timeout?: number;
   idleTimeout?: number;
   /** Disabled servers stay configured but are not loaded into new sessions. */
   disabled?: boolean;

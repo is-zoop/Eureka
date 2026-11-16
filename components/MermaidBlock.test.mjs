@@ -10,6 +10,7 @@ const jiti = createJiti(import.meta.url, {
 });
 const { MermaidBlock, CodeBlock, parseUnifiedDiff } = await jiti.import("./MermaidBlock.tsx");
 const { I18nProvider } = await jiti.import("@/hooks/useI18n");
+const SyntaxHighlighter = await jiti.import("react-syntax-highlighter/dist/esm/prism-async", { default: true });
 
 // Simple sequenceDiagram for testing
 const mermaidSrc = `sequenceDiagram
@@ -68,7 +69,15 @@ function renderCode(props) {
   );
 }
 
-test("CodeBlock highlights code when not streaming", () => {
+test("CodeBlock keeps escaped source readable before the highlighter loads", () => {
+  const html = renderCode({ code: '<script>const x = 1;</script>', lang: "javascript" });
+  assert.match(html, /&lt;script&gt;const x = 1;&lt;\/script&gt;/);
+  assert.doesNotMatch(html, /class="token/);
+  assert.doesNotMatch(html, /<script>/);
+});
+
+test("CodeBlock highlights code when not streaming", async () => {
+  await SyntaxHighlighter.preload();
   const html = renderCode({ code: "const x = 1;", lang: "javascript" });
 
   assert.match(html, /class="token/);

@@ -2,6 +2,8 @@ interface TimingEntry {
   type: string;
   timestamp: string;
   message?: { role?: string };
+  customType?: string;
+  data?: unknown;
 }
 
 /**
@@ -15,8 +17,16 @@ interface TimingEntry {
 export function computeSessionTotalActiveMs(entries: readonly TimingEntry[]): number {
   let totalActiveMs = 0;
   let previousTimestamp: number | undefined;
+  let waiting = false;
 
   for (const entry of entries) {
+    if (entry.type === "custom" && entry.customType === "eureka_ui_wait") {
+      const timestamp = Date.parse(entry.timestamp), active = (entry.data as { waiting?: unknown } | undefined)?.waiting;
+      if (!Number.isFinite(timestamp) || typeof active !== "boolean") continue;
+      if (!waiting && (entry.data as { active?: boolean } | undefined)?.active !== false && previousTimestamp !== undefined && timestamp > previousTimestamp) totalActiveMs += timestamp - previousTimestamp;
+      previousTimestamp = timestamp; waiting = active;
+      continue;
+    }
     if (!isTimingEntry(entry.type)) continue;
 
     const timestamp = Date.parse(entry.timestamp);
@@ -28,7 +38,7 @@ export function computeSessionTotalActiveMs(entries: readonly TimingEntry[]): nu
       continue;
     }
 
-    if (previousTimestamp !== undefined && timestamp > previousTimestamp) {
+    if (!waiting && previousTimestamp !== undefined && timestamp > previousTimestamp) {
       totalActiveMs += timestamp - previousTimestamp;
     }
     previousTimestamp = timestamp;

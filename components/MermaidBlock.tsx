@@ -1,12 +1,13 @@
 "use client";
 
 import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
+import SyntaxHighlighter from "react-syntax-highlighter/dist/esm/prism-async";
 import { useTheme } from "@/hooks/useTheme";
 import { useI18n } from "@/hooks/useI18n";
 import { copyText } from "@/lib/clipboard";
 import { CopyFeedbackIcon } from "./CopyFeedbackIcon";
 import { editorDarkTheme, editorLightTheme } from "@/lib/code-theme";
+import { loadMermaid } from "@/lib/mermaid-browser";
 
 interface MermaidBlockProps {
   code: string;
@@ -39,7 +40,7 @@ export function MermaidBlock({ code, isStreaming, defaultPreview = false }: Merm
     setRenderState({ key: currentKey, status: "loading" });
 
     const render = async () => {
-      const { default: mermaid } = await import("mermaid");
+      const mermaid = await loadMermaid();
       mermaid.initialize({
         startOnLoad: false,
         securityLevel: "strict",

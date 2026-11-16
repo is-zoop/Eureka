@@ -30,7 +30,7 @@ exports.readRuntimeHazeSession = () => { globalThis.__guestRuntimeRead = true; r
 `);
 await writeFile(path.join(fixtures, "lib/auth/provider.ts"), "exports.getIdentityProvider = () => { throw new Error('guest must not contact Haze'); };");
 await writeFile(path.join(fixtures, "lib/auth/marketplace.ts"), `
-exports.refreshMarketplaceSession = async () => { throw new Error("guest must not refresh Haze"); };
+exports.refreshMarketplaceSession = async () => { if (globalThis.__guestAuthExpired) return null; throw new Error("guest must not refresh Haze"); };
 exports.hasMarketplaceAccess = () => false;
 `);
 await writeFile(path.join(fixtures, "lib/browser-runtime.ts"), `exports.browserOwner = (source, subject) => JSON.stringify([source, subject]); exports.clearBrowserIdentity = () => {};`);
@@ -94,7 +94,7 @@ test("guest redirects preserve app state but cannot loop into login, enterprise,
 
 test("ordinary pages and APIs accept guests; requests without an explicit choice remain gated", () => {
   globalThis.__guestAuthConfigEnabled = false;
-  for (const target of ["/", "/settings", "/api/sessions", "/api/agent/new", "/api/models", "/api/skills", "/api/plugins", "/api/mcp-config"]) {
+  for (const target of ["/", "/settings", "/api/sessions", "/api/agent/new", "/api/models", "/api/skills", "/api/plugins", "/api/mcp-config", "/api/organization-extensions/composer"]) {
     const response = proxy(request(target, { headers: { cookie: `${GUEST_SESSION_COOKIE}=1` } }));
     assert.equal(response.headers.get("x-middleware-next"), "1", target);
   }
@@ -104,7 +104,7 @@ test("ordinary pages and APIs accept guests; requests without an explicit choice
 });
 
 test("guests cannot access any enterprise route, including resources and local installation management", async () => {
-  for (const suffix of ["", "/categories", "/installations", "/1/content", "/1/icon", "/1/favorite", "/1/installation", "/1/documentation/image.png"]) {
+  for (const suffix of ["", "/categories", "/installations", "/composer/resource", "/1/content", "/1/icon", "/1/favorite", "/1/installation", "/1/documentation/image.png"]) {
     const response = proxy(request(`/api/organization-extensions${suffix}`, { headers: { cookie: `${GUEST_SESSION_COOKIE}=1` } }));
     assert.equal(response.status, 401, suffix);
     assert.deepEqual(await response.json(), { error: "unauthenticated" });
@@ -126,7 +126,7 @@ test("guest access never bypasses request origin checks", async () => {
   assert.equal((await enterGuest(request("/api/marketplace-auth/guest", { method: "POST", headers: { "Content-Type": "application/json" }, body: "[]" }))).status, 400);
 });
 
-test("successful login replaces guest mode; logout clears both modes", async () => {
+test("successful login replaces guest mode; logout keeps the local workspace available", async () => {
   globalThis.__guestAuthConfigEnabled = true;
   const response = NextResponse.json({});
   const session = { providerId: "haze-oidc", refreshToken: "test-refresh", expiresAt: Date.now() + 3600000,
@@ -137,10 +137,11 @@ test("successful login replaces guest mode; logout clears both modes", async () 
   assert.deepEqual(await readAppSession(), { guest: false, session: { ...session, runtimeId: "test-login" } });
   globalThis.__guestAuthCookies = (await skip()).cookies;
   const loggedOut = await logout();
-  assert.equal(loggedOut.cookies.get(GUEST_SESSION_COOKIE).maxAge, 0);
+  assert.equal(loggedOut.cookies.get(GUEST_SESSION_COOKIE).value, "1");
+  assert.equal(loggedOut.cookies.get(GUEST_SESSION_COOKIE).maxAge, GUEST_SESSION_MAX_AGE);
   assert.equal(loggedOut.cookies.get("eureka_marketplace_session").maxAge, 0);
   globalThis.__guestAuthCookies = loggedOut.cookies;
-  assert.equal(await readAppSession(), null);
+  assert.deepEqual(await readAppSession(), { guest: true });
 });
 
 test("an explicit guest choice overrides a residual valid Haze cookie", async () => {
@@ -155,4 +156,17 @@ test("an explicit guest choice overrides a residual valid Haze cookie", async ()
   const cookie = `${GUEST_SESSION_COOKIE}=1; eureka_marketplace_session=${response.cookies.get("eureka_marketplace_session").value}`;
   assert.equal(proxy(request("/api/organization-extensions/1/icon", { headers: { cookie } })).status, 401);
   assert.equal((await profile()).status, 200);
+});
+
+test("expired cloud authentication falls back to the local workspace profile", async () => {
+  globalThis.__guestAuthConfigEnabled = false;
+  globalThis.__guestAuthCookies = NextResponse.json({}).cookies;
+  globalThis.__guestAuthExpired = true;
+  try {
+    const response = await profile();
+    assert.equal(response.status, 200);
+    assert.equal((await response.json()).guest, true);
+    assert.equal(response.cookies.get(GUEST_SESSION_COOKIE).value, "1");
+    assert.equal(response.cookies.get("eureka_marketplace_session").maxAge, 0);
+  } finally { globalThis.__guestAuthExpired = false; }
 });

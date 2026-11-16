@@ -8,6 +8,7 @@ export interface DesktopUpdateState {
   downloadedBytes: number;
   totalBytes: number | null;
   readyToInstall: boolean;
+  retryAttempt?: number;
   error: string | null;
 }
 

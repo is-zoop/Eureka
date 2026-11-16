@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { hasMarketplaceAccess, refreshMarketplaceSession } from "@/lib/auth/marketplace";
-import { clearAuthSession, readAuthSession, readGuestSession } from "@/lib/auth/session";
-import { GUEST_AVATAR_URL, GUEST_NAME } from "@/lib/auth/guest";
+import { authCookieOptions, clearAuthSession, readAuthSession, readGuestSession } from "@/lib/auth/session";
+import { GUEST_AVATAR_URL, GUEST_NAME, GUEST_SESSION_COOKIE, GUEST_SESSION_MAX_AGE } from "@/lib/auth/guest";
 
 function safeAvatarUrl(value: string | null | undefined): string | null {
   if (!value || value.length > 512_000) return null;
@@ -22,8 +22,11 @@ export async function GET() {
   // Refresh here so the client receives a current, display-safe profile only.
   const result = await refreshMarketplaceSession(true);
   if (!result) {
-    const response = NextResponse.json({ authenticated: false }, { status: 401 });
+    const response = NextResponse.json({ authenticated: false, guest: true, marketplace: false,
+      user: { name: GUEST_NAME, email: null, avatarUrl: GUEST_AVATAR_URL, permissions: [] },
+    }, { headers: { "Cache-Control": "no-store" } });
     await clearAuthSession(response.cookies, await readAuthSession());
+    response.cookies.set(GUEST_SESSION_COOKIE, "1", authCookieOptions(GUEST_SESSION_MAX_AGE));
     return response;
   }
   const { session } = result;

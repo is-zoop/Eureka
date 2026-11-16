@@ -1,6 +1,6 @@
 import {
   SessionManager,
-  buildContextEntries as piBuildContextEntries,
+  buildSessionProjection as piBuildSessionProjection,
   buildSessionContext as piBuildSessionContext,
   getAgentDir,
 } from "@earendil-works/pi-coding-agent";
@@ -235,7 +235,7 @@ export function buildSessionContext(
   const piEntries = entries as unknown as PiSessionEntry[];
   const piCtx = piBuildSessionContext(piEntries, leafId, byId as unknown as Map<string, PiSessionEntry>);
 
-  const contextEntries = piBuildContextEntries(
+  const projection = piBuildSessionProjection(
     piEntries,
     leafId,
     byId as unknown as Map<string, PiSessionEntry>,
@@ -245,8 +245,15 @@ export function buildSessionContext(
   // fork/navigation targets aligned while preserving pi's compaction ordering.
   const messages: AgentMessage[] = [];
   const entryIds: string[] = [];
-  for (const entry of contextEntries) {
-    const localEntry = entry as unknown as SessionEntry;
+  for (const { sourceEntry, messages: projectedMessages } of projection.entries) {
+    if (projectedMessages.length === 0) continue;
+    let localEntry = sourceEntry as unknown as SessionEntry;
+    if (localEntry.type === "message") {
+      if (projectedMessages[0].role === "system") continue;
+      localEntry = { ...localEntry, message: projectedMessages[0] as unknown as AgentMessage };
+    } else if (localEntry.type === "custom_message" && projectedMessages[0].role === "custom") {
+      localEntry = { ...localEntry, content: projectedMessages[0].content as typeof localEntry.content };
+    }
     const m = entryToUiMessage(localEntry, options);
     if (m) {
       messages.push(m);
@@ -379,6 +386,8 @@ function entryToUiMessage(
   // normalizeToolCalls is a secondary guard (returns non-assistant messages as-is).
   switch (entry.type) {
     case "message": {
+      // SDK 1.5 records prompt/tool patches in the transcript, not chat bubbles.
+      if ((entry.message as { role: string }).role === "system") return null;
       const storedMessage = options.deferToolResultImages
         ? omitToolResultBase64Images(normalizeToolCalls(entry.message))
         : normalizeToolCalls(entry.message);

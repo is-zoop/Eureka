@@ -6,32 +6,26 @@ import { NotificationNotice } from "@/components/Notifications";
 
 
 import { useState, useCallback, useRef, useEffect, useLayoutEffect } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
+import dynamic from "next/dynamic";
 import { useGlobalKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { SessionSidebar } from "./SessionSidebar";
 import { AppNavigation, type AppView } from "./AppNavigation";
 import { DesktopUpdateButton } from "./DesktopUpdateButton";
-import { AutomationWorkspace } from "./AutomationWorkspace";
-import { AutomationAppDetails, type AutomationAppDetailsRequest } from "./AutomationAppDetails";
+import type { AutomationAppDetailsRequest } from "./AutomationAppDetails";
 import { AutomationAuthoringBrowserHost } from "./AutomationAuthoringBrowserHost";
 import { LabelTooltip } from "./LabelTooltip";
-import { BrowserPanel } from "./BrowserPanel";
-import { NativeBrowserPanel } from "./NativeBrowserPanel";
 import { sameNativeBrowser, type NativeBrowserSpec } from "@/lib/native-browser";
 import type { AutomationBrowserControls, AutomationTaskState } from "@/lib/automation-task-state";
 import type { BrowserEvent } from "@/lib/browser-types";
 import { ChatWindow } from "./ChatWindow";
 import type { PlanReviewControls } from "./ChatWindow";
-import { FileViewer } from "./FileViewer";
 import { TabBar, type Tab } from "./TabBar";
 import { openFileTab, saveFileViewerState } from "./file-tab-state";
-import { ExtensionsCenter } from "./ExtensionsCenter";
-import { OrganizationExtensionDetails, type OrganizationExtensionDetailItem } from "./OrganizationExtensionDetails";
-import { PlanReviewPanel } from "./PlanReviewPanel";
-import { TurnChangesPanel } from "./TurnChangesPanel";
+import type { OrganizationExtensionDetailItem } from "./OrganizationExtensionDetails";
 import type { TurnChangesRequest } from "@/lib/turn-written-files";
 import type { EurekaPlanState } from "@/lib/plan-mode";
-import { SettingsPage, type SettingsSection } from "./SettingsPage";
+import type { SettingsSection } from "./SettingsPage";
 import { SessionToolPermissionsMenu, SessionToolPermissionsButton } from "./ToolPermissions";
 import type { SessionToolPermissions } from "@/lib/tool-permissions";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger } from "./ui/dropdown-menu";
@@ -57,6 +51,7 @@ import {
   showBrowserNotification,
 } from "@/lib/browser-notifications";
 import { getInitialNavigation } from "@/lib/initial-navigation";
+import { replaceSessionUrl } from "@/lib/session-navigation";
 import { NAVIGATE_HISTORY_EVENT, NAVIGATION_STATE_EVENT, NavigationHistory } from "@/lib/navigation-history";
 import { DESKTOP_MENU_COMMAND_EVENT, EMPTY_DESKTOP_MENU_CONTEXT, publishDesktopMenuContext, type DesktopMenuRequest } from "@/lib/desktop-menu";
 import { getSessionDisplayTitle } from "@/lib/session-display-title";
@@ -78,6 +73,24 @@ import type { ChatInputHandle } from "./ChatInput";
 import type { SessionStatsInfo } from "@/lib/pi-types";
 import type { FileViewerState } from "@/lib/file-viewer-state";
 import type { GitDiffMode } from "@/lib/git-types";
+
+function DeferredPanelLoading() {
+  const { t } = useI18n();
+  return <div role="status" aria-label={t("sidebar.loading")} className="flex h-full min-h-0 flex-1 items-center justify-center bg-[var(--bg-panel)]"><Skeleton className="h-5 w-24" /></div>;
+}
+
+// Keep optional panels out of the chat entry chunk. Visited workspaces retain
+// their existing mount lifetime so navigation preserves their state and runs.
+const AutomationWorkspace = dynamic(() => import("./AutomationWorkspace").then(m => m.AutomationWorkspace), { loading: DeferredPanelLoading });
+const AutomationAppDetails = dynamic(() => import("./AutomationAppDetails").then(m => m.AutomationAppDetails), { loading: DeferredPanelLoading });
+const ExtensionsCenter = dynamic(() => import("./ExtensionsCenter").then(m => m.ExtensionsCenter), { loading: DeferredPanelLoading });
+const OrganizationExtensionDetails = dynamic(() => import("./OrganizationExtensionDetails").then(m => m.OrganizationExtensionDetails), { loading: DeferredPanelLoading });
+const SettingsPage = dynamic(() => import("./SettingsPage").then(m => m.SettingsPage), { loading: DeferredPanelLoading });
+const FileViewer = dynamic(() => import("./FileViewer").then(m => m.FileViewer), { loading: DeferredPanelLoading });
+const BrowserPanel = dynamic(() => import("./BrowserPanel").then(m => m.BrowserPanel), { loading: DeferredPanelLoading });
+const NativeBrowserPanel = dynamic(() => import("./NativeBrowserPanel").then(m => m.NativeBrowserPanel), { loading: DeferredPanelLoading });
+const PlanReviewPanel = dynamic(() => import("./PlanReviewPanel").then(m => m.PlanReviewPanel), { loading: DeferredPanelLoading });
+const TurnChangesPanel = dynamic(() => import("./TurnChangesPanel").then(m => m.TurnChangesPanel), { loading: DeferredPanelLoading });
 
 type AutoNameStatus =
   | { kind: "idle" }
@@ -102,7 +115,6 @@ function appHistoryKey(location: AppHistoryLocation) {
 }
 
 export function AppShell({ initialGuest = false }: { initialGuest?: boolean }) {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const [initialNavigation] = useState(() => getInitialNavigation(searchParams));
   const { preference, toggleTheme } = useTheme();
@@ -161,6 +173,8 @@ export function AppShell({ initialGuest = false }: { initialGuest?: boolean }) {
   const [automationBrowserId, setAutomationBrowserId] = useState<string | null>(null);
   const [automationBrowserOpen, setAutomationBrowserOpen] = useState(false);
   const [automationNativeBrowser, setAutomationNativeBrowser] = useState<NativeBrowserSpec | null>(null);
+  const automationNativeBrowserRef = useRef<NativeBrowserSpec | null>(null);
+  automationNativeBrowserRef.current = automationNativeBrowser;
   const [authoringSessionId,setAuthoringSessionId]=useState<string|null>(null);
   const homeNativeBrowser=mainView==="chat"&&Boolean(automationNativeBrowser?.applicationTaskId||automationNativeBrowser?.applicationRunId)&&authoringSessionId===selectedSession?.id;
   const [automationTaskState, setAutomationTaskState] = useState<AutomationTaskState>({ phase: "idle" });
@@ -175,6 +189,17 @@ export function AppShell({ initialGuest = false }: { initialGuest?: boolean }) {
   const [guest, setGuest] = useState(initialGuest);
   const [sessionContentLoading, setSessionContentLoading] = useState(false);
   const authProfileRequestedRef = useRef(false);
+  useEffect(() => {
+    const refresh = () => {
+      void fetch("/api/marketplace-auth/session", { cache: "no-store" })
+        .then(async response => response.ok ? response.json() : null)
+        .then(body => {
+          if (body?.user?.name) { setAuthenticatedUser(body.user); setGuest(body.guest === true); setAuthenticatedUserLoading(false); }
+        }).catch(() => {});
+    };
+    window.addEventListener("eureka:cloud-session-changed", refresh);
+    return () => window.removeEventListener("eureka:cloud-session-changed", refresh);
+  }, []);
   useEffect(() => {
     // React Strict Mode replays effects during development. Keep this to one
     // profile refresh so Haze refresh-token rotation is never raced locally.
@@ -194,7 +219,7 @@ export function AppShell({ initialGuest = false }: { initialGuest?: boolean }) {
         setAuthenticatedUserLoading(false);
       })
       .catch(() => {
-        window.location.replace("/login?returnTo=/");
+        setAuthenticatedUserLoading(false);
       });
   }, []);
   const sidebarWidthRef = useRef(SIDEBAR_DEFAULT_WIDTH);
@@ -606,13 +631,13 @@ export function AppShell({ initialGuest = false }: { initialGuest?: boolean }) {
         setSelectedSession(s);
         setSessionKey((k) => k + 1);
         if (new URLSearchParams(window.location.search).get("session") !== s.id) {
-          router.replace(`?session=${encodeURIComponent(s.id)}`, { scroll: false });
+          replaceSessionUrl(s.id);
         }
       })
       .catch(() => {
         // Network hiccup: keep the remembered session for a later retry.
       });
-  }, [router]);
+  }, []);
 
   const handleCwdChange = useCallback((cwd: string | null, projectRoot?: string | null) => {
     invalidateWorkspaceRestore();
@@ -670,8 +695,8 @@ export function AppShell({ initialGuest = false }: { initialGuest?: boolean }) {
       // the default welcome page when none is remembered.
       restoreWorkspaceContext(newProject);
     }
-    router.replace("/", { scroll: false });
-  }, [activeCwd, invalidateWorkspaceRestore, newSessionCwd, router, selectedSession, restoreWorkspaceContext]);
+    replaceSessionUrl(null);
+  }, [activeCwd, invalidateWorkspaceRestore, newSessionCwd, selectedSession, restoreWorkspaceContext]);
 
   const handleSelectSession = useCallback((session: SessionInfo, isRestore = false) => {
     invalidateWorkspaceRestore();
@@ -703,12 +728,12 @@ export function AppShell({ initialGuest = false }: { initialGuest?: boolean }) {
       // onCwdChange effect firing after setSelectedCwd in the sidebar
       suppressCwdBumpRef.current = true;
     }
-    // Skip router.replace when restoring from URL — the param is already correct
-    // and calling replace in production Next.js triggers a Suspense remount loop
+    // Initial URL restoration already has the right address. Other selections
+    // only synchronize client state; they must not navigate the server page.
     if (!isRestore) {
-      router.replace(`?session=${encodeURIComponent(session.id)}`, { scroll: false });
+      replaceSessionUrl(session.id);
     }
-  }, [invalidateWorkspaceRestore, router, isMobile, selectedSession]);
+  }, [invalidateWorkspaceRestore, isMobile, selectedSession]);
 
   const handleNewSession = useCallback((sessionId: string, cwd: string, automationRequest?: Omit<AutomationLaunchRequest, "draftKey">) => {
     invalidateWorkspaceRestore();
@@ -728,8 +753,8 @@ export function AppShell({ initialGuest = false }: { initialGuest?: boolean }) {
     setSystemPromptLoading(false);
     setActiveTopPanel(null);
     if (isMobile) setSidebarOpen(false);
-    router.replace("/", { scroll: false });
-  }, [invalidateWorkspaceRestore, router, isMobile]);
+    replaceSessionUrl(null);
+  }, [invalidateWorkspaceRestore, isMobile]);
 
   // Global keyboard shortcuts (handles Esc, Ctrl+Alt+N etc.)
   useGlobalKeyboardShortcuts({
@@ -768,8 +793,8 @@ export function AppShell({ initialGuest = false }: { initialGuest?: boolean }) {
     setSelectedSession(session);
     hydrateSelectedSession(session.id);
     replaceHistoryEntryRef.current = true;
-    router.replace(`?session=${encodeURIComponent(session.id)}`, { scroll: false });
-  }, [invalidateWorkspaceRestore, router, hydrateSelectedSession]);
+    replaceSessionUrl(session.id);
+  }, [invalidateWorkspaceRestore, hydrateSelectedSession]);
 
   const deliverSessionNotification = useCallback(({
     targetSession,
@@ -888,8 +913,8 @@ export function AppShell({ initialGuest = false }: { initialGuest?: boolean }) {
       transient: false,
     }));
     hydrateSelectedSession(newSessionId);
-    router.replace(`?session=${encodeURIComponent(newSessionId)}`, { scroll: false });
-  }, [invalidateWorkspaceRestore, router, hydrateSelectedSession]);
+    replaceSessionUrl(newSessionId);
+  }, [invalidateWorkspaceRestore, hydrateSelectedSession]);
 
   const handleSessionDeleted = useCallback((sessionId: string) => {
     navigationHistoryRef.current.remove((location) => location.session?.id === sessionId);
@@ -912,9 +937,9 @@ export function AppShell({ initialGuest = false }: { initialGuest?: boolean }) {
       setSystemPrompt(null);
       setSystemPromptLoading(false);
       setActiveTopPanel(null);
-      router.replace("/", { scroll: false });
+      replaceSessionUrl(null);
     }
-  }, [invalidateWorkspaceRestore, selectedSession, router]);
+  }, [invalidateWorkspaceRestore, selectedSession]);
 
   const handleOpenFile = useCallback((
     filePath: string,
@@ -1077,7 +1102,7 @@ export function AppShell({ initialGuest = false }: { initialGuest?: boolean }) {
   useEffect(() => {
     let alive = true;
     const create = async (event: Event) => {
-      if (guest || authenticatedUserLoading) return;
+      if (authenticatedUserLoading) return;
       try {
         // Do not place a fresh homepage task in an archived creation workspace.
         // The path only selects a suitable cwd; read-only status uses session metadata.
@@ -1137,7 +1162,7 @@ export function AppShell({ initialGuest = false }: { initialGuest?: boolean }) {
   const visibleExtensionDetails = extensionDetails?.cwd === projectTrustCwd ? extensionDetails : null;
   const homeRightPanelVisible = mainView === "automation"||homeNativeBrowser ? automationBrowserOpen && Boolean(automationBrowserId) : mainView === "chat" && rightPanelOpen;
   const hideVisibleRightPanel = () => mainView === "automation"||homeNativeBrowser ? setAutomationBrowserOpen(false) : setRightPanelOpen(false);
-  const extensionPanelVisible = extensionPanelOpen && !guest && !authenticatedUserLoading && (mainView === "extensions" && visibleExtensionDetails !== null || mainView === "automation" && automationDetails !== null);
+  const extensionPanelVisible = extensionPanelOpen && !authenticatedUserLoading && (mainView === "extensions" && !guest && visibleExtensionDetails !== null || mainView === "automation" && automationDetails !== null);
   useEffect(() => { if (mainView !== "automation" && automationDetails) { setAutomationDetails(null); setExtensionPanelOpen(false); } }, [mainView, automationDetails]);
 
   useEffect(() => {
@@ -1214,7 +1239,7 @@ export function AppShell({ initialGuest = false }: { initialGuest?: boolean }) {
       restoringHistoryKeyRef.current = appHistoryKey(location);
       if (location.session && location.session.id !== selectedSession?.id) {
         handleSelectSession(location.session, true);
-        router.replace(`?session=${encodeURIComponent(location.session.id)}`, { scroll: false });
+        replaceSessionUrl(location.session.id);
       } else if (!location.session && (selectedSession || location.draftId !== newSessionDraftId || location.cwd !== effectiveNewSessionCwd)) {
         handleNewSession(location.draftId, location.cwd ?? "");
       }
@@ -1243,7 +1268,7 @@ export function AppShell({ initialGuest = false }: { initialGuest?: boolean }) {
       window.removeEventListener(NAVIGATE_HISTORY_EVENT, onNavigate);
       window.removeEventListener("keydown", onKeyDown);
     };
-  }, [effectiveNewSessionCwd, handleNewSession, handleSelectSession, newSessionDraftId, router, selectedSession]);
+  }, [effectiveNewSessionCwd, handleNewSession, handleSelectSession, newSessionDraftId, selectedSession]);
 
   useEffect(() => () => {
     window.dispatchEvent(new CustomEvent(NAVIGATION_STATE_EVENT, { detail: { canGoBack: false, canGoForward: false } }));
@@ -1777,7 +1802,7 @@ export function AppShell({ initialGuest = false }: { initialGuest?: boolean }) {
 
   return (
     <>
-    <AutomationAuthoringBrowserHost active={!guest&&!authenticatedUserLoading&&mainView==="chat"} sessionId={selectedSession?.id??null} controls={automationBrowserControls} nativeSpec={automationNativeBrowser} visible={homeNativeBrowser&&automationBrowserOpen&&!settingsOpen&&!projectTrustDialogOpen} taskState={automationTaskState} onOpenBrowser={(id,native)=>{const reuse=sameNativeBrowser(native,automationNativeBrowser);if(reuse&&["stopped","error"].includes(automationTaskState.phase))automationBrowserControls.current?.restart();if(!reuse)setAutomationTaskState({phase:"opening"});setAuthoringSessionId(selectedSession?.id??null);setAutomationBrowserId(id);setAutomationNativeBrowser(current=>sameNativeBrowser(current,native)?current:native??null);setAutomationBrowserOpen(true);}}/>
+    <AutomationAuthoringBrowserHost active={!authenticatedUserLoading&&mainView==="chat"} sessionId={selectedSession?.id??null} controls={automationBrowserControls} nativeSpec={automationNativeBrowser} visible={homeNativeBrowser&&automationBrowserOpen&&!settingsOpen&&!projectTrustDialogOpen} taskState={automationTaskState} onOpenBrowser={(id,native)=>{const reuse=sameNativeBrowser(native,automationNativeBrowser);if(reuse&&["stopped","error"].includes(automationTaskState.phase))automationBrowserControls.current?.restart();if(!reuse)setAutomationTaskState({phase:"opening"});setAuthoringSessionId(selectedSession?.id??null);setAutomationBrowserId(id);setAutomationNativeBrowser(current=>sameNativeBrowser(current,native)?current:native??null);setAutomationBrowserOpen(true);}}/>
     <style>{`
       @media (max-width: 640px) {
         .sidebar-overlay-backdrop.sidebar-mobile-pending {
@@ -2185,8 +2210,8 @@ export function AppShell({ initialGuest = false }: { initialGuest?: boolean }) {
           background: "var(--chat-bg)",
         } as React.CSSProperties}
       >
-        {automationNativeBrowser && !guest && <div style={{ display: (mainView === "automation"||homeNativeBrowser) && automationBrowserOpen ? "flex" : "none", flex: 1, minHeight: 0 }}>
-          <NativeBrowserPanel key={`${automationNativeBrowser.ownerKey}:${automationNativeBrowser.sessionId}:${automationNativeBrowser.websiteUrl}:${automationNativeBrowser.accountId ?? automationNativeBrowser.browserMode ?? "default"}:${automationNativeBrowser.applicationRunId??"manual"}:${automationNativeBrowser.applicationTaskId??""}`} spec={automationNativeBrowser} controlRef={automationBrowserControls} onTaskState={setAutomationTaskState} visible={(mainView === "automation"||homeNativeBrowser) && automationBrowserOpen && !settingsOpen && !projectTrustDialogOpen} onHide={() => setAutomationBrowserOpen(false)} onClose={() => { setAutomationNativeBrowser(null); setAutomationBrowserId(null); setAutomationBrowserOpen(false); setAutomationTaskState({ phase: "stopped" }); }} />
+        {automationNativeBrowser && <div style={{ display: (mainView === "automation"||homeNativeBrowser) && automationBrowserOpen ? "flex" : "none", flex: 1, minHeight: 0 }}>
+          <NativeBrowserPanel key={`${automationNativeBrowser.ownerKey}:${automationNativeBrowser.sessionId}:${automationNativeBrowser.websiteUrl}:${automationNativeBrowser.accountId ?? automationNativeBrowser.browserMode ?? "default"}:${automationNativeBrowser.applicationRunId??"manual"}:${automationNativeBrowser.applicationTaskId??""}`} spec={automationNativeBrowser} controlRef={automationBrowserControls} onTaskState={setAutomationTaskState} visible={(mainView === "automation"||homeNativeBrowser) && automationBrowserOpen && !settingsOpen && !projectTrustDialogOpen} onHide={() => { if (sameNativeBrowser(automationNativeBrowserRef.current, automationNativeBrowser)) setAutomationBrowserOpen(false); }} onClose={() => { if (!sameNativeBrowser(automationNativeBrowserRef.current, automationNativeBrowser)) return; setAutomationNativeBrowser(null); setAutomationBrowserId(null); setAutomationBrowserOpen(false); setAutomationTaskState({ phase: "stopped" }); }} />
         </div>}
         {homeNativeBrowser?null:mainView === "automation" ? null : rightPanelMode === "browser" && browserSessionId && rightPanelOpen ? (
           <BrowserPanel key={browserSessionId} sessionId={browserSessionId} onHide={() => setRightPanelOpen(false)} />

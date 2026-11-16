@@ -1,5 +1,6 @@
 "use client";
 
+import { McpExposureOptions } from "./McpExposureOptions";
 import { ExtensionErrorText } from "./ExtensionNotice";
 
 import { useI18n } from "@/hooks/useI18n";
@@ -16,7 +17,7 @@ import type { HazeManagedMcpSummary, McpConfigScope, McpRuntimeStatus, McpServer
 import { Combobox, ComboboxContent, ComboboxInput, ComboboxItem, ComboboxList } from "./ui/combobox";
 
 const sidebarWidth = 210;
-const blank = (): McpServerInput => ({ name: "", transport: "stdio", command: "", args: [], lifecycle: "lazy", idleTimeout: 10 });
+const blank = (): McpServerInput => ({ name: "", transport: "stdio", command: "", args: [], timeout: 60, exposure: "direct" });
 const shortenPath = (path: string) => path.replace(/\\/g, "/").replace(/^([A-Za-z]:)\/Users\/[^/]+/, "~");
 const stateColor = (state?: string) => state === "connected" ? "#22c55e" : state === "failed" || state === "needs-auth" ? "#ef4444" : state === "connecting" ? "#f59e0b" : state === "disabled" ? "var(--text-dim)" : "var(--border)";
 
@@ -35,7 +36,6 @@ function SegmentedScope({ value, onChange }: { value: McpConfigScope; onChange: 
 
 export function McpConfig({ cwd, sessionId, fixedInstallScope, onReloaded, selection, onInstalledChange, view, revision = 0 }: { cwd: string; sessionId: string | null; fixedInstallScope?: McpConfigScope; onReloaded?: () => void; selection?: { name: string; scope: McpConfigScope; requestId: number }; onInstalledChange?: () => void; view?: "installed" | "market"; revision?: number }) {
   const { t } = useI18n();
-  const lifecycleNote = { lazy: t("extensions.lifecycle.lazy"), eager: t("extensions.lifecycle.eager"), "keep-alive": t("extensions.lifecycle.keepAlive") };
   const isMobile = useIsMobile();
   const [scopeSelection, setScope] = useState<McpConfigScope>(selection?.scope ?? "project");
   const scope = fixedInstallScope ?? scopeSelection;
@@ -122,7 +122,7 @@ export function McpConfig({ cwd, sessionId, fixedInstallScope, onReloaded, selec
   const update = <K extends keyof McpServerInput>(key: K, value: McpServerInput[K]) => setForm((current) => ({ ...current, [key]: value }));
   const add = () => { setSelected(null); setForm(blank()); setIsNew(true); setNotice(null); };
   const edit = (server: McpServerSummary) => { setSelected(server.name); setForm({ ...server }); setIsNew(false); setNotice(null); };
-  const savedPath = scope === "project" ? `${shortenPath(cwd)}/.mcp.json` : "~/.config/mcp/mcp.json";
+  const savedPath = scope === "project" ? `${shortenPath(cwd)}/.pi/mcp.json` : "~/.pi/agent/mcp.json";
   const buttonStyle = (primary = false, disabled = false): CSSProperties => ({ height: 32, boxSizing: "border-box", border: primary ? "1px solid var(--accent)" : "1px solid var(--border)", borderRadius: 5, background: primary ? "var(--accent)" : "var(--bg-panel)", color: primary ? "var(--accent-foreground, #fff)" : "var(--text)", padding: "0 10px", fontSize: 12, cursor: disabled ? "not-allowed" : "pointer", opacity: disabled ? 0.55 : 1 });
 
   const save = async () => {
@@ -200,7 +200,7 @@ export function McpConfig({ cwd, sessionId, fixedInstallScope, onReloaded, selec
   if (view) return <div className="h-full min-h-0 overflow-y-auto bg-[var(--chat-bg)] p-[24px]">
     {error ? <NotificationNotice type="error" message={error} action={{ label: t("context.retry"), onClick: () => { void load().catch(value => setError(value instanceof Error ? value.message : String(value))); } }} /> : null}
     {notice ? <NotificationNotice type="success" message={notice} /> : null}
-    {view === "installed" && !configuredActive ? <p className="text-sm text-[var(--text-muted)]">{data?.scope !== scope && !error ? t("i18n.loading") : t("extensions.noInstalledCapabilities")}</p> : <MarketConnectorForm form={form} scope={scope} savedPath={savedPath} isNew={isNew} busy={busy} canSave={Boolean((isNew || configuredActive) && form.name.trim() && (form.transport === "stdio" ? form.command?.trim() : form.url?.trim()))} sessionId={sessionId} status={status} onChange={update} onTransportChange={transport => setForm(current => ({ ...blank(), name: current.name, transport }))} onSave={() => void save()} onToggleDisabled={() => void toggleDisabled()} onUninstall={configuredActive && !isNew ? () => void uninstall() : undefined} uninstalling={uninstalling} />}
+    {view === "installed" && !configuredActive ? <p className="text-sm text-[var(--text-muted)]">{data?.scope !== scope && !error ? t("i18n.loading") : t("extensions.noInstalledCapabilities")}</p> : <MarketConnectorForm form={form} scope={scope} savedPath={savedPath} isNew={isNew} busy={busy} canSave={Boolean((isNew || configuredActive) && form.name.trim() && (form.transport === "stdio" ? form.command?.trim() : form.url?.trim()))} sessionId={sessionId} status={status} onChange={update} onTransportChange={transport => setForm(current => ({ ...blank(), name: current.name, exposure: current.exposure, description: current.description, transport }))} onSave={() => void save()} onToggleDisabled={() => void toggleDisabled()} onUninstall={configuredActive && !isNew ? () => void uninstall() : undefined} uninstalling={uninstalling} />}
   </div>;
 
   return <div style={{ height: "100%", minHeight: 0, display: "flex", flexDirection: "column", background: "var(--chat-bg)", color: "var(--text)" }}>
@@ -227,9 +227,10 @@ export function McpConfig({ cwd, sessionId, fixedInstallScope, onReloaded, selec
         {error && data ? <NotificationNotice message={error} type="error" /> : null}{notice ? <NotificationNotice message={notice} type="success" /> : null}
         <div className="mcp-config-form" style={{ display: "grid", gap: 14 }}>
           <Field label="名称" value={form.name} placeholder="例如 github" onChange={(value) => update("name", value)} />
-          <label style={{ display: "grid", gap: 6, fontSize: 12, color: "var(--text-muted)" }}><span>传输方式</span><Combobox items={["Stdio（本地命令）", "HTTP"]} value={form.transport === "stdio" ? "Stdio（本地命令）" : "HTTP"} onValueChange={(value) => { if (value) setForm((current) => ({ ...blank(), name: current.name, transport: value === "HTTP" ? "http" : "stdio" })); }}><ComboboxInput aria-label="传输方式" placeholder="选择传输方式" /><ComboboxContent><ComboboxList>{(item: string) => <ComboboxItem key={item} value={item}>{item}</ComboboxItem>}</ComboboxList></ComboboxContent></Combobox></label>
+          <label style={{ display: "grid", gap: 6, fontSize: 12, color: "var(--text-muted)" }}><span>传输方式</span><Combobox items={["Stdio（本地命令）", "HTTP"]} value={form.transport === "stdio" ? "Stdio（本地命令）" : "HTTP"} onValueChange={(value) => { if (value) setForm((current) => ({ ...blank(), name: current.name, exposure: current.exposure, description: current.description, transport: value === "HTTP" ? "http" : "stdio" })); }}><ComboboxInput aria-label="传输方式" placeholder="选择传输方式" /><ComboboxContent><ComboboxList>{(item: string) => <ComboboxItem key={item} value={item}>{item}</ComboboxItem>}</ComboboxList></ComboboxContent></Combobox></label>
           {form.transport === "stdio" ? <><Field label="命令" value={form.command} placeholder="npx" onChange={(value) => update("command", value)} /><label style={{ display: "grid", gap: 6, fontSize: 12, color: "var(--text-muted)" }}><span>参数（每行一个）</span><textarea value={(form.args ?? []).join("\n")} onChange={(event) => update("args", event.target.value.split(/\r?\n/).filter(Boolean))} placeholder={"-y\n@modelcontextprotocol/server-github"} style={{ minHeight: 76, resize: "vertical", border: "1px solid var(--border)", borderRadius: 5, background: "var(--bg-panel)", color: "var(--text)", padding: 9, fontFamily: "var(--font-mono)", fontSize: 12 }} /></label><Field label="工作目录（可选）" value={form.cwd} onChange={(value) => update("cwd", value)} /></> : <><Field label="HTTP URL" value={form.url} placeholder="https://example.com/mcp" onChange={(value) => update("url", value)} /><Field label="Bearer Token 环境变量（可选）" value={form.bearerTokenEnv} placeholder="GITHUB_TOKEN" onChange={(value) => update("bearerTokenEnv", value)} /></>}
-          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", alignItems: "start", gap: 12 }}><label style={{ display: "grid", gap: 6, fontSize: 12, color: "var(--text-muted)" }}><span>生命周期</span><Combobox items={["Lazy", "Eager", "Keep alive"]} value={form.lifecycle === "eager" ? "Eager" : form.lifecycle === "keep-alive" ? "Keep alive" : "Lazy"} onValueChange={(value) => { if (value) update("lifecycle", value === "Eager" ? "eager" : value === "Keep alive" ? "keep-alive" : "lazy"); }}><ComboboxInput aria-label="生命周期" placeholder="选择生命周期" /><ComboboxContent><ComboboxList>{(item: string) => <ComboboxItem key={item} value={item}>{item}</ComboboxItem>}</ComboboxList></ComboboxContent></Combobox><span style={{ fontSize: 11, color: "var(--text-dim)", lineHeight: 1.45 }}>{lifecycleNote[form.lifecycle ?? "lazy"]}</span></label><Field label="空闲断开（分钟）" type="number" value={form.idleTimeout} onChange={(value) => update("idleTimeout", Number(value))} /></div>
+          <McpExposureOptions value={form.exposure} disabled={busy} allowHidden onChange={exposure => update("exposure", exposure)} />
+          <Field label="请求超时（秒）" type="number" value={form.timeout ?? 60} onChange={(value) => update("timeout", Number(value))} />
           <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 8, paddingTop: 2 }}><SegmentedScope value={scope} onChange={(next) => { setScope(next); if (view === "installed") { setSelected(null); setIsNew(false); } else add(); }} /><button type="button" disabled={!sessionId || busy} onClick={() => void reload()} style={buttonStyle(false, !sessionId || busy)}>重载当前会话</button><button type="button" disabled={busy || (!isNew && !configuredActive)} onClick={() => void save()} style={buttonStyle(true, busy || (!isNew && !configuredActive))}>保存配置</button></div>
         </div>
         {sessionId ? <p style={{ margin: "22px 0 0", paddingTop: 14, borderTop: "1px solid var(--border)", color: "var(--text-muted)", fontSize: 12 }}>当前会话：已缓存 {status?.totalTools ?? 0} 个工具 · {status ? `更新于 ${new Date(status.updatedAt).toLocaleTimeString()}` : "等待适配器状态"}</p> : null}

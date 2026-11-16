@@ -30,7 +30,7 @@ function responseError(error: unknown) {
 
 async function installationPresentation(cwd: string, id: string, sessionId?: string | null) {
   const installs = await listHazeManagedInstalls(cwd);
-    const present = (items: typeof installs.global) => items.filter((item) => item.capabilityId === id && (item.type !== "Plugin" || item.plugin?.source === getAuthConfig()?.issuer.replace(/\/$/, ""))).map((item) => ({ capabilityId: item.capabilityId, type: item.type, name: item.name, version: item.version, scope: item.scope, installedAt: item.installedAt, disabled: Boolean(item.disabled), lifecycle: item.lifecycle, idleTimeout: item.idleTimeout, ...(item.type === "Plugin" ? { plugin: pluginPresentation(item, sessionId, readRuntimeHazeSession()?.principal.subject ?? null) } : {}) }));
+    const present = (items: typeof installs.global) => items.filter((item) => item.capabilityId === id && (item.type !== "Plugin" || item.plugin?.source === getAuthConfig()?.issuer.replace(/\/$/, ""))).map((item) => ({ capabilityId: item.capabilityId, type: item.type, name: item.name, version: item.version, scope: item.scope, installedAt: item.installedAt, disabled: Boolean(item.disabled), lifecycle: item.lifecycle, idleTimeout: item.idleTimeout, exposure: item.exposure, ...(item.type === "Plugin" ? { plugin: pluginPresentation(item, sessionId, readRuntimeHazeSession()?.principal.subject ?? null) } : {}) }));
   return { global: present(installs.global), project: present(installs.project) };
 }
 
@@ -49,7 +49,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   const { id } = await context.params;
   try {
     if (!validId(id)) return NextResponse.json({ error: "invalid capability id" }, { status: 400 });
-    const body = await request.json() as { cwd?: unknown; scope?: unknown; action?: unknown; type?: unknown; disabled?: unknown; lifecycle?: unknown; idleTimeout?: unknown; operation?: unknown; preparationToken?: unknown; approveAddresses?: unknown; deleteData?: unknown; confirmCapabilityId?: unknown };
+    const body = await request.json() as { cwd?: unknown; scope?: unknown; action?: unknown; type?: unknown; disabled?: unknown; lifecycle?: unknown; idleTimeout?: unknown; exposure?: unknown; operation?: unknown; preparationToken?: unknown; approveAddresses?: unknown; deleteData?: unknown; confirmCapabilityId?: unknown };
     const cwd = await assertCwd(body.cwd);
     const installScope = scope(body.scope);
     const capabilityType = type(body.type);
@@ -84,13 +84,13 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       await setHazeCapabilityDisabled(cwd, installScope, id, capabilityType, body.disabled);
     } else if (body.action === "configure") {
       if (capabilityType !== "MCP") return NextResponse.json({ error: "Only MCP supports runtime configuration" }, { status: 400 });
-      await configureHazeManagedMcp(cwd, installScope, id, hazeMcpRuntimeOptions(body.lifecycle, body.idleTimeout));
+      await configureHazeManagedMcp(cwd, installScope, id, hazeMcpRuntimeOptions(body.lifecycle, body.idleTimeout, body.exposure));
     } else if (body.action === "install" || body.action === "update") {
       const { accessToken } = await getHazeMarketplaceSession();
       const remoteType: OrganizationExtensionType = capabilityType === "Skill" ? "skill" : "mcp";
       const remote = (await listOrganizationExtensions(remoteType, accessToken)).find((item) => item.id === id);
       if (!remote) return NextResponse.json({ error: "Capability not found or unavailable" }, { status: 404 });
-      const runtime = capabilityType === "MCP" ? hazeMcpRuntimeOptions(body.lifecycle ?? "lazy", body.idleTimeout ?? 10) : undefined;
+      const runtime = capabilityType === "MCP" ? (body.lifecycle !== undefined || body.idleTimeout !== undefined ? hazeMcpRuntimeOptions(body.lifecycle ?? "lazy", body.idleTimeout ?? 10, body.exposure) : hazeMcpRuntimeOptions(undefined, undefined, body.exposure ?? "direct")) : undefined;
       await installHazeCapability(cwd, installScope, { id: remote.id, name: remote.name, slug: remote.slug, type: remote.type, version: remote.version, serverUrl: remote.serverUrl, connectType: remote.connectType }, runtime, accessToken);
     } else return NextResponse.json({ error: "invalid action" }, { status: 400 });
     return NextResponse.json(await installationPresentation(cwd, id));

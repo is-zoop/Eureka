@@ -4,7 +4,7 @@ import type { AuthorCandidate, AuthorCheck, AuthorFinding, AuthorState } from ".
 
 /** Private rules can change without changing executable bytes or file grants. */
 export function parseAuthorChecks(raw: unknown, detail: Pick<AutomationAppDetail,"ui">, evidence: AuthorState["evidence"]): AuthorCheck[] {
-  if (!Array.isArray(raw) || raw.length > 64) throw new Error("校验规则需要数组，最多 64 条；空数组仅可保存未校验草稿。");
+  if (!Array.isArray(raw) || raw.length > 64) throw new Error("校验规则需要数组，最多 64 条；可使用空数组并由用户手动运行核对。");
   for (const check of raw) {
     if (!check || typeof check !== "object" || Array.isArray(check) || !["result","artifact","file"].includes(check.source) || check.expected === undefined && !check.evidenceId) throw new Error("校验必须指定真实证据或声明的预期结果。");
     for (const path of [check.path,check.evidencePath]) if (path !== undefined && (typeof path !== "string" || path.length > 2000 || path !== "" && !path.startsWith("/") || /~(?![01])/.test(path))) throw new Error("校验路径需要 JSON Pointer。");
@@ -31,7 +31,7 @@ export function authorCheckPlan(detail: Pick<AutomationAppDetail,"ui"|"manifest"
     return !parts.length || parts.length === 1 && /^\d+$/.test(parts[0]) || parts.at(-1) === column.key;
   })).map(column => column.label);
   const needsWebEvidence = detail.manifest.automation.capabilities.includes("browser.read") && !detail.manifest.automation.capabilities.includes("browser.write")
-    && !checks.some(check => check.evidenceId && evidence.some(entry => entry.id === check.evidenceId && ["read","extract"].includes(entry.method)));
+    && !checks.some(check => check.evidenceId && evidence.some(entry => entry.id === check.evidenceId && ["read","extract","request"].includes(entry.method)));
   const missingFileCheck=detail.manifest.automation.capabilities.includes("files.write")&&!checks.some(check=>["artifact","file"].includes(check.source));
   const blocking = [...(!checks.length ? ["尚未配置实际结果或产物校验"] : []), ...(missingColumns.length ? [`校验规则尚未覆盖：${missingColumns.join("、")}`] : []),...(missingFileCheck?["文件写入尚未配置实际文件或产物内容校验"]:[])];
   return {ready:blocking.length===0,blocking,missingColumns,needsWebEvidence};

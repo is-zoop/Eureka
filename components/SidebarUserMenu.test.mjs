@@ -68,4 +68,18 @@ test("avatar loading mode reserves only the avatar while disabling the trigger",
   assert.match(html, /aria-busy="true"/);
   assert.match(html, /disabled=""/);
   assert.equal((html.match(/data-slot="skeleton"/g) ?? []).length, 1);
+  assert.match(html, /style="[^"]*width:32px;[^"]*height:32px/);
+});
+
+test("avatar markup stays bounded before application stylesheets arrive", () => {
+  for (const props of [{ guest: true, user: null }, { user: { name: "Test", avatarUrl: "/large-profile.png" } }]) {
+    const html = renderToStaticMarkup(React.createElement(I18nProvider, null, React.createElement(SidebarUserMenu, { ...props, avatarOnly: true })));
+    const image = html.match(/<img\b[^>]*>/)?.[0];
+    assert.ok(image);
+    assert.match(image, /width="32"/);
+    assert.match(image, /height="32"/);
+    assert.match(image, /style="[^"]*width:32px;[^"]*height:32px/);
+  }
+  const fallback = renderToStaticMarkup(React.createElement(I18nProvider, null, React.createElement(SidebarUserMenu, { user: { name: "Test" }, avatarOnly: true })));
+  assert.match(fallback, /<svg width="18" height="18"/);
 });

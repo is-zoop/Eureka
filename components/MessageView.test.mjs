@@ -211,6 +211,18 @@ test("running, failed, and missing-result calls have distinct accessible statuse
   assert.doesNotMatch(missing, /data-status="completed"/);
 });
 
+test("failed automation writes show the schema error instead of the files object's generic string", () => {
+  const error = "应用包无效：ai/rules.json → rules.clothing：缺少 classifier 对象";
+  const html = renderMessage({ role: "assistant", provider: "test", model: "test", content: [{ type: "toolCall", toolCallId: "author-write", toolName: "eureka_app_write", input: { files: { "ai/rules.json": "unexpanded private source" } } }] }, {
+    toolResults: new Map([["author-write", { role: "toolResult", toolCallId: "author-write", isError: true, content: [{ type: "text", text: error }] }]]),
+  });
+  assert.match(html, /data-status="error"/);
+  assert.match(html, /ai\/rules\.json/);
+  assert.match(html, /rules\.clothing/);
+  assert.match(html, /缺少 classifier 对象/);
+  assert.doesNotMatch(html, /\[object Object\]|unexpanded private source/);
+});
+
 test("execution events keep committed tool calls running after model streaming ends", () => {
   const running = renderTool("read", { path: "README.md" }, { result: false, runningToolIds: new Set(["test-tool"]) });
   assert.match(running, /data-status="running"/);

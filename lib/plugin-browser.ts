@@ -5,7 +5,7 @@ import { readRuntimeHazeSession } from "./auth/runtime-session";
 import { browserOwner, openBrowser, browserUrl } from "./browser-runtime";
 
 type ToolResultEventResult = Pick<ToolResultEvent, "content" | "details" | "isError">;
-type Result = { toolName?: string; toolCallId: string; isError: boolean; content: ToolResultEvent["content"]; details?: unknown };
+type Result = { toolName?: string; toolCallId: string; isError: boolean; content: ToolResultEvent["content"]; details?: unknown; structuredContent?: unknown };
 function object(value: unknown): Record<string, unknown> | null { return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null; }
 /** Accept the direct MCP payload and Atlas's standard { data, request_id } envelope. */
 function browserPayload(value: unknown) {
@@ -24,7 +24,7 @@ export async function handoffPluginBrowserResult(event: Result, cwd: string, ses
   const snapshot = getPluginSnapshots(sessionId).find((item) => item.source === source && item.servers.includes(details.server as string));
   const install = snapshot && effectivePlugins(cwd, source).find((item) => item.capabilityId === snapshot.capabilityId && !item.disabled && item.plugin?.subject === identity.principal.subject);
   if (!install) return;
-  const mcpResult = object(details.mcpResult);
+  const mcpResult = object(event.structuredContent) ?? object(details.mcpResult);
   if (mcpResult?.isError) return;
   let extracted = browserPayload(mcpResult?.structuredContent);
   if (!extracted) {
@@ -61,7 +61,9 @@ export async function handoffPluginBrowserResult(event: Result, cwd: string, ses
     return block;
   });
   if (!replaced) content.push({ type: "text", text: JSON.stringify(replacement) });
-  return { content, details: { server: details.server, tool: details.tool, browserPanel: panel }, isError: panel.status === "failed" };
+  return { content, details: { server: details.server, tool: details.tool, browserPanel: panel },
+    ...(event.structuredContent ? { structuredContent: { content, structuredContent: replacement, isError: panel.status === "failed" } } : {}),
+    isError: panel.status === "failed" };
 }
 export function installPluginBrowserHandoff(pi: ExtensionAPI, open = openBrowser) {
   const processed = new Map<string, Promise<ToolResultEventResult | undefined>>();

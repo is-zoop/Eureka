@@ -1,5 +1,7 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useI18n } from "./useI18n";
+import { readAutomationResponse } from "@/lib/automation-response";
 import type { AutomationAppDetail } from "@/lib/automation-app";
 import type { AutomationChatInvocation } from "@/lib/automation-chat";
 import { appRunActive, type AppRunRecord } from "@/lib/automation-app-run";
@@ -15,8 +17,10 @@ export interface ChatAutomationSnapshot {
   error?: string;
 }
 
-/** Discovery and browser ownership outlive folded or lazily unmounted cards. */
+/** Headless browser ownership and exceptional file prompts, independent of UI. */
 export function useChatAutomations(sessionId: string | undefined, messages: AgentMessage[]) {
+  const { t } = useI18n();
+  const translation = useRef(t); translation.current = t;
   const anchors = useMemo(() => chatAutomationAnchors(messages), [messages]);
   const [state, setState] = useState<{ sessionId: string; snapshots: ChatAutomationSnapshot[] } | null>(null);
   const [error, setError] = useState("");
@@ -30,13 +34,15 @@ export function useChatAutomations(sessionId: string | undefined, messages: Agen
         const response = await fetch(`/api/automation/chat?mode=list&sessionId=${encodeURIComponent(sessionId)}`, {
           cache: "no-store", signal: AbortSignal.any([abort.signal, AbortSignal.timeout(15000)]),
         });
-        const data = await response.json();
         if (abort.signal.aborted) return;
         if (response.status === 401 || response.status === 403) { setState(null); setError(""); }
-        else if (!response.ok) setError(data.error ?? "读取自动化运行失败。");
-        else if (Array.isArray(data?.invocations)) { setState({ sessionId, snapshots: data.invocations }); setError(""); }
-        else setError("运行记录格式已变化，请重启服务后刷新。");
-      } catch { /* Preserve retained cards through temporary connection loss. */ }
+        else {
+          const data = await readAutomationResponse<{invocations:ChatAutomationSnapshot[]}>(response, translation.current("automationUi.readFailed"), translation.current("automationUi.invalidResponse", {status:response.status}));
+          if (abort.signal.aborted) return;
+          if (Array.isArray(data?.invocations)) { setState({ sessionId, snapshots: data.invocations }); setError(""); }
+          else setError(translation.current("automationUi.readFailed"));
+        }
+      } catch (cause) { if (!abort.signal.aborted) setError(cause instanceof Error ? cause.message : translation.current("automationUi.readFailed")); }
       if (!abort.signal.aborted) timer = setTimeout(() => void poll(), 2000);
     };
     void poll();
@@ -55,7 +61,5 @@ export function useChatAutomations(sessionId: string | undefined, messages: Agen
     } }));
     return () => { window.dispatchEvent(new CustomEvent("eureka:chat-automation-state", { detail: { sessionId, appId: null, active: false } })); };
   }, [sessionId, current?.ownerKey, current?.runtimeId, current?.invocation.appId, current?.run?.id]);
-  // The server orders actual invocations by creation time. A late status reply
-  // for an old invocation (or loading earlier messages) must not make it newest.
-  return { anchors, snapshots, error, latestId: snapshots.keys().next().value ?? anchors.at(-1)?.id };
+  return { snapshots, error };
 }

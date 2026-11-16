@@ -1,11 +1,11 @@
-import { PRESET_DEFAULT, PRESET_FULL, type ToolEntry } from "./tool-presets";
+import { BUILTIN_TOOL_NAMES, PRESET_DEFAULT, PRESET_FULL, type ToolEntry } from "./tool-presets";
 
 const ENTRY_TYPE = "eureka_tool_permissions";
 type Entry = { type: string; customType?: string; data?: unknown };
 type Manager = { getEntries(): Entry[]; appendCustomEntry(type: string, data: unknown): unknown };
 
 export function validateSessionToolNames(value: unknown): string[] {
-  if (!Array.isArray(value) || value.some((name) => typeof name !== "string" || !PRESET_FULL.includes(name))) {
+  if (!Array.isArray(value) || value.some((name) => typeof name !== "string" || !BUILTIN_TOOL_NAMES.has(name))) {
     throw new Error("Invalid tool permissions");
   }
   return [...new Set(value as string[])];
@@ -32,5 +32,5 @@ export function saveSessionToolNames(manager: Manager, value: unknown) {
 /** An idle session needs no extensions or AgentSession just to show its preset. */
 export function sessionToolEntries(entries: Entry[]): ToolEntry[] {
   const active = new Set(readSessionToolNames(entries) ?? PRESET_DEFAULT);
-  return PRESET_FULL.map((name) => ({ name, active: active.has(name), description: "" }));
+  return [...PRESET_FULL, ...(active.has("powershell") ? ["powershell"] : [])].map((name) => ({ name, active: active.has(name), description: "" }));
 }

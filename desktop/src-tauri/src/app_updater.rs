@@ -1,3 +1,4 @@
+use crate::updater_network::{self as network, Failure};
 use serde::Serialize;
 use std::{
     sync::{
@@ -22,6 +23,7 @@ pub struct Snapshot {
     downloaded_bytes: u64,
     total_bytes: Option<u64>,
     ready_to_install: bool,
+    retry_attempt: u8,
     error: Option<String>,
 }
 
@@ -47,6 +49,7 @@ impl UpdaterState {
                 downloaded_bytes: 0,
                 total_bytes: None,
                 ready_to_install: false,
+                retry_attempt: 0,
                 error: None,
             }),
             pending: Mutex::new(None),
@@ -96,6 +99,72 @@ fn enabled(state: &UpdaterState) -> Result<(), String> {
     Ok(())
 }
 
+fn diagnostic(app: &tauri::AppHandle, message: &str) {
+    use std::{
+        fs::{self, OpenOptions},
+        io::Write,
+        time::{SystemTime, UNIX_EPOCH},
+    };
+    // A separate bounded file is not overwritten by Node service startup.
+    let Ok(directory) = app.path().app_log_dir() else {
+        return;
+    };
+    if fs::create_dir_all(&directory).is_err() {
+        return;
+    }
+    let path = directory.join("updater.log");
+    if fs::metadata(&path).is_ok_and(|metadata| metadata.len() > 256 * 1024) {
+        let previous = directory.join("updater.previous.log");
+        let _ = fs::remove_file(&previous);
+        let _ = fs::rename(&path, previous);
+    }
+    if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(path) {
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        let message: String = message
+            .replace(['\r', '\n'], " ")
+            .chars()
+            .take(1600)
+            .collect();
+        let _ = writeln!(file, "{timestamp} {message}");
+    }
+}
+
+fn network_failure(
+    app: &tauri::AppHandle,
+    state: &UpdaterState,
+    operation: &str,
+    attempt: u8,
+    failure: &Failure,
+    again: bool,
+) {
+    diagnostic(
+        app,
+        &format!(
+            "{operation} attempt={attempt}/{} category={} retry={again} detail={}",
+            network::MAX_ATTEMPTS,
+            failure.code,
+            failure.detail
+        ),
+    );
+    if again {
+        state.publish(app, |snapshot| {
+            snapshot.retry_attempt = attempt;
+            if operation == "download" {
+                snapshot.downloaded_bytes = 0;
+                snapshot.total_bytes = None;
+            }
+        });
+    }
+}
+
+async fn retry_delay(delay: Duration) {
+    // Do not block Tauri's async worker or the WebView while backing off.
+    let _ = tauri::async_runtime::spawn_blocking(move || std::thread::sleep(delay)).await;
+}
+
 #[tauri::command]
 pub fn desktop_update_state(webview: tauri::Webview) -> Result<Snapshot, String> {
     let app = caller(&webview)?;
@@ -121,11 +190,20 @@ pub async fn desktop_update_check(webview: tauri::Webview) -> Result<Snapshot, S
         s.downloaded_bytes = 0;
         s.total_bytes = None;
         s.ready_to_install = false;
+        s.retry_attempt = 0;
     });
+    let started = Instant::now();
     let before_exit = app.clone();
     let result = async {
-        app.updater_builder()
+        let updater = app
+            .updater_builder()
             .timeout(Duration::from_secs(20))
+            .configure_client(|client| {
+                client
+                    .connect_timeout(network::CONNECT_TIMEOUT)
+                    .read_timeout(network::READ_TIMEOUT)
+                    .retry(reqwest::retry::never())
+            })
             .restart_after_install(true)
             .on_before_exit(move || {
                 before_exit
@@ -137,14 +215,32 @@ pub async fn desktop_update_check(webview: tauri::Webview) -> Result<Snapshot, S
                 crate::stop_sidecar(&before_exit);
             })
             .build()
-            .map_err(|e| e.to_string())?
-            .check()
-            .await
-            .map_err(|e| e.to_string())
+            .map_err(network::classify)?;
+        network::retry(
+            |attempt| {
+                diagnostic(
+                    &app,
+                    &format!("check attempt={attempt}/{}", network::MAX_ATTEMPTS),
+                );
+                updater.check()
+            },
+            |attempt, failure, again| {
+                network_failure(&app, &state, "check", attempt, failure, again)
+            },
+            retry_delay,
+        )
+        .await
     }
     .await;
     match result {
         Ok(Some(mut update)) => {
+            diagnostic(
+                &app,
+                &format!(
+                    "check completed elapsed_ms={} update=true",
+                    started.elapsed().as_millis()
+                ),
+            );
             // Check timeout is short; allow large complete installers time to download.
             update.timeout = Some(Duration::from_secs(30 * 60));
             if update.download_url.scheme() != "https" {
@@ -157,10 +253,34 @@ pub async fn desktop_update_check(webview: tauri::Webview) -> Result<Snapshot, S
                 s.phase = "available".into();
                 s.version = Some(version);
                 s.notes = notes;
+                s.retry_attempt = 0;
             }))
         }
-        Ok(None) => Ok(state.publish(&app, |s| s.phase = "upToDate".into())),
-        Err(error) => Err(state.fail(&app, error)),
+        Ok(None) => {
+            diagnostic(
+                &app,
+                &format!(
+                    "check completed elapsed_ms={} update=false",
+                    started.elapsed().as_millis()
+                ),
+            );
+            Ok(state.publish(&app, |s| {
+                s.phase = "upToDate".into();
+                s.retry_attempt = 0;
+            }))
+        }
+        Err(error) => {
+            diagnostic(
+                &app,
+                &format!(
+                    "check failed elapsed_ms={} category={} detail={}",
+                    started.elapsed().as_millis(),
+                    error.code,
+                    error.detail
+                ),
+            );
+            Err(state.fail(&app, format!("EUREKA_UPDATE_{}", error.code)))
+        }
     }
 }
 
@@ -192,37 +312,76 @@ pub async fn desktop_update_download(
         s.error = None;
         s.downloaded_bytes = 0;
         s.total_bytes = None;
+        s.retry_attempt = 0;
     });
-    let mut downloaded = 0u64;
-    let mut last = Instant::now();
-    let result = update
-        .download(
-            |chunk, total| {
-                downloaded += chunk as u64;
-                if last.elapsed() >= Duration::from_millis(100) {
-                    state.publish(&app, |s| {
-                        s.downloaded_bytes = downloaded;
-                        s.total_bytes = total;
-                    });
-                    last = Instant::now();
-                }
-            },
-            || {},
-        )
-        .await;
+    let started = Instant::now();
+    let result = network::retry(
+        |attempt| {
+            let update = &update;
+            let app = &app;
+            let state = &state;
+            async move {
+                diagnostic(
+                    app,
+                    &format!("download attempt={attempt}/{}", network::MAX_ATTEMPTS),
+                );
+                let mut downloaded = 0u64;
+                let mut last = Instant::now();
+                update
+                    .download(
+                        |chunk, total| {
+                            downloaded += chunk as u64;
+                            if last.elapsed() >= Duration::from_millis(100) {
+                                state.publish(&app, |s| {
+                                    s.downloaded_bytes = downloaded;
+                                    s.total_bytes = total;
+                                });
+                                last = Instant::now();
+                            }
+                        },
+                        || {},
+                    )
+                    .await
+            }
+        },
+        |attempt, failure, again| {
+            network_failure(&app, &state, "download", attempt, failure, again)
+        },
+        retry_delay,
+    )
+    .await;
     match result {
         Ok(bytes) => {
             // download() verifies the signature before returning. Never mark unverified bytes ready.
             let size = bytes.len() as u64;
+            diagnostic(
+                &app,
+                &format!(
+                    "download verified elapsed_ms={} bytes={size}",
+                    started.elapsed().as_millis()
+                ),
+            );
             *state.pending.lock().unwrap() = Some((update, Some(Arc::new(bytes))));
             Ok(state.publish(&app, |s| {
                 s.phase = "downloaded".into();
                 s.downloaded_bytes = size;
                 s.total_bytes = Some(size);
                 s.ready_to_install = true;
+                s.retry_attempt = 0;
             }))
         }
-        Err(error) => Err(state.fail(&app, error)),
+        Err(error) => {
+            diagnostic(
+                &app,
+                &format!(
+                    "download failed elapsed_ms={} category={} detail={}",
+                    started.elapsed().as_millis(),
+                    error.code,
+                    error.detail
+                ),
+            );
+            Err(state.fail(&app, format!("EUREKA_UPDATE_{}", error.code)))
+        }
     }
 }
 

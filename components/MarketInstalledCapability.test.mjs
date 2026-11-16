@@ -25,7 +25,7 @@ test("plugin management shows the package identity, localized status and support
 });
 
 test("plugin resources group real entries and disabled packages retain their management state", () => {
-  const pkg = { ...plugin, disabled: true, status: "disabled", resources: [{ kind: "skill", name: "data-tool", path: "E:/pkg/SKILL.md", relativePath: "skills/data-tool/SKILL.md" }] };
+  const pkg = { ...plugin, counts: { ...plugin.counts, extensions: 1 }, disabled: true, status: "disabled", resources: [{ kind: "skill", name: "data-tool", path: "E:/pkg/SKILL.md", relativePath: "skills/data-tool/SKILL.md" }] };
   const html = render(MarketPluginManagement, { pkg, cwd: "E:/project", busy: true, action: "disable", onAction() {} });
   assert.match(html, /data-installation-state="disabled"/);
   assert.match(html, /data-tool/);

@@ -1,4 +1,5 @@
 "use client";
+import { fetchLocalRead } from "@/lib/local-read";
 import { composerReferenceText } from "@/lib/composer-references";
 import { useAutomationMode } from "./useAutomationMode";
 import type { AutomationLaunchRequest } from "@/lib/automation-mode";
@@ -33,9 +34,10 @@ import { getPreferredToolPreset, subscribeToolPresetPreference } from "@/lib/too
 import { getToolNamesForPreset, type ToolEntry, type ToolPreset } from "@/lib/tool-presets";
 import { EMPTY_PLAN_STATE, getPendingPlanQuestion, getPlanDoneIndexes, normalizePlanForReview, PLAN_MODE_COMPLETE_TOOL, type EurekaPlanAnnotation, type EurekaPlanQuestion, type EurekaPlanQuestionResponse, type EurekaPlanState } from "@/lib/plan-mode";
 import type { ContextUsage, SessionStatsInfo } from "@/lib/pi-types";
-import { userMessageKey } from "@/lib/prompt-recovery";
+import { userMessageKey, appendDeliveredUserMessage } from "@/lib/prompt-recovery";
 import { AgentEventConnection } from "@/lib/agent-event-connection";
 import { CommandRequestCache } from "@/lib/command-request-cache";
+import { chatMessageFromEvent } from "@/lib/streaming-message";
 import type { ClientAssistantMessageEvent } from "@/lib/streaming-message";
 
 export interface SessionData {
@@ -77,6 +79,7 @@ type AgentStateResponse = {
   thinkingLevel?: string;
   isStreaming?: boolean;
   isPromptRunning?: boolean;
+  waitingForUser?: boolean;
   isBashRunning?: boolean;
   isCompacting?: boolean;
   extensionStatuses?: ExtensionStatusItem[];
@@ -119,6 +122,7 @@ import { notify, type NoticeType } from "@/lib/notification-store";
 
 export type AgentPhase =
   | { kind: "waiting_model" }
+  | { kind: "waiting_user" }
   | { kind: "running_command" }
   | { kind: "running_tools"; tools: { id: string; name: string }[] }
   | null;
@@ -267,6 +271,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const [pendingCompactSession, setPendingCompactSession] = useState<string | null>(null);
   const [compactError, setCompactError] = useState<string | null>(null);
   const [compactResult, setCompactResult] = useState<CompactResultInfo | null>(null);
+  const [waitingForUser, setWaitingForUser] = useState(false);
   const [agentPhase, setAgentPhase] = useState<AgentPhase>(null);
   const [slashCommands, setSlashCommands] = useState<SlashCommandInfo[]>([]);
   const [slashCommandsLoading, setSlashCommandsLoading] = useState(false);
@@ -694,7 +699,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         const params = new URLSearchParams({ cwd });
         if (sid) params.set("sessionId", sid);
         if (force) params.set("force", "1");
-        const res = await fetch(`/api/commands?${params}`, { signal: AbortSignal.timeout(15_000) });
+        const res = await fetchLocalRead(`/api/commands?${params}`, { timeoutMs: 15_000 });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json() as SlashCommandsResponse;
         return data.commands ?? [];
@@ -900,6 +905,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           rpcPromptPendingRef.current = Boolean(state?.isPromptRunning);
           agentRunningRef.current = true;
           setAgentRunning(true);
+          setWaitingForUser(state?.waitingForUser === true);
           setAgentPhase(state?.isStreaming ? { kind: "waiting_model" } : { kind: "running_command" });
           return;
         }
@@ -1036,6 +1042,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       if (state) {
         if (state.contextUsage !== undefined) setContextUsage(state.contextUsage ?? null);
         if (state.systemPrompt !== undefined) setSystemPrompt(state.systemPrompt ?? null);
+        setWaitingForUser(state.waitingForUser === true);
         if (state.extensionStatuses !== undefined) setExtensionStatuses(state.extensionStatuses ?? []);
         if (state.extensionWidgets !== undefined) setExtensionWidgets(state.extensionWidgets ?? []);
       }
@@ -1175,7 +1182,8 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         // reconcile) — they would resurrect a ghost streaming bubble.
         if (!agentRunningRef.current) break;
         if (event.type === "message_start") {
-          const msg = event.message as AgentMessage | undefined;
+          const msg = chatMessageFromEvent(event.message);
+          if (!msg) break;
           if (msg?.role === "user") break;
           if (msg?.role === "assistant") {
             thinkingMessageTimestampRef.current = msg.timestamp;
@@ -1206,7 +1214,8 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         // loadSession already loaded this message from the session file —
         // appending it again would duplicate it.
         if (!agentRunningRef.current) break;
-        const completed = event.message as AgentMessage | undefined;
+        const completed = chatMessageFromEvent(event.message);
+        if (!completed) break;
         const completionObservedAt = Date.now();
         if (completed?.role === "assistant") {
           const now = completionObservedAt;
@@ -1223,18 +1232,9 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           // already appended it optimistically. Consume only the still-adjacent
           // optimistic bubble; later same-text queue deliveries must render.
           const delivered = normalizeToolCalls(completed);
-          const deliveredKey = userMessageKey(delivered);
           const optimisticKey = optimisticUserMessageKeyRef.current;
           optimisticUserMessageKeyRef.current = null;
-          updateLiveMessages((prev) => {
-            const last = prev[prev.length - 1];
-            if (optimisticKey && last?.role === "user" && userMessageKey(last) === optimisticKey) {
-              return optimisticKey === deliveredKey
-                ? prev
-                : [...prev.slice(0, -1), delivered];
-            }
-            return [...prev, delivered];
-          });
+          updateLiveMessages((prev) => appendDeliveredUserMessage(prev, delivered, optimisticKey));
         } else if (completed) {
           const displayMessage = completed.role === "assistant"
             ? { ...completed, generationCompletedAt: completionObservedAt }
@@ -1309,6 +1309,12 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           setCompactResult(readCompactResult(event.result, (event.reason as string | undefined) ?? "auto"));
           if (sessionIdRef.current) loadSession(sessionIdRef.current);
         }
+        break;
+      case "extension_ui_closed":
+        setExtensionDialog(current => current?.id === event.id ? null : current);
+        break;
+      case "ui_wait_state":
+        setWaitingForUser(event.waitingForUser === true);
         break;
       case "extension_ui_request":
         handleExtensionUiRequest(event as ExtensionUiRequest);
@@ -2058,7 +2064,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     sessionHookMountedRef.current = true;
     if (session) {
       if (newSessionPromotedRef.current && sessionIdRef.current === session.id) return;
-      if (sessionIdRef.current !== session.id) { closeEvents(); promptRunIdRef.current++; agentRunningRef.current = false; sdkAgentActiveRef.current = false; rpcPromptPendingRef.current = false; setAgentRunning(false); setData(null); setMessages([]); setEntryIds([]); setCurrentModelOverride(null); }
+      if (sessionIdRef.current !== session.id) { setWaitingForUser(false); closeEvents(); promptRunIdRef.current++; agentRunningRef.current = false; sdkAgentActiveRef.current = false; rpcPromptPendingRef.current = false; setAgentRunning(false); setData(null); setMessages([]); setEntryIds([]); setCurrentModelOverride(null); }
       resetHistory();
       sessionIdRef.current = session.id;
       loadSession(session.id, true, true).then((agentState) => {
@@ -2069,6 +2075,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
             rpcPromptPendingRef.current = Boolean(agentState.state.isPromptRunning);
             agentRunningRef.current = true;
             setAgentRunning(true);
+            setWaitingForUser(agentState.state.waitingForUser === true);
             setAgentPhase(agentState.state.isStreaming ? { kind: "waiting_model" } : { kind: "running_command" });
             dispatch({ type: "start" });
             void maintainEventsConnected(session.id);
@@ -2083,6 +2090,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           }
         }
         if (agentState?.state) {
+          setWaitingForUser(agentState.state.waitingForUser === true);
           if (agentState.state.isCompacting !== undefined) setIsCompacting(agentState.state.isCompacting);
           if (agentState.state.contextUsage !== undefined) setContextUsage(agentState.state.contextUsage ?? null);
           if (agentState.state.systemPrompt !== undefined) setSystemPrompt(agentState.state.systemPrompt ?? null);
@@ -2222,7 +2230,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     slashCommands, slashCommandsLoading, queuedMessages, planMode, clarification, handleClarificationAction, automation,
     extensionDialog, extensionCustomUi, extensionStatuses, extensionWidgets, respondToExtensionUi, sendExtensionCustomInput,
     isAutoModelSelection: isNew && newSessionModel === null,
-    agentPhase,
+    agentPhase: waitingForUser ? { kind: "waiting_user" } as AgentPhase : agentPhase,
     isNew,
     // Refs
     sessionIdRef, messagesEndRef, scrollContainerRef, messageContentRef,

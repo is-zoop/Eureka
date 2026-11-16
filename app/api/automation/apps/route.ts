@@ -4,13 +4,16 @@ import { isAppId } from "@/lib/automation-app";
 import { hasJsonContentType, isApiRequestAllowed } from "@/lib/request-security";
 import { syncOrganizationAutomations } from "@/lib/haze-automation-install";
 import { getAllowedFileRoots,isExistingFilePathAllowed } from "@/lib/file-access";
+import { readAuthSession } from "@/lib/auth/session";
+import { hazeAutomationAccess } from "@/lib/automation-access";
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
   try {
     const auth = await automationAppAccess(request),cwd=new URL(request.url).searchParams.get("cwd")??undefined;
     if(cwd&&!isExistingFilePathAllowed(cwd,await getAllowedFileRoots()))throw new AutomationAppError("当前项目不可访问",403);
-    await syncOrganizationAutomations({source:auth.issuer.replace(/\/$/,""),subject:auth.subject,check:auth.assertIdentity},cwd);
+    // Local applications remain available when cloud login/sync is unavailable.
+    if(new URL(request.url).searchParams.get("sync")==="1"&&await readAuthSession())try{const cloud=await hazeAutomationAccess();await syncOrganizationAutomations({source:cloud.issuer,subject:cloud.subject,check:cloud.assertIdentity},cwd);}catch{/* The cloud catalog has its own authenticated management entry. */}
     await auth.store.useLatest(); const result = await auth.store.list(); auth.assertIdentity();
     return appJson({ ownerKey: auth.ownerKey, runtimeId: auth.runtimeId, stage: "A03", ...result });
   } catch (e) { return appFailure(e); }

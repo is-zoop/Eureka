@@ -7,11 +7,11 @@ export interface WebsiteAccount {
   passwordAutosave: boolean;
 }
 export async function accountCommand(owner: string, action: "list" | "create" | "update" | "reset" | "delete" | "cleanup" | "passwords", options: { id?: string; name?: string; origin?: string; enabled?: boolean } = {}) {
-  // Derive ownership from the active authenticated application session before
-  // every command, including list/confirm. Never reuse another user's UI state.
+  // Accept only this local workspace's known storage namespaces, including
+  // legacy drafts. Website sessions remain isolated per browser account.
   const response = await fetch("/api/automation/identity", { cache: "no-store", signal: AbortSignal.timeout(8000) });
   const identity = await response.json();
-  if (!response.ok || identity.ownerKey !== owner) throw new Error("authenticationRequired");
+  if (!response.ok || identity.ownerKey !== owner && !identity.ownerKeys?.includes(owner)) throw new Error("identityUnavailable");
   const { invoke } = await import("@tauri-apps/api/core");
   try {
     return await invoke<{ accounts: WebsiteAccount[] }>("desktop_automation_accounts", { owner, action, ...options });
