@@ -1,4 +1,4 @@
-import { cpSync, existsSync, readdirSync, readFileSync } from "node:fs";
+import { cpSync, existsSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { createRequire } from "node:module";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 
@@ -54,6 +54,21 @@ export function copyStandaloneServerAssets(buildDirectory, appDirectory) {
   cpSync(resolve(buildDirectory, "server"), resolve(appDirectory, ".next", "server"), { recursive: true });
 }
 
+
+
+function collectModuleSyncTargets(exportsValue, acc = []) {
+  if (!exportsValue) return acc;
+  if (Array.isArray(exportsValue)) {
+    for (const item of exportsValue) collectModuleSyncTargets(item, acc);
+    return acc;
+  }
+  if (typeof exportsValue === "object") {
+    if (typeof exportsValue["module-sync"] === "string") acc.push(exportsValue["module-sync"]);
+    for (const value of Object.values(exportsValue)) collectModuleSyncTargets(value, acc);
+  }
+  return acc;
+}
+
 // Next's standalone trace can omit transitive runtime dependencies of the
 // instrumentation hook, such as generator-function/require.mjs.
 export function copyMissingStandaloneDependencies(root, app, seeds = []) {
@@ -99,6 +114,42 @@ export function copyMissingStandaloneDependencies(root, app, seeds = []) {
   };
 
   if (!existsSync(destModules)) return copied;
+  // Next's file tracer often copies package.json and CJS entry files but omits
+  // the module-sync target (require.mjs). Replace those incomplete packages
+  // from the complete install before the packaged server starts.
+  if (existsSync(destModules)) {
+    const destPackages = [];
+    for (const entry of readdirSync(destModules, { withFileTypes: true })) {
+      if (!entry.isDirectory() || entry.name.startsWith(".")) continue;
+      if (entry.name.startsWith("@")) {
+        for (const child of readdirSync(join(destModules, entry.name), { withFileTypes: true })) {
+          if (child.isDirectory()) destPackages.push(join(destModules, entry.name, child.name));
+        }
+      } else destPackages.push(join(destModules, entry.name));
+    }
+    for (const dir of destPackages) {
+      if (!existsSync(join(dir, "package.json"))) continue;
+      const manifest = JSON.parse(readFileSync(join(dir, "package.json"), "utf8"));
+      const missing = [...new Set(collectModuleSyncTargets(manifest.exports))]
+        .filter((target) => target.startsWith("./") && !existsSync(join(dir, target)));
+      if (!missing.length) continue;
+      const name = manifest.name || relative(destModules, dir).split(sep).join("/");
+      const source = findPackage(name, resolve(root), sourceModules);
+      if (!source || !missing.some((target) => existsSync(join(source, target)))) continue;
+      const path = relative(sourceModules, source);
+      if (isAbsolute(path) || path === ".." || path.startsWith(".." + sep)) {
+        throw new Error("Standalone dependency is outside node_modules: " + name);
+      }
+      rmSync(dir, { recursive: true, force: true });
+      const destination = join(destModules, path);
+      cpSync(source, destination, {
+        recursive: true,
+        filter: (file) => isRuntimeAsset(file) && !relative(source, file).split(sep).includes("node_modules"),
+      });
+      seen.add(source);
+      copied.push(path);
+    }
+  }
   for (const name of seeds) {
     const source = findPackage(name, resolve(root), sourceModules);
     if (!source) throw new Error("Missing standalone runtime dependency: " + name);
@@ -106,14 +157,19 @@ export function copyMissingStandaloneDependencies(root, app, seeds = []) {
     if (isAbsolute(path) || path === ".." || path.startsWith(".." + sep)) {
       throw new Error("Standalone dependency is outside node_modules: " + name);
     }
-    if (findPackage(name, resolve(app), destModules)) continue;
-    if (seen.has(source)) continue;
-    seen.add(source);
+    // Always replace seeds unless a previous refresh already copied the
+    // complete package. Do not delete a completed copy and then skip.
     const destination = join(destModules, path);
+    if (seen.has(source)) continue;
+    if (existsSync(destination)) rmSync(destination, { recursive: true, force: true });
+    seen.add(source);
     cpSync(source, destination, {
       recursive: true,
       filter: (file) => isRuntimeAsset(file) && !relative(source, file).split(sep).includes("node_modules"),
     });
+    if (!existsSync(join(destination, "package.json"))) {
+      throw new Error("Failed to copy standalone runtime dependency: " + name);
+    }
     copied.push(path);
   }
   for (const entry of readdirSync(destModules, { withFileTypes: true })) {

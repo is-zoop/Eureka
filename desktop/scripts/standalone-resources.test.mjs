@@ -95,3 +95,61 @@ test("explicit runtime seeds are copied even when no packaged parent lists them"
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test("explicit runtime seeds replace an incomplete traced package including require.mjs", () => {
+  const root = mkdtempSync(join(tmpdir(), "eureka-resource-incomplete-"));
+  try {
+    mkdirSync(join(root, "node_modules", "generator-function"), { recursive: true });
+    mkdirSync(join(root, "app", "node_modules", "generator-function"), { recursive: true });
+    writeFileSync(join(root, "node_modules", "generator-function", "package.json"), JSON.stringify({
+      name: "generator-function",
+      version: "2.0.1",
+      exports: { ".": { "module-sync": "./require.mjs", default: "./index.js" } },
+    }));
+    writeFileSync(join(root, "node_modules", "generator-function", "require.mjs"), "export default function() {}");
+    writeFileSync(join(root, "node_modules", "generator-function", "index.js"), "module.exports = 1;");
+    writeFileSync(join(root, "app", "package.json"), JSON.stringify({ name: "app" }));
+    writeFileSync(join(root, "app", "node_modules", "generator-function", "package.json"), JSON.stringify({
+      name: "generator-function",
+      version: "2.0.1",
+      exports: { ".": { "module-sync": "./require.mjs", default: "./index.js" } },
+    }));
+    writeFileSync(join(root, "app", "node_modules", "generator-function", "index.js"), "module.exports = 1;");
+    const copied = copyMissingStandaloneDependencies(root, join(root, "app"), ["generator-function"]);
+    assert.deepEqual(copied, ["generator-function"]);
+    assert.equal(readFileSync(join(root, "app", "node_modules", "generator-function", "require.mjs"), "utf8"), "export default function() {}");
+    const require = createRequire(join(root, "app", "package.json"));
+    assert.equal(require.resolve("generator-function"), join(root, "app", "node_modules", "generator-function", "require.mjs"));
+  } finally {
+    assert.equal(dirname(root), resolve(tmpdir()));
+    assert.ok(root.startsWith(join(tmpdir(), "eureka-resource-incomplete-")));
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("incomplete module-sync packages are refreshed even when they are not seeded", () => {
+  const root = mkdtempSync(join(tmpdir(), "eureka-resource-async-"));
+  try {
+    const writePkg = (dir, files) => {
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, "package.json"), JSON.stringify({
+        name: "async-function",
+        version: "1.0.0",
+        exports: { ".": { "module-sync": "./require.mjs", default: "./index.js" } },
+      }));
+      for (const [name, contents] of Object.entries(files)) writeFileSync(join(dir, name), contents);
+    };
+    writePkg(join(root, "node_modules", "async-function"), { "require.mjs": "export default function() {}", "index.js": "module.exports = 1;" });
+    writePkg(join(root, "app", "node_modules", "async-function"), { "index.js": "module.exports = 1;" });
+    writeFileSync(join(root, "app", "package.json"), JSON.stringify({ name: "app" }));
+    const copied = copyMissingStandaloneDependencies(root, join(root, "app"), []);
+    assert.deepEqual(copied, ["async-function"]);
+    assert.equal(readFileSync(join(root, "app", "node_modules", "async-function", "require.mjs"), "utf8"), "export default function() {}");
+    const require = createRequire(join(root, "app", "package.json"));
+    assert.equal(require.resolve("async-function"), join(root, "app", "node_modules", "async-function", "require.mjs"));
+  } finally {
+    assert.equal(dirname(root), resolve(tmpdir()));
+    assert.ok(root.startsWith(join(tmpdir(), "eureka-resource-async-")));
+    rmSync(root, { recursive: true, force: true });
+  }
+});
