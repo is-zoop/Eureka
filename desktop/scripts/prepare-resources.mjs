@@ -3,7 +3,7 @@ import { spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, rmSync, copyFileSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve, join } from "node:path";
-import { copyStandaloneResources, copyStandaloneServerAssets, isRuntimeAsset } from "./standalone-resources.mjs";
+import { copyMissingStandaloneDependencies, copyStandaloneResources, copyStandaloneServerAssets, isRuntimeAsset } from "./standalone-resources.mjs";
 import { copySdkRuntimeResources } from "./sdk-resources.mjs";
 import { verifyStandaloneResources } from "./verify-resources.mjs";
 import { syncVersions } from "../../scripts/sync-version.mjs";
@@ -117,6 +117,9 @@ for (const name of ["playwright", "playwright-core"]) {
   cpSync(join(rootDir, "node_modules", name), join(appDir, "node_modules", name), { recursive: true, filter: isRuntimeAsset });
 }
 cpSync(chromiumRevisionDir, join(appDir, "browser", "chromium"), { recursive: true });
+// Close the packaged production graph. Next's tracer can omit transitive
+// instrumentation dependencies such as generator-function.
+copyMissingStandaloneDependencies(rootDir, appDir);
 const browserRelativeExecutable = chromiumExecutable.slice(chromiumRevisionDir.length + 1);
 // The sidecar resolves this relative path under its own application directory.
 const { writeFileSync } = await import("node:fs");

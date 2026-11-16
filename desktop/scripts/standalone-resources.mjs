@@ -1,5 +1,6 @@
-import { cpSync, readFileSync } from "node:fs";
-import { isAbsolute, relative, resolve, sep } from "node:path";
+import { cpSync, existsSync, readdirSync, readFileSync } from "node:fs";
+import { createRequire } from "node:module";
+import { isAbsolute, join, relative, resolve, sep } from "node:path";
 
 // These are build inputs/outputs and local caches, never server runtime assets.
 export const desktopTraceExcludes = [
@@ -51,4 +52,64 @@ export function copyStandaloneServerAssets(buildDirectory, appDirectory) {
   const standaloneId = readFileSync(resolve(appDirectory, ".next", "BUILD_ID"), "utf8").trim();
   if (!buildId || buildId !== standaloneId) throw new Error("Standalone resources belong to a different Next build. Rebuild before packaging.");
   cpSync(resolve(buildDirectory, "server"), resolve(appDirectory, ".next", "server"), { recursive: true });
+}
+
+// Next's standalone trace can omit transitive runtime dependencies of the
+// instrumentation hook, such as generator-function/require.mjs.
+export function copyMissingStandaloneDependencies(root, app) {
+  const sourceModules = resolve(root, "node_modules");
+  const destModules = resolve(app, "node_modules");
+  const copied = [];
+  const seen = new Set();
+
+  const findPackage = (name, parent, modulesRoot) => {
+    const require = createRequire(join(parent, "package.json"));
+    for (const search of require.resolve.paths(name) ?? []) {
+      const resolved = resolve(search);
+      const modules = resolve(modulesRoot);
+      if (resolved !== modules && !resolved.startsWith(modules + sep)) continue;
+      const path = join(search, name);
+      if (existsSync(join(path, "package.json"))) return path;
+    }
+    return null;
+  };
+
+  const visitManifest = (parent, manifest) => {
+    for (const name of [
+      ...Object.keys(manifest.dependencies ?? {}),
+      ...Object.keys(manifest.optionalDependencies ?? {}),
+    ]) {
+      if (findPackage(name, parent, destModules)) continue;
+      const source = findPackage(name, parent, sourceModules) ?? findPackage(name, resolve(root), sourceModules);
+      if (!source) continue;
+      const path = relative(sourceModules, source);
+      if (isAbsolute(path) || path === ".." || path.startsWith(".." + sep)) {
+        throw new Error("Standalone dependency is outside node_modules: " + name);
+      }
+      if (seen.has(source)) continue;
+      seen.add(source);
+      const destination = join(destModules, path);
+      cpSync(source, destination, {
+        recursive: true,
+        filter: (file) => isRuntimeAsset(file) && !relative(source, file).split(sep).includes("node_modules"),
+      });
+      copied.push(path);
+      visitManifest(destination, JSON.parse(readFileSync(join(destination, "package.json"), "utf8")));
+    }
+  };
+
+  if (!existsSync(destModules)) return copied;
+  for (const entry of readdirSync(destModules, { withFileTypes: true })) {
+    if (!entry.isDirectory() || entry.name.startsWith(".")) continue;
+    const packages = entry.name.startsWith("@")
+      ? readdirSync(join(destModules, entry.name), { withFileTypes: true })
+          .filter((child) => child.isDirectory())
+          .map((child) => join(destModules, entry.name, child.name))
+      : [join(destModules, entry.name)];
+    for (const dir of packages) {
+      if (!existsSync(join(dir, "package.json"))) continue;
+      visitManifest(dir, JSON.parse(readFileSync(join(dir, "package.json"), "utf8")));
+    }
+  }
+  return copied;
 }
