@@ -56,7 +56,7 @@ export function copyStandaloneServerAssets(buildDirectory, appDirectory) {
 
 // Next's standalone trace can omit transitive runtime dependencies of the
 // instrumentation hook, such as generator-function/require.mjs.
-export function copyMissingStandaloneDependencies(root, app) {
+export function copyMissingStandaloneDependencies(root, app, seeds = []) {
   const sourceModules = resolve(root, "node_modules");
   const destModules = resolve(app, "node_modules");
   const copied = [];
@@ -99,6 +99,23 @@ export function copyMissingStandaloneDependencies(root, app) {
   };
 
   if (!existsSync(destModules)) return copied;
+  for (const name of seeds) {
+    const source = findPackage(name, resolve(root), sourceModules);
+    if (!source) throw new Error("Missing standalone runtime dependency: " + name);
+    const path = relative(sourceModules, source);
+    if (isAbsolute(path) || path === ".." || path.startsWith(".." + sep)) {
+      throw new Error("Standalone dependency is outside node_modules: " + name);
+    }
+    if (findPackage(name, resolve(app), destModules)) continue;
+    if (seen.has(source)) continue;
+    seen.add(source);
+    const destination = join(destModules, path);
+    cpSync(source, destination, {
+      recursive: true,
+      filter: (file) => isRuntimeAsset(file) && !relative(source, file).split(sep).includes("node_modules"),
+    });
+    copied.push(path);
+  }
   for (const entry of readdirSync(destModules, { withFileTypes: true })) {
     if (!entry.isDirectory() || entry.name.startsWith(".")) continue;
     const packages = entry.name.startsWith("@")

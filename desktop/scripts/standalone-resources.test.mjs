@@ -78,3 +78,20 @@ test("missing traced production dependencies are copied into the packaged app", 
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test("explicit runtime seeds are copied even when no packaged parent lists them", () => {
+  const root = mkdtempSync(join(tmpdir(), "eureka-resource-seeds-"));
+  try {
+    mkdirSync(join(root, "node_modules", "generator-function"), { recursive: true });
+    mkdirSync(join(root, "app", "node_modules"), { recursive: true });
+    writeFileSync(join(root, "node_modules", "generator-function", "package.json"), JSON.stringify({ name: "generator-function", version: "2.0.1" }));
+    writeFileSync(join(root, "node_modules", "generator-function", "require.mjs"), "export default function() {}");
+    const copied = copyMissingStandaloneDependencies(root, join(root, "app"), ["generator-function"]);
+    assert.deepEqual(copied, ["generator-function"]);
+    assert.equal(readFileSync(join(root, "app", "node_modules", "generator-function", "require.mjs"), "utf8"), "export default function() {}");
+  } finally {
+    assert.equal(dirname(root), resolve(tmpdir()));
+    assert.ok(root.startsWith(join(tmpdir(), "eureka-resource-seeds-")));
+    rmSync(root, { recursive: true, force: true });
+  }
+});

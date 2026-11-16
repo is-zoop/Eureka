@@ -119,7 +119,7 @@ for (const name of ["playwright", "playwright-core"]) {
 cpSync(chromiumRevisionDir, join(appDir, "browser", "chromium"), { recursive: true });
 // Close the packaged production graph. Next's tracer can omit transitive
 // instrumentation dependencies such as generator-function.
-copyMissingStandaloneDependencies(rootDir, appDir);
+copyMissingStandaloneDependencies(rootDir, appDir, ["generator-function", "is-generator-function"]);
 const browserRelativeExecutable = chromiumExecutable.slice(chromiumRevisionDir.length + 1);
 // The sidecar resolves this relative path under its own application directory.
 const { writeFileSync } = await import("node:fs");
