@@ -40,9 +40,9 @@ Haze 的普通 PATCH 会立即同步展示资料到线上，包括正在编辑�
 
 新增回归源码覆盖旧绑定失效、UUID 重新绑定、权限／网络失败不清除记录、旧 ID 待请求退役，以及首次创建幂等恢复的保留；本轮未执行测试、编译或真实 Haze 操作。
 
-`node --test lib/automation-publication.test.mjs` 使用内存 Haze 接口覆盖上传、版本、审核、归属、请求恢复、AI 输入和资料校验，不连接真实 Haze 或模型。真实凭证调用、审核与其他用户安装仍需联调验收。
+`node --test tests/automation/automation-publication.test.mjs` 使用内存 Haze 接口覆盖上传、版本、审核、归属、请求恢复、AI 输入和资料校验，不连接真实 Haze 或模型。真实凭证调用、审核与其他用户安装仍需联调验收。
 
-上传表单由同一套 Undici `FormData`/`Request` 编码为 multipart 字节，并携带对应 boundary，避免 Next.js 的 fetch 与全局 FormData 来自不同实现时将文件表单发成 `[object FormData]`。`node --test lib/haze-publishing.test.mjs lib/automation-publication.test.mjs` 的 22 项测试覆盖该场景，使用本地 HTTP 接收端核对应用 ZIP、文档和图标的文件名、类型及原始字节；未调用真实 Haze 上传接口。
+上传表单由同一套 Undici `FormData`/`Request` 编码为 multipart 字节，并携带对应 boundary，避免 Next.js 的 fetch 与全局 FormData 来自不同实现时将文件表单发成 `[object FormData]`。`node --test tests/extensions/haze-publishing.test.mjs tests/automation/automation-publication.test.mjs` 的 22 项测试覆盖该场景，使用本地 HTTP 接收端核对应用 ZIP、文档和图标的文件名、类型及原始字节；未调用真实 Haze 上传接口。
 
 2026-11-05 检查结果：发布流程、应用包和语言注册相关 20 项测试通过；TypeScript 检查通过；涉及文件 ESLint 无错误，应用管理器原有 `current` Hook 依赖提示仍在。扩展回归的 3 项失败位于本次未修改的文件：文件选择器含未翻译中文、运行界面的静态渲染断言、多功能测试缺少路径别名解析；本次未修复这些并行工作中的问题。未执行真实 Haze 上传、审核或上架，也未运行 `next build`。
 

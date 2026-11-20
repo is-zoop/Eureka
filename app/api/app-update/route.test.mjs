@@ -7,7 +7,7 @@ const jiti = createJiti(import.meta.url, {
   alias: { "@": fileURLToPath(new URL("../../../", import.meta.url)), "next/server": import.meta.resolve("next/server.js") },
 });
 const { GET } = await jiti.import("./route.ts");
-const { APP_VERSION, APP_LATEST_RELEASE_API } = await jiti.import("../../../lib/app-update.ts");
+const { APP_VERSION, APP_LATEST_RELEASE_API } = await jiti.import("../../../server/desktop/app-update.ts");
 
 test("checks Eureka GitHub releases, handles an unpublished repository and upstream failures", async (t) => {
   const originalFetch = globalThis.fetch;

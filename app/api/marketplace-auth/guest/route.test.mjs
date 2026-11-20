@@ -8,7 +8,7 @@ import { createJiti } from "jiti";
 const fixtures = await mkdtemp(path.join(tmpdir(), "eureka-guest-auth-test-"));
 after(() => rm(fixtures, { recursive: true, force: true }));
 await mkdir(path.join(fixtures, "lib/auth"), { recursive: true });
-for (const name of ["session", "session-value", "guest", "crypto", "access-token-cache", "types"]) {
+for (const name of ["session", "session-value", "guest", "crypto", "types"]) {
   await writeFile(path.join(fixtures, `lib/auth/${name}.ts`), await readFile(`lib/auth/${name}.ts`));
 }
 await writeFile(path.join(fixtures, "lib/request-security.ts"), await readFile("lib/request-security.ts"));
@@ -33,7 +33,8 @@ await writeFile(path.join(fixtures, "lib/auth/marketplace.ts"), `
 exports.refreshMarketplaceSession = async () => { if (globalThis.__guestAuthExpired) return null; throw new Error("guest must not refresh Haze"); };
 exports.hasMarketplaceAccess = () => false;
 `);
-await writeFile(path.join(fixtures, "lib/browser-runtime.ts"), `exports.browserOwner = (source, subject) => JSON.stringify([source, subject]); exports.clearBrowserIdentity = () => {};`);
+await mkdir(path.join(fixtures, "server/browser"), { recursive: true });
+await writeFile(path.join(fixtures, "server/browser/browser-runtime.ts"), `exports.browserOwner = (source, subject) => JSON.stringify([source, subject]); exports.clearBrowserIdentity = () => {};`);
 const jiti = createJiti(import.meta.url, { alias: {
   "@": fixtures,
   "next/server": import.meta.resolve("next/server.js"),
@@ -47,7 +48,7 @@ const { POST: logout } = await jiti.import("../logout/route.ts");
 const { proxy, config } = await jiti.import("../../../../proxy.ts");
 const { readAppSession, readAuthSession, writeAuthSession } = await jiti.import("@/lib/auth/session");
 const { GUEST_SESSION_COOKIE, GUEST_SESSION_MAX_AGE, guestReturnTo, isGuestSessionValue } = await jiti.import("@/lib/auth/guest");
-const { getHazeMarketplaceSession } = await jiti.import("../../../../lib/organization-extensions.ts");
+const { getHazeMarketplaceSession } = await jiti.import("../../../../server/extensions/organization-extensions.ts");
 
 const request = (pathname, options = {}) => new NextRequest(`http://127.0.0.1:8080${pathname}`, {
   ...options, headers: { host: "127.0.0.1:8080", ...options.headers },
@@ -77,7 +78,7 @@ test("explicit guest entry works without Haze configuration and persists for a y
   const first = await profile();
   assert.equal(first.status, 200);
   const expected = { authenticated: false, guest: true, marketplace: false,
-    user: { name: "不愿意透露姓名的神秘用户", email: null, avatarUrl: "/icons/guest-avatar.png", permissions: [] } };
+    user: { name: "神秘用户", email: null, avatarUrl: "/icons/guest-avatar/guest-avatar-1.jpg", permissions: [] } };
   assert.deepEqual(await first.json(), expected);
   assert.deepEqual(await (await profile()).json(), expected);
 });

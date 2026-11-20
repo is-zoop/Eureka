@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { readAuthSession } from "@/lib/auth/session";
 import { getAuthConfig } from "@/lib/auth/config";
-import { getAllowedFileRoots, isExistingFilePathAllowed } from "@/lib/file-access";
-import { listComposerPlugins } from "@/lib/composer-plugins";
-import { listAutomationComposerApps } from "@/lib/automation-chat";
+import { getAllowedFileRoots, isExistingFilePathAllowed } from "@/features/files/server/file-access";
+import { listComposerPlugins } from "@/features/chat/shared/composer-plugins";
+import { listAutomationComposerApps } from "@/features/automation/runtime/automation-chat";
 export const dynamic = "force-dynamic";
 export async function GET(request: Request) {
   const auth = await readAuthSession();

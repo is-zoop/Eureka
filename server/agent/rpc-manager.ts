@@ -1,0 +1,2539 @@
+import { EUREKA_IMAGE_GENERATION_EXTENSION, IMAGE_GENERATION_TOOL } from "./image-generation-extension";
+import { notifyRunningChange } from "./rpc-session-registry";
+import { buildSessionCompletion, hasSessionCompletionListeners, publishSessionCompletion } from "../../features/sessions/server/session-completions";
+import { creationOwnerFromCwd } from "../../features/automation/authoring/automation-creation-auth";
+import { assertLocalAutomationNamespace } from "../../features/automation/runtime/automation-local-context";
+import { commandTools, saveSessionCommandEnvironment, sessionCommandEnvironment } from "../../features/settings/shared/command-environment";
+import { readCommandEnvironment } from "./command-environment-store";
+import { installUiWaitRuntime, subscribeUiWait, setHostUiWait, clearUiWait } from "./ui-wait-runtime";
+export { getRpcSessionInfos, getRunningRpcSessionIds, subscribeRunningSessions, notifyRunningChange } from "./rpc-session-registry";
+import { selectionEnvelope } from "../../features/extensions/shared/plugin-selection";
+import { assertDesktopUpdateIdle, withDesktopUpdateAdmission } from "../desktop/desktop-update-gate";
+import { ClarificationRuntime, clarificationRuntime } from "./clarification-runtime";
+import { clarificationContinuationText, type ClarificationGroup, type ClarificationQueuedInput } from "../../features/chat/shared/clarification";
+import { type UserInputResponse } from "../../features/chat/shared/user-input";
+import { automationTaskOwner, assertAutomationTaskOwner } from "../../features/automation/authoring/automation-task-owner";
+import { installPluginBrowserHandoff } from "../extensions/plugin-browser";
+import { EUREKA_AUTOMATION_INTAKE_EXTENSION } from "../../features/automation/authoring/automation-intake-extension";
+import { AUTOMATION_INTAKE_TOOLS, sameAutomationTask } from "../../features/automation/shared/automation-mode";
+import { activeAutomationTask, bindAutomationTask, changeAutomationTask, localAutomationTask, assertAutomationTaskIdentity, automationQueueGeneration } from "../../features/automation/runtime/automation-mode-store";
+import { creationBinding } from "../../features/automation/authoring/automation-creation";
+import { assertCreationIdentity } from "../../features/automation/authoring/automation-creation-runtime";
+import { taskPluginSelection, taskAllowsClarification } from "../../features/chat/shared/composer-plugins";
+import { prepareComposerSelection, bindChatAutomations, stopChatTask, cancelChatInteraction, AUTOMATION_CHAT_TOOL } from "../../features/automation/runtime/automation-chat";
+import { EUREKA_AUTOMATION_CHAT_EXTENSION } from "../../features/automation/runtime/automation-chat-extension";
+import { annotateOrganizationSkills } from "../../features/extensions/shared/haze-capability-presentation";
+import type { OrganizationCapabilityRef } from "../../features/extensions/shared/organization-capability";
+import { applyHazeProjectSkillOverrides } from "../extensions/haze-skill-overrides";
+import { applyOrganizationPluginSkills, clearPluginSnapshot } from "../extensions/haze-plugin-resources";
+import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
+import { createAgentSessionFromServices, createAgentSessionServices, getAgentDir, initTheme, SessionManager, Theme } from "@earendil-works/pi-coding-agent";
+import { KeybindingsManager as TuiKeybindingsManager, TUI_KEYBINDINGS } from "@earendil-works/pi-tui";
+import { Type } from "typebox";
+import { installNativeMcpRuntime, disposeNativeMcpRuntime } from "../mcp/native-mcp-runtime";
+import { installHazeManagedMcpRuntime } from "../mcp/haze-mcp-runtime";
+import { EUREKA_TASK_PROGRESS_EXTENSION } from "../../features/chat/shared/task-progress";
+import { EUREKA_PROMPT_POLICY_EXTENSION, setSessionPromptSuppressed } from "./session-prompt-policy";
+import { EUREKA_WRITE_DIFF_EXTENSION } from "../../features/files/server/write-diff";
+import { clearMcpRuntime, installMcpStatusRuntime } from "../mcp/mcp-runtime";
+import { randomUUID } from "crypto";
+import { existsSync, realpathSync, writeFileSync } from "fs";
+import { resolve } from "path";
+import { validateAgentImages } from "../../features/chat/shared/image-attachments";
+import { invalidateModelsCache } from "../models/models-cache";
+import { schedulePiCatalogSync } from "../models/pi-catalog-sync";
+import { restoreLegacyAzureProvider, restoreKimiCodingCompatibility } from "../models/model-runtime-compat";
+import { resolveVisibleModels, selectInitialModelScope } from "../models/model-scope";
+import { cacheSessionPath, invalidateSessionListCache, readSessionHeader } from "../../features/sessions/server/session-reader";
+import { observeContextSnapshots, persistLiveContextSnapshot } from "../../features/chat/shared/context-snapshot";
+import { getProjectTrustStatus, projectTrustReloadOptions } from "../../lib/project-trust";
+import { persistExplicitStartupPreferences } from "./startup-preferences";
+import { readSessionToolNames, saveSessionToolNames, sessionToolEntries, validateSessionToolNames } from "./session-tool-permissions";
+import { loadCommandResources } from "./command-catalog";
+import {
+  EMPTY_PLAN_STATE,
+  getPendingPlanQuestion,
+  isReviewablePlan,
+  markPlanTodosDone,
+  normalizePlanForReview,
+  parsePlanTodos,
+  planSnapshot,
+  PLAN_EXECUTION_SYSTEM_PROMPT,
+  PLAN_MODE_COMPLETE_TOOL,
+  PLAN_MODE_QUESTION_TOOL,
+  PLAN_MODE_READ_TOOLS,
+  PLAN_MODE_SYSTEM_PROMPT,
+  readPlanState,
+  validatePlanQuestionResponse,
+  type EurekaPlanAnnotation,
+  type EurekaPlanPhase,
+  type EurekaPlanQuestionResponse,
+  type EurekaPlanState,
+} from "../../features/chat/shared/plan-mode";
+import type { InlineExtension, SlashCommandInfo } from "@earendil-works/pi-coding-agent";
+import type { AgentSessionLike, ExtensionUiContextLike, ToolInfo } from "../../lib/pi-types";
+import type {
+  ExtensionUiRequest,
+  ExtensionUiResponse,
+  ExtensionWidgetItem,
+  SessionEntry,
+  SessionMessageEntry,
+} from "../../lib/types";
+import { createHeadlessCustomUiTui, DEFAULT_CUSTOM_UI_COLUMNS, type HeadlessCustomUiTui } from "./custom-ui-terminal";
+
+// ============================================================================
+// Types
+// ============================================================================
+
+export interface AgentEvent {
+  type: string;
+  [key: string]: unknown;
+}
+
+type EventListener = (event: AgentEvent) => void;
+
+type PendingUiResponse = {
+  resolve: (response: ExtensionUiResponse) => void;
+  cancel: () => void;
+};
+
+type CustomUiComponent = {
+  render: (width: number) => string[];
+  handleInput?: (data: string) => void;
+  dispose?: () => void;
+  invalidate?: () => void;
+};
+
+type ExtensionWidgetComponent = {
+  render: (width: number) => unknown;
+  dispose?: () => void;
+};
+
+type ExtensionWidgetFactory = (tui: HeadlessCustomUiTui, theme: Theme) => unknown;
+
+type ActiveExtensionWidget = {
+  key: string;
+  component: ExtensionWidgetComponent;
+  placement: "aboveEditor" | "belowEditor";
+  generation: number;
+  clearEmitted: boolean;
+  rendered: boolean;
+};
+
+type ActiveCustomUi = {
+  component: CustomUiComponent;
+  width: number;
+  resolve: (value: unknown) => void;
+  settled: boolean;
+};
+
+type ExtensionUiRequestBody = Record<string, unknown> & {
+  method: ExtensionUiRequest["method"];
+  timeout?: number;
+  expiresAt?: number;
+};
+
+type ExtensionCommandContextActionsLike = {
+  waitForIdle: () => Promise<void>;
+  newSession: () => Promise<{ cancelled: boolean }>;
+  fork: () => Promise<{ cancelled: boolean }>;
+  navigateTree: (targetId: string, options?: { summarize?: boolean }) => Promise<{ cancelled: boolean }>;
+  switchSession: () => Promise<{ cancelled: boolean }>;
+  reload: () => Promise<void>;
+};
+
+type ExtensionBindingOptions = {
+  forceEmptySystemPrompt?: boolean;
+};
+
+const RUNNING_STATE_EVENT_TYPES = new Set([
+  "agent_start",
+  "agent_end",
+  "agent_settled",
+  "auto_compaction_start",
+  "auto_compaction_end",
+  "compaction_start",
+  "compaction_end",
+]);
+
+const PLAN_MODE_EXIT_FRAMING = "[EUREKA NATIVE PLAN MODE OFF]\nPlanning mode has been exited. Any earlier Eureka planning-only instructions in this session are no longer active. Resume normal conversation and follow the user's current request.";
+const PLAN_EXECUTION_TRIGGER = "执行计划";
+const PLAN_EXECUTION_CONTINUE = "Continue the approved plan from the first remaining checklist item. Do not repeat completed work. Immediately call mark_plan_done with an item's number after you have actually completed and verified that item, before beginning the next item.";
+const MAX_PLAN_EXECUTION_TURNS = 4;
+
+// The execution state is persisted so the plan card can show progress, but the
+// instruction to obey that plan must be scoped to exactly one AgentSession run.
+// A WeakSet keeps that gate local to the live SessionManager and naturally drops
+// it if the process/session is recreated.
+const activePlanExecutionManagers = new WeakSet<object>();
+const abortedPlanExecutionManagers = new WeakSet<object>();
+const planExecutionEntryOffsets = new WeakMap<object, number>();
+const planExecutionTurnCounts = new WeakMap<object, number>();
+
+function executionAssistantText(entries: SessionEntry[], offset: number): string {
+  return entries.slice(offset)
+    .flatMap((entry) => {
+      if (entry.type !== "message" || entry.message.role !== "assistant") return [];
+      return entry.message.content
+        .filter((block) => block.type === "text")
+        .map((block) => block.text);
+    })
+    .join("\n");
+}
+
+function latestExecutionStopReason(entries: SessionEntry[], offset: number): string | undefined {
+  for (let index = entries.length - 1; index >= offset; index -= 1) {
+    const entry = entries[index];
+    if (entry.type !== "message" || entry.message.role !== "assistant") continue;
+    return (entry.message as { stopReason?: string }).stopReason;
+  }
+  return undefined;
+}
+
+function needsPlanModeExitFraming(entries: SessionEntry[], state: EurekaPlanState): boolean {
+  if (state.phase !== "idle") return false;
+  let lastPlanStateIndex = -1;
+  for (let index = entries.length - 1; index >= 0; index -= 1) {
+    const entry = entries[index];
+    if (entry.type === "custom" && entry.customType === "eureka_plan") {
+      lastPlanStateIndex = index;
+      break;
+    }
+  }
+  if (lastPlanStateIndex < 0) return false;
+  return !entries.slice(lastPlanStateIndex + 1).some((entry) => (
+    entry.type === "custom_message" && entry.customType === "eureka-plan-mode-exit"
+  ));
+}
+
+const IDLE_RESET_EVENT_TYPES = new Set([
+  "agent_end",
+  "agent_settled",
+  "auto_compaction_end",
+  "compaction_end",
+]);
+
+export interface RpcSessionStartOptions {
+  toolNames?: string[];
+  initialModel?: { provider: string; modelId: string };
+  thinkingLevel?: ThinkingLevel;
+}
+
+const CODING_TOOL_NAMES = ["read", "bash", "powershell", "edit", "write", "grep", "find", "ls"];
+
+// Extensions require a complete Theme, while the web UI applies its own styling.
+class PlainTextTheme extends Theme {
+  constructor() {
+    super(
+      { muted: "", text: "", thinkingXhigh: "" } as ConstructorParameters<typeof Theme>[0],
+      { selectedBg: "" } as ConstructorParameters<typeof Theme>[1],
+      "truecolor",
+    );
+  }
+
+  override fg(...[, text]: Parameters<Theme["fg"]>): string { return text; }
+  override bg(...[, text]: Parameters<Theme["bg"]>): string { return text; }
+  override bold(text: string): string { return text; }
+  override italic(text: string): string { return text; }
+  override underline(text: string): string { return text; }
+  override inverse(text: string): string { return text; }
+  override strikethrough(text: string): string { return text; }
+  override getFgAnsi(): string { return ""; }
+  override getBgAnsi(): string { return ""; }
+  override getThinkingBorderColor(): (text: string) => string {
+    return (text) => text;
+  }
+  override getBashModeBorderColor(): (text: string) => string { return (text) => text; }
+}
+
+const PLAIN_TEXT_THEME = new PlainTextTheme();
+const CUSTOM_UI_KEYBINDINGS = new TuiKeybindingsManager(TUI_KEYBINDINGS);
+
+function planReviewContext(state: EurekaPlanState): string {
+  const notes = state.annotations
+    .map((annotation) => `- 对“${annotation.quote.replace(/\s+/g, " ").slice(0, 180)}”的批注：${annotation.note}`)
+    .join("\n");
+  if (!state.generalNote && !notes) return "";
+  return `\n\n## 已批准的评审反馈\n${state.generalNote ? `总体说明：${state.generalNote}\n` : ""}${notes}`;
+}
+
+
+/**
+ * Plan mode needs a turn-local framing message, rather than only a mutable
+ * system-prompt field. This mirrors Pi/Plannotator's lifecycle: extensions
+ * can add their own prompt text after startup, while this message is appended
+ * immediately before every planning turn and remains visible to the model.
+ */
+export const EUREKA_NATIVE_PLAN_EXTENSION: InlineExtension = {
+  name: "eureka-native-plan-mode",
+  hidden: true,
+  factory: (pi) => {
+    pi.registerTool({
+      name: PLAN_MODE_COMPLETE_TOOL,
+      label: "Mark plan task complete",
+      description: "Persist completion of the current approved Eureka plan task. Available only while an approved plan is executing.",
+      promptSnippet: "Mark the just-completed approved plan task",
+      promptGuidelines: [
+        "Call mark_plan_done immediately after actually completing and verifying the current plan task.",
+        "Pass the task's 1-based checklist number. Tasks must be marked in order and only once.",
+        "Never mark work as complete before it is actually finished.",
+      ],
+      parameters: Type.Object({
+        taskIndex: Type.Integer({ minimum: 1, description: "The completed task's 1-based checklist number" }),
+      }),
+      execute: async (_toolCallId, params, _signal, _onUpdate, ctx) => {
+        const state = readPlanState(ctx.sessionManager.getEntries() as SessionEntry[]);
+        if (state.phase !== "executing") {
+          return { content: [{ type: "text" as const, text: "Plan tasks can only be completed while an approved plan is executing." }], details: { accepted: false } };
+        }
+        const taskIndex = params.taskIndex;
+        const todo = state.todos.find((item) => item.index === taskIndex);
+        if (!todo) {
+          return { content: [{ type: "text" as const, text: `Plan task ${taskIndex} does not exist.` }], details: { accepted: false } };
+        }
+        if (todo.done) {
+          return { content: [{ type: "text" as const, text: `Plan task ${taskIndex} is already complete.` }], details: { accepted: false } };
+        }
+        const expected = state.todos.find((item) => !item.done);
+        if (!expected || expected.index !== taskIndex) {
+          return { content: [{ type: "text" as const, text: `Complete plan task ${expected?.index ?? "the next"} before task ${taskIndex}.` }], details: { accepted: false } };
+        }
+        const now = new Date().toISOString();
+        const next = {
+          ...state,
+          todos: state.todos.map((item) => item.index === taskIndex ? { ...item, done: true } : item),
+          updatedAt: now,
+        };
+        pi.appendEntry("eureka_plan", next);
+        invalidateSessionListCache();
+        return {
+          content: [{ type: "text" as const, text: `Plan task ${taskIndex} is recorded as complete. Continue with the next remaining task.` }],
+          details: { accepted: true, taskIndex },
+        };
+      },
+    });
+
+    pi.registerTool({
+      name: PLAN_MODE_QUESTION_TOOL,
+      label: "Request user input",
+      executionMode: "sequential",
+      description: "Ask one to four material clarification questions with 2 to 4 choices each. The user answers inside Eureka before the task continues.",
+      promptSnippet: "Clarify missing requirements with selectable choices when this task permits user input",
+      promptGuidelines: [
+        "First use available context. Ask only when missing information materially changes the result. Do not repeat questions already answered.",
+        "Ask 1 to 4 focused questions at a time. Each question needs 2 to 4 choices and may be single-select or multi-select.",
+        "After calling request_user_input, stop and wait for the user's response.",
+      ],
+      parameters: Type.Object({
+        // title/question/options remain accepted so existing extensions and
+        // older model prompts keep producing a valid one-question group.
+        title: Type.Optional(Type.String({ description: "Short question title (legacy single-question form)" })),
+        question: Type.Optional(Type.String({ description: "One clarification question (legacy single-question form)" })),
+        options: Type.Optional(Type.Array(Type.Object({
+          id: Type.String({ description: "Stable short option id" }),
+          label: Type.String({ description: "Option label" }),
+          description: Type.String({ description: "Short impact or trade-off" }),
+        }), { minItems: 2, maxItems: 4 })),
+        questions: Type.Optional(Type.Array(Type.Object({
+          title: Type.String({ description: "Short question title" }),
+          question: Type.String({ description: "One focused clarification question" }),
+          selection: Type.Optional(Type.Union([Type.Literal("single"), Type.Literal("multiple")])),
+          options: Type.Array(Type.Object({
+            id: Type.String({ description: "Stable short option id" }),
+            label: Type.String({ description: "Option label" }),
+            description: Type.String({ description: "Short impact or trade-off" }),
+          }), { minItems: 2, maxItems: 4 }),
+        }), { minItems: 1, maxItems: 4 })),
+      }),
+      execute: async (toolCallId, params, _signal, _onUpdate, ctx) => {
+        const state = readPlanState(ctx.sessionManager.getEntries() as SessionEntry[]);
+        if (getPendingPlanQuestion(state)) {
+          return { content: [{ type: "text" as const, text: "A planning question is already awaiting the user's answer. Stop and wait." }], details: { accepted: false } };
+        }
+        const sourceQuestions = Array.isArray(params.questions)
+          ? params.questions
+          : [{ title: params.title, question: params.question, options: params.options, selection: "single" }];
+        const questions = sourceQuestions.map((item) => ({
+          title: typeof item.title === "string" ? item.title.trim() : "",
+          question: typeof item.question === "string" ? item.question.trim() : "",
+          selection: item.selection === "multiple" ? "multiple" as const : "single" as const,
+          options: Array.isArray(item.options)
+            ? item.options.map((option) => ({
+              id: typeof option.id === "string" ? option.id.trim() : "",
+              label: typeof option.label === "string" ? option.label.trim() : "",
+              description: typeof option.description === "string" ? option.description.trim() : "",
+            }))
+            : [],
+        }));
+        const valid = questions.length >= 1 && questions.length <= 4
+          && questions.every((item) => item.title.length > 0 && item.question.length > 0
+            && item.options.length >= 2 && item.options.length <= 4
+            && item.options.every((option) => option.id && option.label && option.description)
+            && new Set(item.options.map((option) => option.id)).size === item.options.length);
+        if (!valid) {
+          return { content: [{ type: "text" as const, text: "Provide 1 to 4 non-empty questions, each with 2 to 4 choices with unique ids, labels, and descriptions." }], details: { accepted: false } };
+        }
+        if (state.phase !== "planning") {
+          const runtime = clarificationRuntime(ctx.sessionManager);
+          if (!runtime) throw new Error("问题澄清运行时尚未就绪");
+          runtime.ask(toolCallId, questions);
+          invalidateSessionListCache();
+          return { content: [{ type: "text" as const, text: "Questions are displayed in Eureka. Execution is paused until the user answers. Do not open a browser or ask again in prose." }], details: { accepted: true, groupId: toolCallId }, terminate: true };
+        }
+        const now = new Date().toISOString();
+        const next = {
+          ...state,
+          questions: [...state.questions, ...questions.map((item) => ({
+            id: randomUUID(), toolCallId, ...item, status: "pending" as const, askedAt: now,
+          }))],
+          updatedAt: now,
+        };
+        const runtime = clarificationRuntime(ctx.sessionManager);
+        if (runtime) runtime.pauseRequested = true;
+        pi.appendEntry("eureka_plan", next);
+        invalidateSessionListCache();
+        return {
+          content: [{ type: "text" as const, text: "The question group is now displayed in Eureka. Stop this turn and wait for the user's answers." }],
+          details: { accepted: true },
+          terminate: true,
+        };
+      },
+    });
+
+    pi.on("tool_call", (_event, ctx) => {
+      const runtime = clarificationRuntime(ctx.sessionManager);
+      if (runtime?.pauseRequested || runtime?.blocked || getPendingPlanQuestion(readPlanState(ctx.sessionManager.getEntries() as SessionEntry[]))) {
+        return { block: true, reason: "请先回答或取消当前澄清问题。", terminate: true };
+      }
+      if (_event.toolName === PLAN_MODE_QUESTION_TOOL && readPlanState(ctx.sessionManager.getEntries() as SessionEntry[]).phase !== "planning") {
+        try {
+          if (!runtime?.allowed || !runtime.task || !taskAllowsClarification(ctx.cwd, ctx.sessionManager.getSessionId(), runtime.task)) return { block: true, reason: "当前任务未开放问题澄清。", terminate: true };
+        } catch (error) { return { block: true, reason: error instanceof Error ? error.message : "澄清权限已变化", terminate: true }; }
+      }
+      return undefined;
+    });
+
+    pi.on("before_agent_start", async (event, ctx) => {
+      const entries = ctx.sessionManager.getEntries() as SessionEntry[];
+      const state = readPlanState(entries);
+      const systemPrompt = state.planModeActive && ["planning", "reviewing"].includes(state.phase)
+        ? `${event.systemPrompt}\n\n${PLAN_MODE_SYSTEM_PROMPT}`
+        : undefined;
+      if (state.planModeActive && state.phase === "planning") {
+        return {
+          systemPrompt,
+          message: {
+            customType: "eureka-plan-framing",
+            display: false,
+            content: `[EUREKA NATIVE PLAN MODE — MANDATORY]\nYou are planning, not implementing. Do not output source code, scripts, patches, commands, or a completed solution. Do not create or modify files. Use read-only investigation only. If a requirement that materially changes the plan is missing, call request_user_input once with a compact group of 1 to 4 questions. Each question needs 2 to 4 selectable choices and may be single-select or multi-select. Never write clarifying questions as ordinary text. Calling that tool ends the turn: do not add a prose answer after it. Otherwise, reply only with a Markdown plan containing these headings: Goal, Affected areas, Implementation steps, Risks, Verification. Every implementation step must be an unchecked checklist item (- [ ]). End after the plan and wait for the user to submit it for review.`,
+          },
+        };
+      }
+      if (systemPrompt !== undefined) return { systemPrompt };
+      if (needsPlanModeExitFraming(entries, state)) {
+        return {
+          message: {
+            customType: "eureka-plan-mode-exit",
+            display: false,
+            content: PLAN_MODE_EXIT_FRAMING,
+          },
+        };
+      }
+      if (state.phase === "executing" && activePlanExecutionManagers.has(ctx.sessionManager as object)) {
+        return {
+          message: {
+            customType: "eureka-plan-execution-framing",
+            display: false,
+            content: `[EUREKA NATIVE PLAN EXECUTION]\n${PLAN_EXECUTION_SYSTEM_PROMPT}\n\n${state.content}${planReviewContext(state)}`,
+          },
+        };
+      }
+      const runtime = clarificationRuntime(ctx.sessionManager);
+      if (runtime?.allowed) return { message: { customType: "eureka-clarification-framing", display: false, content: "[EUREKA USER INPUT] For this task only, request_user_input is available. Use existing context first. Ask a compact group only when missing information materially changes the result. Never invent business choices. After asking, wait for the user. A skipped answer supplies no business assumption. On continuation, reuse the existing business session and scope; do not create or reset them merely because clarification occurred." } };
+      if (pi.getActiveTools().length > 0 && state.phase === "idle") return { message: { customType: "eureka-clarification-framing", display: false, content: "[EUREKA USER INPUT OFF] request_user_input is unavailable for this task. Any earlier task's permission to display clarification cards no longer applies." } };
+      return undefined;
+    });
+
+    // Pi drains messages queued by agent_end handlers before it settles the
+    // current prompt. This lets a long plan continue internally without adding
+    // extra visible user bubbles or leaking its constraints into later chats.
+    pi.on("agent_end", (_event, ctx) => {
+      const manager = ctx.sessionManager as object;
+      if (!activePlanExecutionManagers.has(manager) || abortedPlanExecutionManagers.has(manager)) return;
+
+      const entries = ctx.sessionManager.getEntries() as SessionEntry[];
+      const state = readPlanState(entries);
+      const offset = planExecutionEntryOffsets.get(manager);
+      if (state.phase !== "executing" || offset === undefined) return;
+      const stopReason = latestExecutionStopReason(entries, offset);
+      if (stopReason && stopReason !== "stop") return;
+
+      const todos = markPlanTodosDone(state.todos, executionAssistantText(entries, offset));
+      if (todos.every((todo) => todo.done)) return;
+
+      const turnCount = (planExecutionTurnCounts.get(manager) ?? 0) + 1;
+      planExecutionTurnCounts.set(manager, turnCount);
+      if (turnCount >= MAX_PLAN_EXECUTION_TURNS) return;
+
+      pi.sendMessage({
+        customType: "eureka-plan-execution-continue",
+        display: false,
+        content: PLAN_EXECUTION_CONTINUE,
+      }, { deliverAs: "followUp" });
+    });
+  },
+};
+
+/** The adapter is a Eureka dependency, not a user-installed Pi package. */
+const EUREKA_MCP_EXTENSION: InlineExtension = {
+  name: "eureka-native-mcp-status",
+  hidden: true,
+  factory: (pi) => installMcpStatusRuntime(pi),
+};
+
+function withExtensionTools(session: AgentSessionLike, toolNames: string[]): string[] {
+  if (toolNames.length === 0) return [];
+
+  const codingToolNames = new Set(CODING_TOOL_NAMES);
+  const extensionToolNames = session
+    .getAllTools()
+    .map((t) => t.name)
+    .filter((name) => !codingToolNames.has(name) && name !== PLAN_MODE_QUESTION_TOOL && name !== PLAN_MODE_COMPLETE_TOOL && name !== AUTOMATION_CHAT_TOOL && name !== IMAGE_GENERATION_TOOL);
+
+  return [...new Set([...toolNames, ...extensionToolNames])];
+}
+
+// ============================================================================
+// AgentSessionWrapper
+// Wraps AgentSession with the same interface the rest of the app expects
+// ============================================================================
+
+export class AgentSessionWrapper {
+  private warmingLeaf: string | null | undefined;
+  private warmingUsage = { count: 0, total: 0 };
+  getObservationSnapshot() {
+    const leaf = this.inner.sessionManager.getLeafId?.();
+    if (leaf !== this.warmingLeaf) {
+      this.warmingLeaf = leaf;
+      this.warmingUsage = (this.inner.sessionManager.getBranch?.() ?? []).reduce((sum, entry) => {
+        if (entry.type === "usage" && entry.kind === "cache_warm") { sum.count++; sum.total += entry.usage.cost.total; }
+        return sum;
+      }, { count: 0, total: 0 });
+    }
+    return { cacheWarming: { mode: this.inner.settingsManager?.getCacheWarmingMode() ?? "streaming", status: this.inner.cacheWarmingStatus, usage: this.warmingUsage } };
+  }
+  private listeners: EventListener[] = [];
+  private pendingUiResponses = new Map<string, PendingUiResponse>();
+  private pendingUiRequests = new Map<string, AgentEvent>();
+  private activeCustomUis = new Map<string, ActiveCustomUi>();
+  private extensionStatuses = new Map<string, string>();
+  private extensionWidgets = new Map<string, ExtensionWidgetItem>();
+  private activeExtensionWidgets = new Map<string, ActiveExtensionWidget>();
+  private extensionWidgetGenerations = new Map<string, number>();
+  private extensionWidgetsResetting = false;
+  private pendingPromptCount = 0;
+  private promptAdmissionTail: Promise<void> = Promise.resolve();
+  private extensionsBound = false;
+  private extensionBindingPromise: Promise<void> | null = null;
+  private extensionBindingError: unknown = null;
+  private forceEmptySystemPrompt = false;
+  private unsubscribe: (() => void) | null = null;
+  private idleTimer: ReturnType<typeof setTimeout> | null = null;
+  private onDestroyCallback: (() => void) | null = null;
+  private shutdownPromise: Promise<void> | null = null;
+  private _alive = true;
+  private planModeState: EurekaPlanState;
+  private clarification: ClarificationRuntime;
+  private queuePumpRunning = false;
+  private planExecutionEntryOffset: number | null = null;
+  private waitingForUser = false;
+  private unsubscribeUiWait: (() => void) | null = null;
+
+  constructor(public readonly inner: AgentSessionLike) {
+    const previousWait = [...inner.sessionManager.getEntries()].reverse().find(entry => entry.type === "custom" && entry.customType === "eureka_ui_wait");
+    if (previousWait?.type === "custom" && (previousWait.data as { waiting?: boolean } | undefined)?.waiting === true) inner.sessionManager.appendCustomEntry("eureka_ui_wait", { waiting: false, recovered: true });
+    this.unsubscribeUiWait = subscribeUiWait(inner.sessionManager, waiting => {
+      if (!this._alive || this.waitingForUser === waiting) return;
+      this.waitingForUser = waiting;
+      try { this.inner.sessionManager.appendCustomEntry("eureka_ui_wait", { waiting, active: this.isRunning() }); } catch { console.warn("Unable to persist UI wait timing"); }
+      this.emit({ type: "ui_wait_state", waitingForUser: waiting });
+    });
+    this.clarification = new ClarificationRuntime(inner.sessionManager, (state) => {
+      invalidateSessionListCache();
+      this.emit({ type: "clarification_state", state });
+      this.emit({ type: "queue_update", steering: state.queue.filter((q) => q.behavior === "steer").map((q) => selectionEnvelope(q.message, q.selectedPlugins ?? [])), followUp: state.queue.filter((q) => q.behavior === "followUp").map((q) => selectionEnvelope(q.message, q.selectedPlugins ?? [])) });
+    });
+    const previousFinish = inner.agent.finishTurn;
+    inner.agent.finishTurn = async (turn, signal) => {
+      // Error and aborted responses are hard exits in Pi; do not apply normal
+      // continuation policy or invoke a previous normal-response predicate.
+      if (turn.message.stopReason === "error" || turn.message.stopReason === "aborted") return;
+      if (this.clarification.pauseRequested || this.clarification.blocked || getPendingPlanQuestion(readPlanState(inner.sessionManager.getEntries() as SessionEntry[]))) {
+        // External requests are owned by the durable host queue. Hold any SDK
+        // extension-injected continuations too, before the SDK drains them.
+        const held = inner.clearQueue();
+        for (const [behavior, messages] of [["steer", held.steering], ["followUp", held.followUp]] as const) {
+          for (const message of messages) this.clarification.enqueue({ id: randomUUID(), behavior, message, clarificationEnabled: false });
+        }
+        return { action: "end" };
+      }
+      if (this.clarification.state.queue.some((q) => !q.paused && q.behavior === "steer")) return { action: "end" };
+      return (await previousFinish?.(turn, signal)) ?? undefined;
+    };
+    this.planModeState = readPlanState(this.inner.sessionManager.getEntries() as SessionEntry[]);
+    // A live execution cannot survive a server/session recreation. Archive it
+    // immediately so a later ordinary prompt never inherits its plan framing.
+    if (this.planModeState.phase === "executing") {
+      this.finishPlanExecution();
+    }
+    if (this.planModeState.phase === "idle") {
+      const activeTools = this.inner.getActiveToolNames().filter((name) => name !== PLAN_MODE_QUESTION_TOOL && name !== PLAN_MODE_COMPLETE_TOOL);
+      this.inner.setActiveToolsByName(activeTools);
+    }
+    this.applyPlanModeRuntime();
+  }
+
+  get sessionId(): string {
+    return this.inner.sessionId;
+  }
+
+  get sessionFile(): string {
+    return this.inner.sessionFile ?? "";
+  }
+
+  get cwd(): string {
+    return this.inner.sessionManager.getCwd();
+  }
+
+  get streamingMessage() {
+    return this.inner.agent.state?.streamingMessage;
+  }
+
+  get isStreaming(): boolean {
+    return this.inner.isStreaming;
+  }
+
+  isAlive(): boolean {
+    return this._alive;
+  }
+
+  isRunning(): boolean {
+    return this._alive && (this.pendingPromptCount > 0 || this.inner.isStreaming || this.inner.isCompacting || this.inner.isBashRunning);
+  }
+
+  start(): void {
+    observeContextSnapshots(this);
+    let completionLeaf: string | null | undefined;
+    this.unsubscribe = this.inner.subscribe((event: AgentEvent) => {
+      if (event.type === "agent_start" && completionLeaf === undefined) {
+        completionLeaf = this.inner.sessionManager.getLeafId();
+      }
+      if (event.type === "agent_settled") {
+        const previousLeaf = completionLeaf;
+        completionLeaf = undefined;
+        if (previousLeaf !== undefined && !event.aborted && !this.clarification.blocked && hasSessionCompletionListeners()) {
+          try {
+            const owner = creationOwnerFromCwd(this.cwd);
+            if (owner) assertLocalAutomationNamespace(owner);
+            const manager = this.inner.sessionManager;
+            const branch = manager.getBranch();
+            const offset = previousLeaf === null ? 0 : branch.findIndex((entry) => entry.id === previousLeaf) + 1;
+            if (previousLeaf === null || offset > 0) {
+              const completion = buildSessionCompletion(branch, offset, manager.getSessionName());
+              if (completion) publishSessionCompletion({ sessionId: this.sessionId, ...completion });
+            }
+          } catch (error) {
+            console.warn("[pi-web] Could not prepare desktop task completion:", error instanceof Error ? error.message : String(error));
+          }
+        }
+      }
+      if (event.type === "agent_end") {
+        invalidateSessionListCache();
+      }
+      if (IDLE_RESET_EVENT_TYPES.has(event.type)) this.resetIdleTimer();
+      this.emit(event.type === "queue_update" ? { ...event, steering: [...(event.steering as string[] ?? []), ...this.queuedInput("steer")], followUp: [...(event.followUp as string[] ?? []), ...this.queuedInput("followUp")] } : event);
+      if (RUNNING_STATE_EVENT_TYPES.has(event.type)) notifyRunningChange();
+    });
+    this.resetIdleTimer();
+    notifyRunningChange();
+  }
+
+  setForceEmptySystemPrompt(force: boolean): void {
+    this.forceEmptySystemPrompt = force;
+    this.applyForcedEmptySystemPrompt();
+  }
+
+  private persistPlanModeState(): void {
+    this.planModeState = { ...this.planModeState, updatedAt: new Date().toISOString() };
+    this.inner.sessionManager.appendCustomEntry("eureka_plan", this.planModeState);
+    invalidateSessionListCache();
+  }
+
+  private refreshPlanModeState(): EurekaPlanState {
+    this.planModeState = readPlanState(this.inner.sessionManager.getEntries() as SessionEntry[]);
+    return this.planModeState;
+  }
+
+  private queuedInput(behavior: "steer" | "followUp"): string[] {
+    return this.clarification.state.queue.filter((q) => q.behavior === behavior).map((q) => selectionEnvelope(q.message, q.selectedPlugins ?? []));
+  }
+
+  private finishClarificationTask(groupId?: string, error?: string): void {
+    if (groupId) this.clarification.finish(groupId, error);
+    this.clarification.task = null;
+    this.clarification.allowed = false;
+    this.clarification.pauseRequested = false;
+    if (!this.planModeState.planModeActive && this.inner.getActiveToolNames().includes(PLAN_MODE_QUESTION_TOOL)) this.inner.setActiveToolsByName(this.inner.getActiveToolNames().filter((name) => name !== PLAN_MODE_QUESTION_TOOL));
+    this.applyForcedEmptySystemPrompt();
+  }
+
+  private async continueClarification(id: string, retry: boolean): Promise<void> {
+    const group = this.clarification.group(id);
+    if (group.status !== "answered") throw new Error("请先提交本组问题的回答");
+    if (group.continuation === "running" || group.continuation === "completed") return;
+    if (group.continuation === "failed" && !retry) return;
+    if (this.isRunning()) throw new Error("请等待当前运行结束后重试继续，回答已保存");
+    // Set synchronously before the first await: duplicate submissions cannot
+    // enter preflight twice, including when the HTTP response is lost.
+    this.clarification.update({ ...group, continuation: "running", error: undefined });
+    try {
+      const skills = this.inner.resourceLoader.getSkills().skills;
+      await prepareComposerSelection(this.cwd, this.sessionId, group.task.plugins, skills, "");
+      if (this.forceEmptySystemPrompt || !taskAllowsClarification(this.cwd, this.sessionId, group.task)) throw new Error("当前权限或插件状态不允许继续，请重新授权后重试；回答已保留");
+      await this.send({ type: "prompt", message: clarificationContinuationText(group) }, group);
+    } catch (error) {
+      this.clarification.finish(id, error instanceof Error ? error.message : String(error));
+      throw error;
+    }
+  }
+
+  private async pumpInputQueue(): Promise<void> {
+    if (this.queuePumpRunning || !this._alive || this.isRunning() || this.clarification.blocked || getPendingPlanQuestion(this.refreshPlanModeState())) return;
+    this.queuePumpRunning = true;
+    let failed = false;
+    try {
+      const queued = this.clarification.shift();
+      if (!queued) return;
+      try {
+        assertAutomationTaskOwner(queued.owner);
+        await this.send({ ...queued, type: "prompt" });
+      }
+      catch (error) {
+        failed = true;
+        this.clarification.enqueue(queued.automationTask ? { ...queued, paused: true } : queued);
+        this.emit({ type: "prompt_error", errorMessage: `排队请求未执行：${error instanceof Error ? error.message : String(error)}。请求已保留，可从队列取回。` });
+      }
+    } finally {
+      this.queuePumpRunning = false;
+      if (!failed && this._alive && !this.isRunning() && !this.clarification.blocked && this.clarification.state.queue.some((q) => !q.paused)) queueMicrotask(() => void this.pumpInputQueue());
+    }
+  }
+
+  private applyPlanModeRuntime(): void {
+    const state = this.planModeState;
+    if (state.phase === "executing") {
+      this.inner.setActiveToolsByName([
+        ...state.originalToolNames.filter((name) => name !== PLAN_MODE_QUESTION_TOOL && name !== PLAN_MODE_COMPLETE_TOOL),
+        PLAN_MODE_COMPLETE_TOOL,
+      ]);
+      return;
+    }
+    if (!state.planModeActive) {
+      if (state.originalToolNames.length > 0) {
+        this.inner.setActiveToolsByName(state.originalToolNames.filter((name) => name !== PLAN_MODE_QUESTION_TOOL && name !== PLAN_MODE_COMPLETE_TOOL));
+      }
+      return;
+    }
+    if (state.phase === "planning" || state.phase === "reviewing") {
+      this.inner.setActiveToolsByName(state.phase === "planning"
+        ? [...PLAN_MODE_READ_TOOLS, PLAN_MODE_QUESTION_TOOL]
+        : [...PLAN_MODE_READ_TOOLS]);
+      return;
+    }
+  }
+
+  private setPlanPhase(phase: EurekaPlanPhase, patch: Partial<EurekaPlanState> = {}): EurekaPlanState {
+    this.planModeState = { ...this.planModeState, ...patch, phase };
+    this.applyPlanModeRuntime();
+    this.persistPlanModeState();
+    return this.planModeState;
+  }
+
+  private archiveActivePlan(includeExecutionProgress: boolean): EurekaPlanState {
+    const entries = this.inner.sessionManager.getEntries() as SessionEntry[];
+    const assistantText = includeExecutionProgress && this.planExecutionEntryOffset !== null
+      ? executionAssistantText(entries, this.planExecutionEntryOffset)
+      : "";
+    const completedPlan = {
+      ...this.planModeState,
+      planModeActive: false,
+      todos: includeExecutionProgress
+        ? markPlanTodosDone(this.planModeState.todos, assistantText)
+        : this.planModeState.todos,
+    };
+    this.planModeState = {
+      ...EMPTY_PLAN_STATE,
+      plans: completedPlan.activePlanId
+        ? [...completedPlan.plans, planSnapshot(completedPlan)]
+        : completedPlan.plans,
+      // Restore the tools before clearing the captured preference from state.
+      originalToolNames: completedPlan.originalToolNames,
+    };
+    this.applyPlanModeRuntime();
+    this.planModeState = { ...this.planModeState, originalToolNames: [], originalToolPreset: null };
+    this.persistPlanModeState();
+    this.inner.sessionManager.appendCustomMessageEntry("eureka-plan-mode-exit", PLAN_MODE_EXIT_FRAMING, false);
+    const manager = this.inner.sessionManager as object;
+    activePlanExecutionManagers.delete(manager);
+    abortedPlanExecutionManagers.delete(manager);
+    planExecutionEntryOffsets.delete(manager);
+    planExecutionTurnCounts.delete(manager);
+    this.planExecutionEntryOffset = null;
+    return this.planModeState;
+  }
+
+  private finishPlanExecution(): EurekaPlanState {
+    this.refreshPlanModeState();
+    if (this.planModeState.phase !== "executing") return this.planModeState;
+    return this.archiveActivePlan(true);
+  }
+
+  beginExtensionBinding(options: ExtensionBindingOptions = {}): void {
+    void this.ensureExtensionsBound(options).catch((err) => {
+      console.error("[pi-web] failed to dispatch session_start to extensions:", err instanceof Error ? err.message : err);
+    });
+  }
+
+  async waitUntilReady(): Promise<void> {
+    await this.waitForExtensionsBound();
+  }
+
+  getCommandSnapshot() {
+    const commands: Array<SlashCommandInfo & { organizationCapability?: OrganizationCapabilityRef }> = [];
+    for (const registered of this.inner.extensionRunner.getRegisteredCommands()) {
+      commands.push({ name: registered.invocationName, description: registered.description, source: "extension", sourceInfo: registered.sourceInfo });
+    }
+    for (const template of this.inner.promptTemplates) {
+      commands.push({ name: template.name, description: template.description, source: "prompt", sourceInfo: template.sourceInfo });
+    }
+    for (const skill of annotateOrganizationSkills(this.cwd, this.inner.resourceLoader.getSkills().skills)) {
+      commands.push({ name: `skill:${skill.name}`, description: skill.description, source: "skill", organizationCapability: skill.organizationCapability, sourceInfo: skill.sourceInfo });
+    }
+    return { commands };
+  }
+
+  private ensureExtensionsBound(options: ExtensionBindingOptions = {}): Promise<void> {
+    if (options.forceEmptySystemPrompt) this.forceEmptySystemPrompt = true;
+    if (this.extensionsBound) {
+      this.applyForcedEmptySystemPrompt();
+      return Promise.resolve();
+    }
+    if (this.extensionBindingPromise) return this.extensionBindingPromise;
+
+    this.extensionBindingError = null;
+    this.extensionBindingPromise = (async () => {
+      if (!this._alive) return;
+      const uiContext = this.createExtensionUiContext();
+      if (typeof this.inner.bindExtensions === "function") {
+        const bindExtensions = this.inner.bindExtensions as (bindings: {
+          uiContext?: ExtensionUiContextLike;
+          mode?: "rpc";
+          commandContextActions?: ExtensionCommandContextActionsLike;
+          shutdownHandler?: () => void;
+          onError?: (error: { extensionPath: string; event: string; error: string }) => void;
+        }) => Promise<void>;
+        await bindExtensions.call(this.inner, {
+          uiContext,
+          mode: "rpc",
+          commandContextActions: this.createExtensionCommandContextActions(),
+          shutdownHandler: () => this.emit({
+            type: "extension_ui_request",
+            id: randomUUID(),
+            method: "notify",
+            notifyType: "warning",
+            message: "Extension requested shutdown, but shutdown is not supported in Eureka.",
+          } as ExtensionUiRequest as AgentEvent),
+          onError: (error) => this.emit({
+            type: "extension_error",
+            extensionPath: error.extensionPath,
+            event: error.event,
+            error: error.error,
+          }),
+        });
+      } else {
+        this.inner.extensionRunner.setUIContext?.(uiContext, "rpc");
+      }
+      this.extensionsBound = true;
+      this.applyForcedEmptySystemPrompt();
+      // Extensions may register or re-enable tools during session_start. Reapply
+      // the native plan-mode allow-list afterwards so an extension cannot bypass it.
+      this.applyPlanModeRuntime();
+      void persistLiveContextSnapshot(this.inner);
+      console.log(`[pi-web] session_start dispatched to extensions for session ${this.inner.sessionId}`);
+    })().catch((err) => {
+      this.extensionBindingError = err;
+      throw err;
+    });
+
+    return this.extensionBindingPromise;
+  }
+
+  private async waitForExtensionsBound(): Promise<void> {
+    try {
+      if (this.extensionBindingPromise) await this.extensionBindingPromise;
+    } catch (err) {
+      throw err instanceof Error ? err : new Error(String(err));
+    }
+    if (this.extensionBindingError) {
+      throw this.extensionBindingError instanceof Error
+        ? this.extensionBindingError
+        : new Error(String(this.extensionBindingError));
+    }
+  }
+
+  private shouldWaitForExtensions(type: string): boolean {
+    return type === "prompt"
+      || type === "steer"
+      || type === "follow_up"
+      || type === "get_state";
+  }
+
+  private async withFinalRunningNotification<T>(operation: () => Promise<T>): Promise<T> {
+    try {
+      return await operation();
+    } finally {
+      this.resetIdleTimer();
+      notifyRunningChange();
+    }
+  }
+
+  private applyForcedEmptySystemPrompt(): void {
+    setSessionPromptSuppressed(this.inner.sessionManager, this.forceEmptySystemPrompt);
+  }
+
+  private emit(event: AgentEvent): void {
+    for (const listener of this.listeners) {
+      try {
+        listener(event);
+      } catch (error) {
+        console.error(
+          `[pi-web] failed to deliver ${event.type} event:`,
+          error instanceof Error ? error.message : error,
+        );
+      }
+    }
+  }
+
+  private async acquirePromptAdmission(): Promise<() => void> {
+    const previous = this.promptAdmissionTail;
+    let release!: () => void;
+    this.promptAdmissionTail = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await previous;
+    return release;
+  }
+
+  private resetIdleTimer(): void {
+    if (this.idleTimer) clearTimeout(this.idleTimer);
+    this.idleTimer = setTimeout(() => {
+      if (this.isRunning()) {
+        this.resetIdleTimer();
+        return;
+      }
+      void this.shutdown().catch((error) => {
+        console.error("[pi-web] failed to shut down idle session:", error instanceof Error ? error.message : error);
+      });
+    }, 10 * 60 * 1000);
+  }
+
+  private persistBashOnlySession(): void {
+    const manager = this.inner.sessionManager;
+    const sessionFile = manager.getSessionFile();
+    if (!sessionFile || existsSync(sessionFile)) return;
+
+    const header = manager.getHeader();
+    if (!header) return;
+
+    const content = [header, ...manager.getEntries()]
+      .map((entry) => JSON.stringify(entry))
+      .join("\n") + "\n";
+    writeFileSync(sessionFile, content, { encoding: "utf8", flag: "wx" });
+
+    // Pi normally delays the first flush until an assistant message exists.
+    // A leading shell command has no assistant message, so mark this SDK
+    // manager as flushed after writing its own generated entries.
+    (manager as unknown as { flushed: boolean }).flushed = true;
+    cacheSessionPath(this.inner.sessionId, sessionFile);
+  }
+
+  onEvent(listener: EventListener): () => void {
+    this.listeners.push(listener);
+    if (this.waitingForUser) { try { listener({ type: "ui_wait_state", waitingForUser: true }); } catch { console.warn("UI wait replay listener failed"); } }
+    for (const event of this.pendingUiRequests.values()) { try { listener(event); } catch { console.warn("UI prompt replay listener failed"); } }
+    return () => {
+      const i = this.listeners.indexOf(listener);
+      if (i !== -1) this.listeners.splice(i, 1);
+    };
+  }
+
+  onDestroy(cb: () => void): void {
+    this.onDestroyCallback = cb;
+  }
+
+  async send(command: Record<string, unknown>, continuation?: ClarificationGroup): Promise<unknown> {
+    return withDesktopUpdateAdmission(() => this.sendCommand(command, continuation));
+  }
+
+  private async sendCommand(command: Record<string, unknown>, continuation?: ClarificationGroup): Promise<unknown> {
+    assertDesktopUpdateIdle();
+    if (command.type === "pause_automation_task" || command.type === "exit_automation_task") {
+      const ref = localAutomationTask(command.automationTask);
+      assertAutomationTaskIdentity(ref); automationQueueGeneration(this.inner.sessionManager, ref, true);
+      const releaseAdmission = await this.acquirePromptAdmission();
+      try {
+      const runningTask = activeAutomationTask(this.inner.sessionManager);
+      await changeAutomationTask(this.inner.sessionManager, ref, command.type === "exit_automation_task" ? "exited" : "paused");
+      this.clarification.save({ ...this.clarification.state, queue: this.clarification.state.queue.map(q => sameAutomationTask(q.automationTask, ref) ? { ...q, paused: true } : q), groups: this.clarification.state.groups.map(g => sameAutomationTask(g.task.automationTask, ref) && g.continuation !== "completed" ? { ...g, status: "cancelled", continuation: "failed", error: "自动化创建已暂停或退出，请显式继续任务。" } : g) });
+      if (sameAutomationTask(runningTask?.task, ref)) await this.inner.abort();
+      return { paused: true };
+      } finally { releaseAdmission(); }
+    }
+    const creation=creationBinding(this.inner.sessionManager.getEntries());
+    if(creation){
+      assertCreationIdentity(creation);
+      if (["prompt", "steer", "follow_up", "execute_plan", "answer_clarification", "retry_clarification"].includes(String(command.type))) throw new Error("旧版创建会话仅供查看，请在首页普通对话选择自动化命令。");
+      if(["bash","execute_bash","set_tools","set_plan_mode","execute_plan","fork"].includes(String(command.type)))throw new Error("自动化创建会话使用固定能力，请在普通会话中使用代码或规划功能。");
+    }
+    this.resetIdleTimer();
+    const type = command.type as string;
+    if (this.shouldWaitForExtensions(type)) await this.waitForExtensionsBound();
+    assertDesktopUpdateIdle();
+
+    if (type === "prompt" || type === "steer" || type === "follow_up") {
+      const imageError = validateAgentImages(command.images);
+      if (imageError) throw new Error(imageError);
+    }
+
+    switch (type) {
+      case "prompt":
+      case "execute_plan": {
+        const isPlanExecution = type === "execute_plan";
+        if (command.clarificationEnabled !== undefined && typeof command.clarificationEnabled !== "boolean") throw new Error("clarificationEnabled 必须为布尔值");
+        this.clarification.refresh();
+        if (this.clarification.blocked && !continuation) throw new Error("请先回答、重试继续或取消当前澄清问题");
+        this.refreshPlanModeState();
+        const rawAutomationTask = continuation?.task.automationTask ?? command.automationTask;
+        const automationTask = rawAutomationTask === undefined ? undefined : localAutomationTask(rawAutomationTask);
+        if (automationTask && /^[!/]/.test(String(command.message ?? "").trim())) throw new Error("自动化需求请直接描述，不执行其他斜杠或终端命令。");
+        if (automationTask && (isPlanExecution || this.planModeState.planModeActive || this.planModeState.phase === "executing")) throw new Error("请先结束计划模式，再创建自动化。");
+        if (isPlanExecution) {
+          if (this.planModeState.phase !== "executing" || !this.planModeState.approvedAt) {
+            throw new Error("Only an approved plan can be executed");
+          }
+        } else if (this.planModeState.phase === "executing") {
+          // A plan awaiting execution must never constrain an unrelated prompt.
+          this.finishPlanExecution();
+        }
+        if (this.planModeState.planModeActive && this.planModeState.phase === "reviewing") {
+          throw new Error("The plan is under review. Approve it or return it for revision before sending another task.");
+        }
+        if (getPendingPlanQuestion(this.planModeState)) {
+          throw new Error("Please answer the current planning question before sending another message.");
+        }
+        // Serialize admission. Each queued request owns its preference and
+        // plugin identity; only the promoted request configures model tools.
+        const releaseAdmission = await this.acquirePromptAdmission();
+        try {
+          if (automationTask && command.automationGeneration !== undefined && command.automationGeneration !== automationQueueGeneration(this.inner.sessionManager, automationTask)) throw new Error("排队中的自动化请求已暂停，请显式召回后再提交。");
+          if (this.clarification.blocked && !continuation) throw new Error("请先完成或取消当前澄清");
+          if (this.inner.isBashRunning) {
+            throw new Error("Cannot send a prompt while a shell command is running");
+          }
+          const promptImages = isPlanExecution
+            ? undefined
+            : command.images as Array<{ type: "image"; data: string; mimeType: string }> | undefined;
+          const skills = this.inner.resourceLoader.getSkills().skills;
+          const selectedPlugins = isPlanExecution || automationTask ? [] : continuation?.task.plugins ?? taskPluginSelection(this.cwd, this.sessionId, command.selectedPlugins, skills, String(command.message ?? ""));
+          const selection = isPlanExecution ? { message: PLAN_EXECUTION_TRIGGER, automations: [] } : await prepareComposerSelection(this.cwd, this.inner.sessionId, selectedPlugins, this.inner.resourceLoader.getSkills().skills, command.message as string);
+          const promptMessage = selection.message;
+          if (this.isRunning()) {
+            if (!command.streamingBehavior || continuation) throw new Error("请等待当前运行结束");
+            const owner = automationTaskOwner(Boolean(automationTask), selectedPlugins);
+            this.clarification.enqueue({ ...(owner ? { owner } : {}), id: randomUUID(), message: String(command.message ?? ""), selectedPlugins, clarificationEnabled: command.clarificationEnabled === true || Boolean(automationTask), images: command.images as ClarificationQueuedInput["images"], behavior: command.streamingBehavior === "steer" ? "steer" : "followUp", automationTask, ...(automationTask ? { automationGeneration: automationQueueGeneration(this.inner.sessionManager, automationTask) } : {}) });
+            this.emit({ type: "queue_update", steering: this.queuedInput("steer"), followUp: this.queuedInput("followUp") });
+            return null;
+          }
+          const owner = automationTaskOwner(Boolean(automationTask), selectedPlugins);
+          let restoreAutomationTools: (() => void) | undefined;
+          if (selection.automations.length) {
+            if (this.forceEmptySystemPrompt || !this.inner.getActiveToolNames().some(name => name !== AUTOMATION_CHAT_TOOL && name !== PLAN_MODE_QUESTION_TOOL)) throw new Error("全部工具已关闭，请先开启工具权限再调用自动化。");
+            if (this.planModeState.planModeActive || isPlanExecution) throw new Error("请先退出计划模式，再运行自动化应用。");
+            const originalTools = this.inner.getActiveToolNames(), unbind = bindChatAutomations(this.inner.sessionManager, selection.automations);
+            this.inner.setActiveToolsByName([...new Set([...originalTools, AUTOMATION_CHAT_TOOL])]);
+            restoreAutomationTools = () => { unbind(); this.inner.setActiveToolsByName(this.forceEmptySystemPrompt ? [] : this.inner.getActiveToolNames().filter(name => name !== AUTOMATION_CHAT_TOOL)); };
+          }
+          if (automationTask) {
+            if (this.forceEmptySystemPrompt || !this.inner.getActiveToolNames().some(name => !AUTOMATION_INTAKE_TOOLS.includes(name))) throw new Error("全部工具已关闭，请先开启工具权限再创建自动化。");
+            const document = await changeAutomationTask(this.inner.sessionManager, automationTask, "active", String(command.message ?? ""));
+            if (!document) throw new Error("自动化任务无法打开。");
+            const originalTools = this.inner.getActiveToolNames();
+            this.inner.setActiveToolsByName(AUTOMATION_INTAKE_TOOLS);
+            bindAutomationTask(this.inner.sessionManager, document);
+            restoreAutomationTools = () => { bindAutomationTask(this.inner.sessionManager, null); this.inner.setActiveToolsByName(originalTools); };
+          }
+          const task = continuation?.task.automationTask ? { ...continuation.task, automationTask, owner } : continuation?.task ?? { id: randomUUID(), plugins: automationTask ? [] : selectedPlugins, clarificationEnabled: command.clarificationEnabled === true || Boolean(automationTask), automationTask, ...(owner ? { owner } : {}) };
+          this.clarification.task = task;
+          this.clarification.allowed = !this.forceEmptySystemPrompt && this.inner.getActiveToolNames().some((name) => name !== PLAN_MODE_QUESTION_TOOL) && !this.planModeState.planModeActive && !isPlanExecution && taskAllowsClarification(this.cwd, this.sessionId, task);
+          const tools = this.inner.getActiveToolNames().filter((name) => name !== PLAN_MODE_QUESTION_TOOL);
+          if (!this.planModeState.planModeActive && !isPlanExecution && this.inner.getActiveToolNames().includes(PLAN_MODE_QUESTION_TOOL) !== this.clarification.allowed) this.inner.setActiveToolsByName(this.clarification.allowed ? [...tools, PLAN_MODE_QUESTION_TOOL] : tools);
+          this.applyForcedEmptySystemPrompt();
+          let preflightAccepted = false;
+          let preflightSettled = false;
+          let promptSettled = false;
+          let acceptPreflight!: () => void;
+          let rejectPreflight!: (error: unknown) => void;
+          const preflight = new Promise<void>((resolve, reject) => {
+            acceptPreflight = () => {
+              preflightAccepted = true;
+              if (preflightSettled) return;
+              preflightSettled = true;
+              resolve();
+            };
+            rejectPreflight = (error) => {
+              if (preflightSettled) return;
+              preflightSettled = true;
+              reject(error);
+            };
+          });
+          const finishPrompt = () => {
+            if (promptSettled) return;
+            promptSettled = true;
+            restoreAutomationTools?.();
+            this.pendingPromptCount = Math.max(0, this.pendingPromptCount - 1);
+            this.resetIdleTimer();
+            notifyRunningChange();
+          };
+
+          assertDesktopUpdateIdle();
+          this.pendingPromptCount += 1;
+          notifyRunningChange();
+          let prompt: Promise<void>;
+          try {
+            if (isPlanExecution) {
+              this.planExecutionEntryOffset = this.inner.sessionManager.getEntries().length;
+              const manager = this.inner.sessionManager as object;
+              activePlanExecutionManagers.add(manager);
+              abortedPlanExecutionManagers.delete(manager);
+              planExecutionEntryOffsets.set(manager, this.planExecutionEntryOffset);
+              planExecutionTurnCounts.set(manager, 0);
+            }
+            prompt = this.inner.prompt(promptMessage, {
+              ...(promptImages?.length ? { images: promptImages } : {}),
+
+              source: "rpc",
+              // Match pi's RPC contract: acknowledge only after synchronous prompt
+              // validation and extension preflight have accepted the submission.
+              preflightResult: () => acceptPreflight(),
+            });
+          } catch (error) {
+            if (isPlanExecution) {
+              const manager = this.inner.sessionManager as object;
+              activePlanExecutionManagers.delete(manager);
+              abortedPlanExecutionManagers.delete(manager);
+              planExecutionEntryOffsets.delete(manager);
+              planExecutionTurnCounts.delete(manager);
+              this.planExecutionEntryOffset = null;
+            }
+            finishPrompt();
+            this.finishClarificationTask(continuation?.id, error instanceof Error ? error.message : String(error));
+            throw error;
+          }
+
+          const runEntryOffset = this.inner.sessionManager.getEntries().length;
+          void prompt.then(() => {
+            // Compatibility fallback if a future SDK resolves without invoking
+            // the internal callback. This waits for the run, but never acks early.
+            acceptPreflight();
+            finishPrompt();
+            if (isPlanExecution) {
+              activePlanExecutionManagers.delete(this.inner.sessionManager as object);
+              this.finishPlanExecution();
+            }
+            const lastAssistant = [...this.inner.sessionManager.getEntries().slice(runEntryOffset)].reverse().find((entry) => entry.type === "message" && entry.message.role === "assistant") as SessionMessageEntry | undefined;
+            const assistant = lastAssistant?.message as { stopReason?: string; errorMessage?: string } | undefined;
+            this.finishClarificationTask(continuation?.id, assistant && ["error", "aborted"].includes(assistant.stopReason ?? "") ? assistant.errorMessage ?? "继续执行已中断，回答已保存，可重试继续。" : undefined);
+            this.emit({ type: "prompt_done" });
+            void this.pumpInputQueue();
+          }, (error) => {
+            rejectPreflight(error);
+            finishPrompt();
+            if (isPlanExecution) {
+              activePlanExecutionManagers.delete(this.inner.sessionManager as object);
+              this.finishPlanExecution();
+            }
+            invalidateSessionListCache();
+            // A preflight rejection is returned by the POST itself. Only an
+            // unexpected failure after acceptance needs the asynchronous event.
+            this.finishClarificationTask(continuation?.id, error instanceof Error ? error.message : String(error));
+            if (preflightAccepted) {
+              this.emit({
+                type: "prompt_error",
+                errorMessage: error instanceof Error ? error.message : String(error),
+              });
+              this.emit({ type: "prompt_done" });
+            }
+            void this.pumpInputQueue();
+          }).catch((error) => {
+            console.error(
+              "[pi-web] prompt completion handler failed:",
+              error instanceof Error ? error.message : error,
+            );
+          });
+
+          await preflight;
+          return null;
+        } finally {
+          releaseAdmission();
+        }
+      }
+
+      case "abort": {
+        const chatStop = stopChatTask(this.inner.sessionManager, this.sessionId, this.clarification.task?.id).catch(() => {});
+        if (activePlanExecutionManagers.has(this.inner.sessionManager as object)) {
+          abortedPlanExecutionManagers.add(this.inner.sessionManager as object);
+        }
+        await this.withFinalRunningNotification(() => {
+          const aborting = this.inner.abort();
+          for (const pending of this.pendingUiResponses.values()) pending.cancel();
+          for (const id of Array.from(this.activeCustomUis.keys())) this.closeCustomUi(id, undefined);
+          return aborting;
+        });
+        await chatStop;
+        return null;
+      }
+
+      case "cancel_plan": {
+        this.refreshPlanModeState();
+        if (this.planModeState.phase === "idle") return this.planModeState;
+        const wasExecuting = this.planModeState.phase === "executing";
+        if (wasExecuting && this.isRunning()) {
+          const manager = this.inner.sessionManager as object;
+          if (activePlanExecutionManagers.has(manager)) abortedPlanExecutionManagers.add(manager);
+          await this.withFinalRunningNotification(() => this.inner.abort());
+          // The prompt completion callback may have archived the plan while
+          // abort() was settling. Do not append a duplicate history snapshot.
+          const refreshedPlan = this.refreshPlanModeState();
+          if (refreshedPlan.phase === "idle") return refreshedPlan;
+        }
+        return this.archiveActivePlan(wasExecuting);
+      }
+
+      case "get_state": {
+        this.refreshPlanModeState();
+        this.clarification.refresh();
+        const model = this.inner.model;
+        const contextUsage = this.inner.getContextUsage();
+        return {
+          ...this.getObservationSnapshot(),
+          sessionId: this.inner.sessionId,
+          sessionFile: this.inner.sessionFile ?? "",
+          isStreaming: this.inner.isStreaming,
+          isPromptRunning: this.pendingPromptCount > 0,
+          waitingForUser: this.waitingForUser,
+          isBashRunning: this.inner.isBashRunning,
+          isCompacting: this.inner.isCompacting,
+          autoCompactionEnabled: this.inner.autoCompactionEnabled,
+          autoRetryEnabled: this.inner.autoRetryEnabled,
+          model: model ? { id: model.id, provider: model.provider } : undefined,
+          messageCount: 0,
+          pendingMessageCount: this.inner.pendingMessageCount,
+          queuedMessages: {
+            steering: [...this.inner.getSteeringMessages(), ...this.queuedInput("steer")],
+            followUp: [...this.inner.getFollowUpMessages(), ...this.queuedInput("followUp")],
+          },
+          contextUsage: contextUsage
+            ? { percent: contextUsage.percent, contextWindow: contextUsage.contextWindow, tokens: contextUsage.tokens }
+            : null,
+          systemPrompt: this.forceEmptySystemPrompt ? "" : this.inner.systemPrompt ?? this.inner.agent.state?.systemPrompt ?? "",
+          thinkingLevel: this.inner.agent.state?.thinkingLevel ?? "off",
+          extensionStatuses: this.getExtensionStatuses(),
+          extensionWidgets: this.getExtensionWidgets(),
+          planMode: this.planModeState,
+          clarification: this.clarification.state,
+        };
+      }
+
+      case "get_clarification":
+        this.clarification.refresh();
+        return this.clarification.state;
+      case "answer_clarification": {
+        this.clarification.refresh();
+        const group = this.clarification.answer(command.groupId, command.responses as UserInputResponse[]);
+        if (group.continuation === "ready") await this.continueClarification(group.id, false);
+        return this.clarification.state;
+      }
+      case "retry_clarification":
+        await this.continueClarification(String(command.groupId), true);
+        return this.clarification.state;
+      case "cancel_clarification":
+        this.clarification.refresh();
+        this.clarification.cancel(command.groupId);
+        if (this.clarification.group(String(command.groupId)).task.plugins.some(ref => ref.capabilityId.startsWith("automation:"))) {
+          await cancelChatInteraction(this.sessionId, String(command.groupId));
+        }
+        // Cancellation ends this task; queued requests remain visible for recall
+        // or an explicit subsequent submission, and never query automatically.
+        return this.clarification.state;
+
+      case "get_plan_mode":
+        this.refreshPlanModeState();
+        return this.planModeState;
+
+      case "set_plan_mode": {
+        this.refreshPlanModeState();
+        if (this.clarification.blocked) throw new Error("请先完成或取消当前澄清");
+        if (this.isRunning()) throw new Error("Wait for the current agent run to finish before changing plan mode");
+        const requested = command.phase as EurekaPlanPhase;
+        if (requested === "planning") {
+          if (this.planModeState.planModeActive) return this.planModeState;
+          const previous = this.planModeState;
+          const originalToolNames = previous.phase === "idle"
+            ? this.inner.getActiveToolNames().filter((name) => name !== PLAN_MODE_QUESTION_TOOL && name !== PLAN_MODE_COMPLETE_TOOL)
+            : previous.originalToolNames.length > 0
+              ? previous.originalToolNames
+              : this.inner.getActiveToolNames().filter((name) => name !== PLAN_MODE_QUESTION_TOOL && name !== PLAN_MODE_COMPLETE_TOOL);
+          const originalToolPreset = typeof command.originalToolPreset === "string"
+            ? command.originalToolPreset
+            : previous.originalToolPreset;
+          const plans = previous.phase === "idle" || !previous.activePlanId
+            ? previous.plans
+            : [...previous.plans, planSnapshot(previous)];
+          // Record the conversation boundary before writing the plan-mode
+          // state. The UI may only offer a newly generated assistant reply
+          // after this point as a draft plan.
+          const draftBoundaryEntryId = [...(this.inner.sessionManager.getEntries() as SessionEntry[])]
+            .reverse()
+            .find((entry) => entry.type === "message")?.id ?? null;
+          this.planModeState = {
+            ...EMPTY_PLAN_STATE,
+            phase: "planning",
+            planModeActive: true,
+            draftBoundaryEntryId,
+            draftBoundaryRecorded: true,
+            activePlanId: `plan_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
+            plans,
+            originalToolNames,
+            originalToolPreset,
+          };
+          this.applyPlanModeRuntime();
+          this.persistPlanModeState();
+          return this.planModeState;
+        }
+        if (requested === "idle") {
+          if (!this.planModeState.planModeActive) return this.planModeState;
+          const previous = this.planModeState;
+          this.planModeState = {
+            ...EMPTY_PLAN_STATE,
+            plans: previous.activePlanId ? [...previous.plans, planSnapshot(previous)] : previous.plans,
+            // applyPlanModeRuntime needs the captured tools to restore the
+            // composer before this transient state is persisted as idle.
+            originalToolNames: previous.originalToolNames,
+          };
+          this.applyPlanModeRuntime();
+          this.planModeState = { ...this.planModeState, originalToolNames: [], originalToolPreset: null };
+          this.persistPlanModeState();
+          this.inner.sessionManager.appendCustomMessageEntry("eureka-plan-mode-exit", PLAN_MODE_EXIT_FRAMING, false);
+          return this.planModeState;
+        }
+        throw new Error("Plan mode can only be entered manually from the composer");
+      }
+
+      case "submit_plan": {
+        this.refreshPlanModeState();
+        if (!this.planModeState.planModeActive || this.planModeState.phase !== "planning") throw new Error("Plans can only be submitted while planning");
+        const content = normalizePlanForReview(typeof command.content === "string" ? command.content.trim() : "");
+        if (!content) throw new Error("计划内容不能为空。");
+        if (!isReviewablePlan(content)) {
+          throw new Error("当前回复是需求澄清或普通说明，尚不能提交评审。请先回答 Agent 的问题；待它输出包含“目标、实施步骤、未勾选清单、验证”的计划后，再点击“提交评审”。");
+        }
+        return this.setPlanPhase("reviewing", {
+          content,
+          revision: this.planModeState.content === content ? this.planModeState.revision : this.planModeState.revision + 1,
+          annotations: [],
+          generalNote: "",
+          todos: parsePlanTodos(content),
+          approvedAt: null,
+          sourceEntryId: typeof command.sourceEntryId === "string" ? command.sourceEntryId : null,
+        });
+      }
+
+      case "update_plan_review": {
+        this.refreshPlanModeState();
+        if (this.planModeState.phase === "executing") return this.planModeState;
+        if (this.planModeState.phase !== "reviewing") throw new Error("The plan is not currently under review");
+        const annotations = Array.isArray(command.annotations) ? command.annotations as EurekaPlanAnnotation[] : [];
+        const generalNote = typeof command.generalNote === "string" ? command.generalNote : "";
+        return this.setPlanPhase("reviewing", { annotations, generalNote });
+      }
+
+      case "return_plan_for_revision": {
+        if (this.planModeState.phase !== "reviewing") throw new Error("The plan is not currently under review");
+        return this.setPlanPhase("planning");
+      }
+
+      case "approve_plan": {
+        if (this.planModeState.phase !== "reviewing") throw new Error("Only a reviewed plan can be approved");
+        return this.setPlanPhase("executing", { approvedAt: new Date().toISOString(), planModeActive: false });
+      }
+
+      case "sync_plan_progress": {
+        this.refreshPlanModeState();
+        if (this.planModeState.phase !== "executing") return this.planModeState;
+        const assistantText = typeof command.assistantText === "string" ? command.assistantText : "";
+        const todos = markPlanTodosDone(this.planModeState.todos, assistantText);
+        if (todos.every((todo, index) => todo.done === this.planModeState.todos[index]?.done)) return this.planModeState;
+        return this.setPlanPhase("executing", { todos });
+      }
+
+      case "answer_plan_question": {
+        this.refreshPlanModeState();
+        if (!this.planModeState.planModeActive || this.planModeState.phase !== "planning") throw new Error("Planning questions can only be answered while planning");
+        const questionId = typeof command.questionId === "string" ? command.questionId : "";
+        const question = this.planModeState.questions.find((item) => item.id === questionId);
+        if (!question || question.status !== "pending") throw new Error("This planning question is no longer waiting for an answer");
+        const group = this.planModeState.questions.filter((item) => item.status === "pending" && item.toolCallId === question.toolCallId);
+        if (group.length !== 1) throw new Error("Submit all questions in this group together");
+        const optionId = typeof command.optionId === "string" ? command.optionId : undefined;
+        const answer = validatePlanQuestionResponse(question, {
+          questionId,
+          optionIds: optionId ? [optionId] : [],
+          customAnswer: typeof command.customAnswer === "string" ? command.customAnswer : undefined,
+        });
+        const now = new Date().toISOString();
+        return this.setPlanPhase("planning", {
+          questions: this.planModeState.questions.map((item) => item.id === questionId ? {
+            ...item,
+            status: "answered" as const,
+            answer,
+            answeredAt: now,
+          } : item),
+        });
+      }
+
+      case "answer_plan_questions": {
+        this.refreshPlanModeState();
+        if (!this.planModeState.planModeActive || this.planModeState.phase !== "planning") throw new Error("Planning questions can only be answered while planning");
+        const toolCallId = typeof command.toolCallId === "string" ? command.toolCallId : "";
+        const group = this.planModeState.questions.filter((item) => item.status === "pending" && item.toolCallId === toolCallId);
+        if (group.length === 0) throw new Error("This planning question group is no longer waiting for answers");
+        const responses = Array.isArray(command.responses) ? command.responses as EurekaPlanQuestionResponse[] : [];
+        if (responses.length !== group.length) throw new Error("Answer or skip every question in this group");
+        const responseByQuestionId = new Map<string, EurekaPlanQuestionResponse>();
+        for (const response of responses) {
+          if (!response || typeof response.questionId !== "string" || responseByQuestionId.has(response.questionId)) {
+            throw new Error("Each question in the group needs one valid response");
+          }
+          responseByQuestionId.set(response.questionId, response);
+        }
+        const answers = new Map(group.map((question) => {
+          const response = responseByQuestionId.get(question.id);
+          if (!response) throw new Error("Answer or skip every question in this group");
+          return [question.id, validatePlanQuestionResponse(question, response)] as const;
+        }));
+        const now = new Date().toISOString();
+        return this.setPlanPhase("planning", {
+          questions: this.planModeState.questions.map((item) => {
+            const answer = answers.get(item.id);
+            return answer ? { ...item, status: "answered" as const, answer, answeredAt: now } : item;
+          }),
+        });
+      }
+
+      case "set_model": {
+        const { provider, modelId } = command as { provider: string; modelId: string };
+        let model = this.inner.modelRuntime.getModel(provider, modelId);
+        if (!model) {
+          await this.inner.modelRuntime.refresh({ allowNetwork: false });
+          model = this.inner.modelRuntime.getModel(provider, modelId);
+        }
+        if (!model) throw new Error(`Model not found: ${provider}/${modelId}`);
+        await this.inner.setModel(model);
+        invalidateModelsCache();
+        invalidateSessionListCache();
+        return { id: model.id, provider: model.provider };
+      }
+
+      case "fork": {
+        if (this.inner.isBashRunning) {
+          throw new Error("Cannot fork while a shell command is running");
+        }
+        if(this.isRunning())throw new Error("会话仍在运行，请等待完成后再创建分支；原任务继续执行。");
+        const entryId = command.entryId as string;
+        const sessionManager = this.inner.sessionManager;
+        const currentSessionFile = this.inner.sessionFile;
+
+        if (!sessionManager.isPersisted()) return { cancelled: true };
+        if (!currentSessionFile) throw new Error("Persisted session is missing a session file");
+
+        const entry = sessionManager.getEntry(entryId);
+        if (!entry) throw new Error("Invalid entry ID for forking");
+
+        const sessionDir = sessionManager.getSessionDir();
+        let newSessionFile: string;
+
+        if (!entry.parentId) {
+          // Fork before the first message: create an empty session linked to this one
+          const newManager = SessionManager.create(sessionManager.getCwd(), sessionDir);
+          newManager.newSession({ parentSession: currentSessionFile });
+          newSessionFile = newManager.getSessionFile() as string;
+        } else {
+          // Fork after some history: copy path up to (but not including) the fork point
+          const sourceManager = SessionManager.open(currentSessionFile, sessionDir);
+          const forkedPath = sourceManager.createBranchedSession(entry.parentId);
+          if (!forkedPath) throw new Error("Failed to create forked session");
+          newSessionFile = forkedPath;
+        }
+
+        const newSessionId = SessionManager.open(newSessionFile, sessionDir).getSessionId();
+        cacheSessionPath(newSessionId, newSessionFile);
+        invalidateSessionListCache();
+        await this.shutdown();
+        return { cancelled: false, newSessionId };
+      }
+
+      case "navigate_tree": {
+        if (this.inner.isBashRunning) {
+          throw new Error("Cannot navigate while a shell command is running");
+        }
+        if(this.isRunning())throw new Error("会话仍在运行，请等待完成后再切换历史分支；原任务继续执行。");
+        const result = await this.inner.navigateTree(command.targetId as string, {});
+        this.clarification.refresh();
+        this.emit({ type: "clarification_state", state: this.clarification.state });
+        return { cancelled: result.cancelled };
+      }
+
+      case "set_thinking_level": {
+        const level = command.level as string;
+        this.inner.setThinkingLevel(level);
+        // setThinkingLevel clamps xhigh→high for models where supportsXhigh()===false.
+        // If the model has DeepSeek thinking compat (reasoningEffortMap maps xhigh→max),
+        // force the state back so the compat layer can use it correctly.
+        if (level === "xhigh" && (this.inner.model as { compat?: { thinkingFormat?: string } } | null)?.compat?.thinkingFormat === "deepseek" && this.inner.agent?.state) {
+          this.inner.agent.state.thinkingLevel = "xhigh";
+        }
+        invalidateSessionListCache();
+        return null;
+      }
+
+      case "compact": {
+        if(this.isRunning())throw new Error("会话仍在运行，请等待完成后再手动压缩；原任务继续执行。");
+        try {
+          return await this.withFinalRunningNotification(() =>
+            this.inner.compact(command.customInstructions as string | undefined)
+          );
+        } finally {
+          invalidateSessionListCache();
+        }
+      }
+
+      case "set_session_name": {
+        const name = (command.name as string | undefined)?.trim();
+        if (!name) throw new Error("Session name cannot be empty");
+        this.inner.setSessionName(name);
+        invalidateSessionListCache();
+        return null;
+      }
+
+      case "get_session_stats": {
+        return {
+          ...this.inner.getSessionStats(),
+          sessionName: this.inner.sessionManager.getSessionName(),
+        };
+      }
+
+      case "get_last_assistant_text": {
+        return { text: this.inner.getLastAssistantText() ?? "" };
+      }
+
+      case "set_auto_compaction": {
+        this.inner.setAutoCompactionEnabled(command.enabled as boolean);
+        return null;
+      }
+
+      case "clear_queue": {
+        // Full clear only: pi has no single-item dequeue, and clear+requeue
+        // races against the agent loop pulling messages mid-flight.
+        const sdk = this.inner.clearQueue();
+        const result = { steering: [...sdk.steering, ...this.queuedInput("steer")], followUp: [...sdk.followUp, ...this.queuedInput("followUp")], submissions: this.clarification.state.queue };
+        this.clarification.save({ ...this.clarification.state, queue: [] });
+        return result;
+      }
+
+      case "steer":
+      case "follow_up":
+        return this.send({ ...command, type: "prompt", streamingBehavior: type === "steer" ? "steer" : "followUp" });
+
+      case "get_tools": {
+        const all: ToolInfo[] = this.inner.getAllTools();
+        const active = new Set<string>(this.inner.getActiveToolNames());
+        return all.map((t) => ({
+          name: t.name,
+          description: t.description,
+          active: active.has(t.name),
+        }));
+      }
+
+      case "get_commands": {
+        return this.getCommandSnapshot();
+      }
+
+      case "set_tools": {
+        if (activeAutomationTask(this.inner.sessionManager)) throw new Error("请先停止当前自动化创建，再修改工具权限。");
+        if (this.planModeState.planModeActive || this.planModeState.phase === "executing") {
+          throw new Error("Tool permissions are fixed while a plan is active");
+        }
+        const environment = sessionCommandEnvironment(this.inner.sessionManager.getEntries(), readSessionToolNames(this.inner.sessionManager.getEntries()) ?? this.inner.getActiveToolNames());
+        const toolNames = commandTools(validateSessionToolNames(command.toolNames), environment);
+        this.setForceEmptySystemPrompt(toolNames.length === 0);
+        if (toolNames.length === 0) this.clarification.allowed = false;
+        this.inner.setActiveToolsByName(withExtensionTools(this.inner, toolNames));
+        this.applyForcedEmptySystemPrompt();
+        saveSessionCommandEnvironment(this.inner.sessionManager, environment);
+        saveSessionToolNames(this.inner.sessionManager, toolNames);
+        return null;
+      }
+
+      case "reload": {
+        if(this.isRunning())throw new Error("会话仍在运行，请等待完成后再重新加载扩展；原任务继续执行。");
+        await this.waitForExtensionsBound();
+        this.extensionStatuses.clear();
+        this.resetExtensionWidgetsForReload();
+        this.syncProjectTrust();
+        await this.inner.reload();
+        if (typeof this.inner.bindExtensions !== "function") {
+          this.inner.extensionRunner.setUIContext?.(this.createExtensionUiContext(), "rpc");
+        }
+        this.applyForcedEmptySystemPrompt();
+        invalidateModelsCache();
+        this.applyPlanModeRuntime();
+        return { success: true };
+      }
+
+      case "abort_compaction": {
+        this.inner.abortCompaction();
+        return null;
+      }
+
+      case "extension_ui_response": {
+        this.resolveExtensionUiResponse(command as ExtensionUiResponse);
+        return null;
+      }
+
+      case "extension_ui_input": {
+        this.handleExtensionUiInput(command.id as string, command.data as string);
+        return null;
+      }
+
+      case "set_auto_retry": {
+        this.inner.setAutoRetryEnabled(command.enabled as boolean);
+        return null;
+      }
+
+      case "bash": {
+        if (this.pendingPromptCount > 0 || this.inner.isStreaming || this.inner.isCompacting || this.inner.isBashRunning) {
+          throw new Error("Cannot run a shell command while the session is busy");
+        }
+        const execution = this.inner.executeBash(
+          command.command as string,
+          undefined,
+          { excludeFromContext: command.excludeFromContext as boolean | undefined },
+        );
+        notifyRunningChange();
+        try {
+          const result = await execution;
+          this.persistBashOnlySession();
+          return result;
+        } finally {
+          this.resetIdleTimer();
+          invalidateSessionListCache();
+          notifyRunningChange();
+        }
+      }
+
+      case "abort_bash": {
+        this.inner.abortBash();
+        return null;
+      }
+
+      default:
+        throw new Error(`Unsupported command: ${type}`);
+    }
+  }
+
+  destroy(): void {
+    if (!this._alive) return;
+    clearUiWait(this.inner.sessionManager);
+    this._alive = false;
+    const nativeSessionId = disposeNativeMcpRuntime(this.inner.sessionManager);
+    if (nativeSessionId) { clearMcpRuntime(nativeSessionId); clearPluginSnapshot(nativeSessionId); }
+    this.clarification.dispose();
+    clearMcpRuntime(this.inner.sessionId);
+    clearPluginSnapshot(this.inner.sessionId);
+    if (this.idleTimer) clearTimeout(this.idleTimer);
+    if (this.inner.isBashRunning) this.inner.abortBash();
+    this.unsubscribe?.();
+    for (const pending of this.pendingUiResponses.values()) pending.cancel();
+    for (const id of Array.from(this.activeCustomUis.keys())) this.closeCustomUi(id, undefined);
+    this.pendingUiResponses.clear();
+    this.pendingUiRequests.clear();
+    this.unsubscribeUiWait?.();
+    clearUiWait(this.inner.sessionManager);
+    this.clearExtensionWidgets(false);
+    try {
+      this.inner.dispose();
+    } finally {
+      try {
+        this.onDestroyCallback?.();
+      } finally {
+        notifyRunningChange();
+      }
+    }
+  }
+
+  async shutdown(): Promise<void> {
+    if (this.shutdownPromise) return this.shutdownPromise;
+    if (!this._alive) return;
+
+    this.shutdownPromise = (async () => {
+      try {
+        try {
+          await this.waitForExtensionsBound();
+        } catch (error) {
+          console.error(
+            "[pi-web] extension binding failed before session shutdown:",
+            error instanceof Error ? error.message : error,
+          );
+        }
+        await this.inner.extensionRunner.emit?.({ type: "session_shutdown", reason: "quit" });
+      } finally {
+        await persistLiveContextSnapshot(this.inner);
+        this.destroy();
+      }
+    })();
+    return this.shutdownPromise;
+  }
+
+  private resolveExtensionUiResponse(response: ExtensionUiResponse): void {
+    const pending = this.pendingUiResponses.get(response.id);
+    if (!pending) return;
+    pending.resolve(response);
+  }
+
+  private getExtensionStatuses(): Array<{ key: string; text: string }> {
+    return Array.from(this.extensionStatuses, ([key, text]) => ({ key, text }));
+  }
+
+  private getExtensionWidgets(): ExtensionWidgetItem[] {
+    return Array.from(this.extensionWidgets.values());
+  }
+
+  private nextExtensionWidgetGeneration(key: string): number {
+    const generation = (this.extensionWidgetGenerations.get(key) ?? 0) + 1;
+    this.extensionWidgetGenerations.set(key, generation);
+    return generation;
+  }
+
+  private disposeExtensionWidgetComponent(component: unknown): void {
+    if (!component || (typeof component !== "object" && typeof component !== "function")) return;
+    const dispose = (component as { dispose?: unknown }).dispose;
+    if (typeof dispose !== "function") return;
+    try {
+      dispose.call(component);
+    } catch {
+      // Ignore dispose errors from extension widgets.
+    }
+  }
+
+  private emitExtensionWidgetClear(key: string): void {
+    this.emit({
+      type: "extension_ui_request",
+      id: randomUUID(),
+      method: "setWidget",
+      widgetKey: key,
+      widgetLines: undefined,
+      widgetPlacement: undefined,
+    } as ExtensionUiRequest as AgentEvent);
+  }
+
+  private clearExtensionWidget(key: string, emitClear = true): number {
+    const generation = this.nextExtensionWidgetGeneration(key);
+
+    const active = this.activeExtensionWidgets.get(key);
+    this.activeExtensionWidgets.delete(key);
+    this.extensionWidgets.delete(key);
+    if (active) this.disposeExtensionWidgetComponent(active.component);
+    if (this.extensionWidgetGenerations.get(key) !== generation) return generation;
+    if (emitClear) this.emitExtensionWidgetClear(key);
+    return generation;
+  }
+
+  private clearExtensionWidgets(emitClear: boolean): void {
+    const keys = new Set([
+      ...this.extensionWidgets.keys(),
+      ...this.activeExtensionWidgets.keys(),
+    ]);
+    for (const key of keys) this.clearExtensionWidget(key, emitClear);
+  }
+
+  private resetExtensionWidgetsForReload(): void {
+    this.extensionWidgetsResetting = true;
+    try {
+      const factoryKeys = [...this.activeExtensionWidgets.keys()];
+      for (const key of factoryKeys) this.clearExtensionWidget(key);
+      // Keep the existing array-widget reload behavior: snapshots are reset and
+      // the next extension session_start repopulates them.
+      this.extensionWidgets.clear();
+    } finally {
+      this.extensionWidgetsResetting = false;
+    }
+  }
+
+  private emitExtensionWidgetError(key: string, error: unknown): void {
+    this.emit({
+      type: "extension_error",
+      extensionPath: `extension-widget:${key}`,
+      event: "setWidget",
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+
+  private failExtensionWidget(
+    key: string,
+    generation: number,
+    error: unknown,
+    clearEmitted: boolean,
+    component?: unknown,
+  ): void {
+    if (this.extensionWidgetGenerations.get(key) !== generation) {
+      this.disposeExtensionWidgetComponent(component);
+      return;
+    }
+
+    const active = this.activeExtensionWidgets.get(key);
+    let shouldEmitClear = !clearEmitted;
+    if (active?.generation === generation) {
+      shouldEmitClear = active.rendered || !active.clearEmitted;
+      this.activeExtensionWidgets.delete(key);
+      this.disposeExtensionWidgetComponent(active.component);
+    } else {
+      this.disposeExtensionWidgetComponent(component);
+    }
+    if (this.extensionWidgetGenerations.get(key) !== generation) {
+      this.emitExtensionWidgetError(key, error);
+      return;
+    }
+    this.extensionWidgets.delete(key);
+    if (shouldEmitClear) this.emitExtensionWidgetClear(key);
+    this.emitExtensionWidgetError(key, error);
+  }
+
+  private renderExtensionWidget(active: ActiveExtensionWidget): void {
+    if (
+      this.activeExtensionWidgets.get(active.key) !== active
+      || this.extensionWidgetGenerations.get(active.key) !== active.generation
+    ) return;
+
+    let lines: unknown;
+    try {
+      lines = active.component.render(DEFAULT_CUSTOM_UI_COLUMNS);
+    } catch (error) {
+      this.failExtensionWidget(active.key, active.generation, error, active.clearEmitted);
+      return;
+    }
+    if (!Array.isArray(lines) || !lines.every((line) => typeof line === "string")) {
+      this.failExtensionWidget(
+        active.key,
+        active.generation,
+        new Error("Extension widget render must return string[]"),
+        active.clearEmitted,
+      );
+      return;
+    }
+    if (
+      this.activeExtensionWidgets.get(active.key) !== active
+      || this.extensionWidgetGenerations.get(active.key) !== active.generation
+    ) return;
+
+    const widgetLines = lines as string[];
+    this.extensionWidgets.set(active.key, {
+      key: active.key,
+      lines: widgetLines,
+      placement: active.placement,
+    });
+    active.rendered = true;
+    this.emit({
+      type: "extension_ui_request",
+      id: randomUUID(),
+      method: "setWidget",
+      widgetKey: active.key,
+      widgetLines,
+      widgetPlacement: active.placement,
+    } as ExtensionUiRequest as AgentEvent);
+  }
+
+  private setExtensionWidgetFactory(
+    key: string,
+    factory: ExtensionWidgetFactory,
+    options?: { placement?: "aboveEditor" | "belowEditor" },
+  ): void {
+    const hadPrevious = this.extensionWidgets.has(key) || this.activeExtensionWidgets.has(key);
+    const generation = this.clearExtensionWidget(key, hadPrevious);
+    if (this.extensionWidgetGenerations.get(key) !== generation) return;
+    const tui = createHeadlessCustomUiTui(() => {
+      const active = this.activeExtensionWidgets.get(key);
+      if (active?.generation === generation) this.renderExtensionWidget(active);
+    }, DEFAULT_CUSTOM_UI_COLUMNS);
+
+    let component: unknown;
+    try {
+      component = factory(tui, PLAIN_TEXT_THEME);
+    } catch (error) {
+      this.failExtensionWidget(key, generation, error, hadPrevious);
+      return;
+    }
+    if (this.extensionWidgetGenerations.get(key) !== generation) {
+      this.disposeExtensionWidgetComponent(component);
+      return;
+    }
+    if (
+      !component
+      || (typeof component !== "object" && typeof component !== "function")
+      || typeof (component as { render?: unknown }).render !== "function"
+    ) {
+      this.failExtensionWidget(
+        key,
+        generation,
+        new Error("Extension widget factory must return a component with render(width)"),
+        hadPrevious,
+        component,
+      );
+      return;
+    }
+
+    const active: ActiveExtensionWidget = {
+      key,
+      component: component as ExtensionWidgetComponent,
+      placement: options?.placement ?? "aboveEditor",
+      generation,
+      clearEmitted: hadPrevious,
+      rendered: false,
+    };
+    this.activeExtensionWidgets.set(key, active);
+    this.renderExtensionWidget(active);
+  }
+
+  private getCustomUiWidth(options: unknown): number {
+    if (!options || typeof options !== "object") return DEFAULT_CUSTOM_UI_COLUMNS;
+    const overlayOptions = (options as { overlayOptions?: unknown }).overlayOptions;
+    const resolved = typeof overlayOptions === "function" ? overlayOptions() : overlayOptions;
+    if (!resolved || typeof resolved !== "object") return DEFAULT_CUSTOM_UI_COLUMNS;
+    const width = (resolved as { width?: unknown }).width;
+    return typeof width === "number" && Number.isFinite(width)
+      ? Math.max(40, Math.min(140, Math.round(width)))
+      : 92;
+  }
+
+  private emitCustomUiRender(id: string, custom: ActiveCustomUi): void {
+    let lines: string[];
+    try {
+      lines = custom.component.render(custom.width);
+    } catch (error) {
+      lines = [`Extension custom UI render failed: ${error instanceof Error ? error.message : String(error)}`];
+    }
+    const event = {
+      type: "extension_ui_request",
+      id,
+      method: "custom",
+      lines,
+    } as ExtensionUiRequest as AgentEvent;
+    this.pendingUiRequests.set(id, event);
+    this.emit(event);
+  }
+
+  private closeCustomUi(id: string, value: unknown): void {
+    const custom = this.activeCustomUis.get(id);
+    if (!custom || custom.settled) return;
+    custom.settled = true;
+    this.activeCustomUis.delete(id);
+    this.pendingUiRequests.delete(id);
+    setHostUiWait(this.inner.sessionManager, id, false);
+    try {
+      custom.component.dispose?.();
+    } catch {
+      // Ignore dispose errors from extension UI components.
+    }
+    this.emit({
+      type: "extension_ui_request",
+      id,
+      method: "custom",
+      lines: [],
+      closed: true,
+    } as ExtensionUiRequest as AgentEvent);
+    custom.resolve(value);
+  }
+
+  private handleExtensionUiInput(id: string, data: string): void {
+    const custom = this.activeCustomUis.get(id);
+    if (!custom || typeof data !== "string") return;
+    try {
+      custom.component.handleInput?.(data);
+      if (this.activeCustomUis.has(id)) this.emitCustomUiRender(id, custom);
+    } catch (error) {
+      this.closeCustomUi(id, undefined);
+      this.emit({
+        type: "extension_error",
+        extensionPath: `custom-ui:${id}`,
+        event: "custom_ui_input",
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  private requestExtensionCustomUi<T>(
+    factory: unknown,
+    options?: unknown,
+  ): Promise<T> {
+    if (typeof factory !== "function") return Promise.resolve(undefined as T);
+
+    const id = randomUUID();
+    const width = this.getCustomUiWidth(options);
+    const customOptions = options as { overlay?: boolean; blocked?: unknown } | undefined;
+    const reportBlocked = !customOptions?.overlay && Boolean(customOptions?.blocked);
+
+    return new Promise<T>((resolve) => {
+      let completed = false;
+      const tui = createHeadlessCustomUiTui(
+        () => {
+          const custom = this.activeCustomUis.get(id);
+          if (custom) this.emitCustomUiRender(id, custom);
+        },
+        width,
+      );
+      const finish = (value: T) => {
+        if (completed) return;
+        completed = true;
+        resolve(value);
+      };
+      const done = (value: T) => {
+        if (this.activeCustomUis.has(id)) {
+          this.closeCustomUi(id, value);
+        } else {
+          finish(value);
+        }
+      };
+
+      Promise.resolve()
+        .then(() => factory(tui, PLAIN_TEXT_THEME, CUSTOM_UI_KEYBINDINGS, done))
+        .then((component) => {
+          if (completed) {
+            try {
+              (component as CustomUiComponent | undefined)?.dispose?.();
+            } catch {
+              // Ignore dispose errors from a component completed before mounting.
+            }
+            return;
+          }
+          if (!component || typeof component !== "object" || typeof (component as CustomUiComponent).render !== "function") {
+            finish(undefined as T);
+            return;
+          }
+          const custom: ActiveCustomUi = {
+            component: component as CustomUiComponent,
+            width,
+            resolve: (value) => finish(value as T),
+            settled: false,
+          };
+          this.activeCustomUis.set(id, custom);
+          if (reportBlocked) setHostUiWait(this.inner.sessionManager, id, true);
+          this.emitCustomUiRender(id, custom);
+        })
+        .catch((error) => {
+          if (completed) return;
+          this.emit({
+            type: "extension_error",
+            extensionPath: `custom-ui:${id}`,
+            event: "custom_ui",
+            error: error instanceof Error ? error.message : String(error),
+          });
+          finish(undefined as T);
+        });
+    });
+  }
+
+  private requestExtensionUi<T>(
+    request: ExtensionUiRequestBody,
+    defaultValue: T,
+    parseResponse: (response: ExtensionUiResponse) => T,
+    timeout?: number,
+    signal?: AbortSignal,
+  ): Promise<T> {
+    if (signal?.aborted) return Promise.resolve(defaultValue);
+
+    const id = randomUUID();
+    const fullRequest = {
+      type: "extension_ui_request",
+      id,
+      ...request,
+      ...(timeout ? { timeout, expiresAt: Date.now() + timeout } : {}),
+    };
+
+    return new Promise((resolve) => {
+      let timeoutId: ReturnType<typeof setTimeout> | undefined;
+      const cleanup = () => {
+        if (timeoutId) clearTimeout(timeoutId);
+        signal?.removeEventListener("abort", onAbort);
+        this.pendingUiRequests.delete(id);
+        this.pendingUiResponses.delete(id);
+        this.emit({ type: "extension_ui_closed", id });
+        setHostUiWait(this.inner.sessionManager, id, false);
+      };
+      const settle = (value: T) => {
+        cleanup();
+        resolve(value);
+      };
+      const onAbort = () => settle(defaultValue);
+
+      if (timeout) timeoutId = setTimeout(() => settle(defaultValue), timeout);
+      signal?.addEventListener("abort", onAbort, { once: true });
+
+      this.pendingUiRequests.set(id, fullRequest as AgentEvent);
+      setHostUiWait(this.inner.sessionManager, id, true);
+      this.pendingUiResponses.set(id, {
+        resolve: (response) => settle(parseResponse(response)),
+        cancel: () => settle(defaultValue),
+      });
+      this.emit(fullRequest as AgentEvent);
+    });
+  }
+
+  private createExtensionUiContext(): ExtensionUiContextLike {
+    return {
+      select: (title, options, opts) => this.requestExtensionUi(
+        { method: "select", title, options, ...(opts?.timeout ? { timeout: opts.timeout } : {}) },
+        undefined,
+        (response) => "value" in response ? response.value : undefined,
+        opts?.timeout,
+        opts?.signal,
+      ),
+      confirm: (title, message, opts) => this.requestExtensionUi(
+        { method: "confirm", title, message, ...(opts?.timeout ? { timeout: opts.timeout } : {}) },
+        false,
+        (response) => "confirmed" in response ? response.confirmed : false,
+        opts?.timeout,
+        opts?.signal,
+      ),
+      input: (title, placeholder, opts) => this.requestExtensionUi(
+        { method: "input", title, ...(placeholder !== undefined ? { placeholder } : {}), ...(opts?.timeout ? { timeout: opts.timeout } : {}) },
+        undefined,
+        (response) => "value" in response ? response.value : undefined,
+        opts?.timeout,
+        opts?.signal,
+      ),
+      editor: (title, prefill, opts) => this.requestExtensionUi(
+        { method: "editor", title, ...(prefill !== undefined ? { prefill } : {}), ...(opts?.timeout ? { timeout: opts.timeout } : {}) },
+        undefined,
+        (response) => "value" in response ? response.value : undefined,
+        opts?.timeout,
+        opts?.signal,
+      ),
+      notify: (message, type) => {
+        this.emit({
+          type: "extension_ui_request",
+          id: randomUUID(),
+          method: "notify",
+          message,
+          notifyType: type,
+        } as ExtensionUiRequest as AgentEvent);
+      },
+      onTerminalInput: () => () => {},
+      setStatus: (key, text) => {
+        if (text === undefined) this.extensionStatuses.delete(key);
+        else this.extensionStatuses.set(key, text);
+        this.emit({
+          type: "extension_ui_request",
+          id: randomUUID(),
+          method: "setStatus",
+          statusKey: key,
+          statusText: text,
+        } as ExtensionUiRequest as AgentEvent);
+      },
+      setWorkingMessage: () => {},
+      setWorkingVisible: () => {},
+      setWorkingIndicator: () => {},
+      setHiddenThinkingLabel: () => {},
+      setWidget: (key, content, options) => {
+        if (!this._alive || this.extensionWidgetsResetting) return;
+        if (typeof content === "function") {
+          this.setExtensionWidgetFactory(
+            key,
+            content as unknown as ExtensionWidgetFactory,
+            options,
+          );
+          return;
+        }
+        if (content !== undefined && !Array.isArray(content)) return;
+        if (content === undefined) {
+          this.clearExtensionWidget(key);
+          return;
+        }
+        const generation = this.activeExtensionWidgets.has(key)
+          ? this.clearExtensionWidget(key)
+          : this.nextExtensionWidgetGeneration(key);
+        if (this.extensionWidgetGenerations.get(key) !== generation) return;
+        this.extensionWidgets.set(key, {
+          key,
+          lines: content,
+          placement: options?.placement ?? "aboveEditor",
+        });
+        this.emit({
+          type: "extension_ui_request",
+          id: randomUUID(),
+          method: "setWidget",
+          widgetKey: key,
+          widgetLines: content,
+          widgetPlacement: options?.placement,
+        } as ExtensionUiRequest as AgentEvent);
+      },
+      setFooter: () => {},
+      setHeader: () => {},
+      setTitle: (title) => {
+        this.emit({
+          type: "extension_ui_request",
+          id: randomUUID(),
+          method: "setTitle",
+          title,
+        } as ExtensionUiRequest as AgentEvent);
+      },
+      custom: <T = unknown>(factory: unknown, options?: unknown) => this.requestExtensionCustomUi<T>(factory, options),
+      pasteToEditor: (text) => {
+        this.emit({
+          type: "extension_ui_request",
+          id: randomUUID(),
+          method: "set_editor_text",
+          text,
+        } as ExtensionUiRequest as AgentEvent);
+      },
+      setEditorText: (text) => {
+        this.emit({
+          type: "extension_ui_request",
+          id: randomUUID(),
+          method: "set_editor_text",
+          text,
+        } as ExtensionUiRequest as AgentEvent);
+      },
+      getEditorText: () => "",
+      addAutocompleteProvider: () => {},
+      setEditorComponent: () => {},
+      getEditorComponent: () => undefined,
+      get theme() { return PLAIN_TEXT_THEME; },
+      getAllThemes: () => [],
+      getTheme: () => undefined,
+      setTheme: () => ({ success: false, error: "Theme switching is not supported in Eureka extension UI yet" }),
+      getToolsExpanded: () => false,
+      setToolsExpanded: () => {},
+    };
+  }
+
+  private createExtensionCommandContextActions(): ExtensionCommandContextActionsLike {
+    return {
+      waitForIdle: async () => {
+        const agent = this.inner.agent as { waitForIdle?: () => Promise<void> };
+        await agent.waitForIdle?.();
+      },
+      newSession: async () => ({ cancelled: true }),
+      fork: async () => ({ cancelled: true }),
+      navigateTree: async (targetId, options) => {
+        const result = await this.inner.navigateTree(targetId, { summarize: options?.summarize });
+        return { cancelled: result.cancelled };
+      },
+      switchSession: async () => ({ cancelled: true }),
+      reload: async () => {
+        this.extensionStatuses.clear();
+        this.resetExtensionWidgetsForReload();
+        this.syncProjectTrust();
+        await this.inner.reload({
+          beforeSessionStart: () => {
+            this.inner.extensionRunner.setUIContext?.(this.createExtensionUiContext(), "rpc");
+          },
+        });
+        this.applyForcedEmptySystemPrompt();
+      },
+    };
+  }
+
+  private syncProjectTrust(): void {
+    const status = getProjectTrustStatus(this.cwd, getAgentDir());
+    this.inner.settingsManager.setProjectTrusted(status.trusted);
+  }
+}
+
+// ============================================================================
+// Session registry
+// ============================================================================
+
+declare global {
+  var __piStartLocks: Map<string, Promise<{ session: AgentSessionWrapper; realSessionId: string }>> | undefined;
+  var __piStartingSessionCwds: Map<string, number> | undefined;
+}
+
+function getRegistry(): Map<string, AgentSessionWrapper> {
+  if (!globalThis.__piSessions) {
+    globalThis.__piSessions = new Map();
+    const cleanup = () => globalThis.__piSessions?.forEach((s) => s.destroy());
+    process.once("exit", cleanup);
+    process.once("SIGINT", cleanup);
+    process.once("SIGTERM", cleanup);
+  }
+  return globalThis.__piSessions;
+}
+
+function getLocks(): Map<string, Promise<{ session: AgentSessionWrapper; realSessionId: string }>> {
+  if (!globalThis.__piStartLocks) globalThis.__piStartLocks = new Map();
+  return globalThis.__piStartLocks;
+}
+
+function normalizeRpcCwd(cwd: string): string {
+  const resolvedCwd = resolve(cwd);
+  try {
+    return realpathSync(resolvedCwd);
+  } catch {
+    return resolvedCwd;
+  }
+}
+
+function getStartingSessionCwds(): Map<string, number> {
+  if (!globalThis.__piStartingSessionCwds) globalThis.__piStartingSessionCwds = new Map();
+  return globalThis.__piStartingSessionCwds;
+}
+
+function trackStartingSession(cwd: string): () => void {
+  const startingCwds = getStartingSessionCwds();
+  const key = normalizeRpcCwd(cwd);
+  startingCwds.set(key, (startingCwds.get(key) ?? 0) + 1);
+  return () => {
+    const remaining = (startingCwds.get(key) ?? 1) - 1;
+    if (remaining > 0) startingCwds.set(key, remaining);
+    else startingCwds.delete(key);
+  };
+}
+
+export function getRpcSession(sessionId: string): AgentSessionWrapper | undefined {
+  const session = getRegistry().get(sessionId);
+  if (session?.isAlive()) observeContextSnapshots(session);
+  return session;
+}
+
+/** Permission menus must not boot the agent or discover extensions. */
+export async function sendSessionToolCommand(sessionId: string, sessionFile: string, command: { type: string; toolNames?: unknown }) {
+  if (command.type !== "get_tools" && command.type !== "set_tools") throw new Error("Invalid tool command");
+  if (command.type === "set_tools") validateSessionToolNames(command.toolNames);
+  // A prompt may already be starting this session. Apply to that manager rather
+  // than write through a second stale SessionManager while it is loading.
+  const starting = getLocks().get(sessionId);
+  if (starting) await starting;
+  const existing = getRegistry().get(sessionId);
+  if (existing?.isAlive()) return existing.send(command);
+  const manager = SessionManager.open(sessionFile, undefined);
+  if(creationBinding(manager.getEntries())&&command.type==="set_tools")throw new Error("自动化创建会话使用固定的能力集合。");
+  if (command.type === "get_tools") return sessionToolEntries(manager.getEntries());
+  const plan = readPlanState(manager.getEntries() as SessionEntry[]);
+  if (plan.planModeActive || plan.phase === "executing") throw new Error("Tool permissions are fixed while a plan is active");
+  const environment = sessionCommandEnvironment(manager.getEntries(), readSessionToolNames(manager.getEntries()));
+  saveSessionCommandEnvironment(manager, environment);
+  saveSessionToolNames(manager, commandTools(validateSessionToolNames(command.toolNames), environment));
+  return null;
+}
+
+export async function readSessionCommands(sessionId: string, sessionFile: string) {
+  const live = getRegistry().get(sessionId);
+  if (live?.isAlive()) return typeof live.getCommandSnapshot === "function" ? live.getCommandSnapshot() : live.send({ type: "get_commands" });
+  const cwd = readSessionHeader(sessionFile)?.cwd;
+  if (!cwd) throw new Error("Session project not found");
+  const { commands } = await loadCommandResources(cwd);
+  return { commands };
+}
+
+export function hasBusyRpcSessionForCwd(cwd: string): boolean {
+  const targetCwd = normalizeRpcCwd(cwd);
+  if (getStartingSessionCwds().has(targetCwd)) return true;
+  return Array.from(getRegistry().values()).some(
+    (session) => normalizeRpcCwd(session.cwd) === targetCwd && session.isRunning(),
+  );
+}
+
+export async function destroyRpcSessionsForCwd(cwd: string): Promise<number> {
+  const targetCwd = normalizeRpcCwd(cwd);
+  const sessions = Array.from(getRegistry().values()).filter(
+    (session) => normalizeRpcCwd(session.cwd) === targetCwd,
+  );
+  await Promise.all(sessions.map((session) => session.shutdown()));
+  return sessions.length;
+}
+
+/**
+ * Get or create an AgentSession for the given session.
+ * For new sessions (sessionFile === ""), pi generates its own id.
+ * New sessions resolve enabledModels before construction so the initial model,
+ * thinking pin, and SDK scopedModels share one settings snapshot.
+ * Pass options.toolNames to pre-configure active tools (empty = all disabled).
+ */
+export async function startRpcSession(
+  sessionId: string,
+  sessionFile: string,
+  cwd: string | undefined,
+  options: RpcSessionStartOptions = {},
+): Promise<{ session: AgentSessionWrapper; realSessionId: string }> {
+  const { initialModel, thinkingLevel } = options;
+  assertDesktopUpdateIdle();
+  const registry = getRegistry();
+  const locks = getLocks();
+
+  const existing = registry.get(sessionId);
+  if (existing?.isAlive()) return { session: existing, realSessionId: sessionId };
+
+  const inflight = locks.get(sessionId);
+  if (inflight) return inflight;
+
+  let sessionManager: SessionManager;
+  if (sessionFile) {
+    sessionManager = SessionManager.open(sessionFile, undefined);
+  } else {
+    if (!cwd) throw new Error("cwd is required for a new session");
+    sessionManager = SessionManager.create(cwd, undefined);
+  }
+  const sessionCwd = sessionManager.getCwd();
+  const creation=creationBinding(sessionManager.getEntries());
+  if(creation)assertCreationIdentity(creation);
+  const requestedTools = options.toolNames ?? readSessionToolNames(sessionManager.getEntries());
+  const finishStartingSession = trackStartingSession(sessionCwd);
+  const starting = (async () => {
+    const environment = sessionFile ? sessionCommandEnvironment(sessionManager.getEntries(), readSessionToolNames(sessionManager.getEntries())) : await readCommandEnvironment();
+    const toolNames = requestedTools !== undefined ? commandTools(requestedTools, environment) : !sessionFile && environment === "powershell" ? ["read", "powershell", "edit", "write"] : undefined;
+    if (!sessionFile && !creation) saveSessionCommandEnvironment(sessionManager, environment);
+    schedulePiCatalogSync();
+    // Some extensions access the SDK's global theme even outside the terminal UI.
+    initTheme();
+    const agentDir = getAgentDir();
+
+    // Determine which tools to pass based on requested toolNames.
+    // Since v0.68.0, session creation expects string[] tool names instead of Tool[] instances.
+    let toolsOption: string[] | undefined;
+    if(creation)toolsOption=[]; // Archived creation sessions do not regain executable tools.
+    if (toolNames !== undefined && !creation) {
+      // toolNames === [] -> "all off" (an empty allow-list disables every tool).
+      // Otherwise DO NOT pass a builtin-only allow-list: passing CODING_TOOL_NAMES
+      // set allowedToolNames to coding builtins only, which filtered every
+      // extension/package-provided tool (e.g. subagents, web access) out of the
+      // tool registry — so they were unavailable in Eureka sessions even though the
+      // `pi` CLI keeps them. Leaving the allow-list unset lets the SDK register all
+      // tools (and activate extension tools); we narrow the ACTIVE set below.
+      toolsOption = toolNames.length === 0 ? [] : undefined;
+    }
+
+    // Build services first so extension-registered providers are available
+    // before the SDK restores the saved model from the session file.
+    // Gate untrusted project extensions so opening a repository does not run
+    // its .pi/extensions code automatically (see lib/project-trust.ts, #236).
+    const trustReloadOptions = projectTrustReloadOptions(sessionCwd, agentDir);
+    const services = await createAgentSessionServices({
+      cwd: sessionCwd,
+      agentDir,
+      resourceLoaderOptions: {
+        extensionFactories: creation?[]:[EUREKA_NATIVE_PLAN_EXTENSION, EUREKA_AUTOMATION_INTAKE_EXTENSION, EUREKA_AUTOMATION_CHAT_EXTENSION, installHazeManagedMcpRuntime, installNativeMcpRuntime, installUiWaitRuntime, installPluginBrowserHandoff, EUREKA_MCP_EXTENSION, EUREKA_TASK_PROGRESS_EXTENSION, EUREKA_WRITE_DIFF_EXTENSION, EUREKA_IMAGE_GENERATION_EXTENSION, EUREKA_PROMPT_POLICY_EXTENSION],
+        ...(creation?{noExtensions:true,noSkills:true,noPromptTemplates:true,noContextFiles:true}:{}),
+        skillsOverride: (base) => applyOrganizationPluginSkills(sessionCwd, applyHazeProjectSkillOverrides(sessionCwd, base)),
+      },
+      ...(trustReloadOptions ? { resourceLoaderReloadOptions: trustReloadOptions } : {}),
+    });
+    restoreKimiCodingCompatibility(services.modelRuntime);
+    await restoreLegacyAzureProvider(
+      services.modelRuntime,
+      services.settingsManager,
+      sessionManager.getBranch().some((entry) => entry.type === "model_change" && entry.provider === "azure-openai-responses"),
+    );
+    const scope = await resolveVisibleModels(
+      services.modelRuntime,
+      services.settingsManager.getEnabledModels(),
+    );
+    const defaultProvider = services.settingsManager.getDefaultProvider();
+    const defaultModelId = services.settingsManager.getDefaultModel();
+    const hasExistingMessages = sessionManager.getBranch().some((entry) => entry.type === "message");
+    const initial = hasExistingMessages
+      ? { scopedModels: [...scope.scopedModels] }
+      : selectInitialModelScope(scope, {
+        ...(initialModel ? { requestedModel: initialModel } : {}),
+        ...(defaultProvider && defaultModelId
+          ? { defaultModel: { provider: defaultProvider, modelId: defaultModelId } }
+          : {}),
+        ...(thinkingLevel ? { thinkingLevel } : {}),
+      });
+    const { session: inner } = await createAgentSessionFromServices({
+      services,
+      sessionManager,
+      ...(initial.model ? { model: initial.model } : {}),
+      ...(initial.thinkingLevel ? { thinkingLevel: initial.thinkingLevel } : {}),
+      ...(initial.scopedModels.length > 0 ? { scopedModels: initial.scopedModels } : {}),
+      ...(toolsOption !== undefined ? { tools: toolsOption } : {}),
+    });
+
+    const persistedPreferences = await persistExplicitStartupPreferences(
+      services.settingsManager,
+      {
+        ...(initialModel ? { model: initialModel } : {}),
+        ...(thinkingLevel ? { thinkingLevel } : {}),
+      },
+      {
+        ...(inner.model
+          ? { model: { provider: inner.model.provider, modelId: inner.model.id } }
+          : {}),
+        thinkingLevel: inner.thinkingLevel,
+        supportsThinking: inner.supportsThinking(),
+      },
+    );
+    if (persistedPreferences.modelDefaultChanged) invalidateModelsCache();
+
+    // If specific tool names were requested (non-empty), set the active tools to the
+    // requested builtin coding tools PLUS all extension/package tools, so installed
+    // extensions stay usable in Eureka just like in the `pi` CLI.
+    if (toolNames && toolNames.length > 0 && !creation) {
+      inner.setActiveToolsByName(withExtensionTools(inner, toolNames));
+    }
+
+    const wrapper = new AgentSessionWrapper(inner);
+    if (toolNames !== undefined && !creation) saveSessionToolNames(sessionManager, toolNames);
+    // When all tools are disabled, clear the system prompt entirely.
+    // pi's buildSystemPrompt always produces a non-empty prompt even with no tools;
+    // keep this forced after extension resource discovery and reloads as well.
+    if (toolNames?.length === 0 && !creation) {
+      wrapper.setForceEmptySystemPrompt(true);
+    }
+    wrapper.start();
+
+    const realSessionId = inner.sessionId as string;
+    const realSessionFile = inner.sessionFile as string | undefined;
+    if (realSessionFile) cacheSessionPath(realSessionId, realSessionFile);
+
+    wrapper.onDestroy(() => registry.delete(realSessionId));
+    registry.set(realSessionId, wrapper);
+    wrapper.beginExtensionBinding({ forceEmptySystemPrompt: toolNames?.length === 0 && !creation });
+
+    return { session: wrapper, realSessionId };
+  })().finally(() => {
+    locks.delete(sessionId);
+    finishStartingSession();
+  });
+
+  locks.set(sessionId, starting);
+  return starting;
+}

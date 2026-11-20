@@ -1,11 +1,11 @@
-import { createCompatibleModelRuntime } from "@/lib/model-runtime-compat";
+import { createCompatibleModelRuntime } from "@/server/models/model-runtime-compat";
 import { NextResponse } from "next/server";
-import { authorizeCreationSessionId } from "@/lib/automation-creation-auth";
+import { authorizeCreationSessionId } from "@/features/automation/authoring/automation-creation-auth";
 import { SessionManager, SettingsManager, getAgentDir, calculateContextTokens, buildSessionContext } from "@earendil-works/pi-coding-agent";
-import { getRpcSession } from "@/lib/rpc-manager";
-import { resolveSessionPath } from "@/lib/session-reader";
-import { buildContextDetails, estimateMessageTokens } from "@/lib/context-details";
-import { contextRevision, describeLiveContext, readContextSnapshot, saveContextSnapshot } from "@/lib/context-snapshot";
+import { getRpcSession } from "@/server/agent/rpc-manager";
+import { resolveSessionPath } from "@/features/sessions/server/session-reader";
+import { buildContextDetails, estimateMessageTokens } from "@/features/chat/shared/context-details";
+import { contextRevision, describeLiveContext, readContextSnapshot, saveContextSnapshot } from "@/features/chat/shared/context-snapshot";
 import type { ContextUsage } from "@/lib/pi-types";
 
 export const dynamic = "force-dynamic";

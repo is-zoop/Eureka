@@ -1,0 +1,127 @@
+import type { ClientMessageUpdateEvent } from "../../../server/agent/agent-event-wire";
+import { normalizeToolCalls } from "./normalize";
+import type {
+  AgentMessage,
+  AssistantContentBlock,
+  AssistantMessage,
+} from "../../../lib/types";
+
+export type ClientAssistantMessageEvent =
+  ClientMessageUpdateEvent["assistantMessageEvent"];
+
+/** SDK transcript checkpoints are not chat bubbles or assistant completions. */
+export function chatMessageFromEvent(value: unknown): AgentMessage | undefined {
+  if (!value || typeof value !== "object") return;
+  const role = (value as { role?: unknown }).role;
+  if (role === "user" || role === "assistant" || role === "toolResult" || role === "custom" || role === "bashExecution") {
+    return value as AgentMessage;
+  }
+}
+
+export interface StreamingState {
+  isStreaming: boolean;
+  streamingMessage: AssistantMessage | null;
+}
+
+export type StreamAction =
+  | { type: "batch"; actions: Exclude<StreamAction, { type: "batch" }>[] }
+  | { type: "start" }
+  | { type: "snapshot"; message: AgentMessage }
+  | { type: "delta"; event: ClientAssistantMessageEvent }
+  | { type: "end" };
+
+export const INITIAL_STREAMING_STATE: StreamingState = {
+  isStreaming: false,
+  streamingMessage: null,
+};
+
+function updateContentBlock(
+  state: StreamingState,
+  contentIndex: number,
+  update: (current: AssistantContentBlock | undefined) => AssistantContentBlock | null,
+): StreamingState {
+  const message = state.streamingMessage;
+  if (!message || !Number.isInteger(contentIndex) || contentIndex < 0) return state;
+
+  const content = [...message.content];
+  const nextBlock = update(content[contentIndex]);
+  if (!nextBlock) return state;
+  content[contentIndex] = nextBlock;
+  return {
+    isStreaming: true,
+    streamingMessage: { ...message, content },
+  };
+}
+
+function applyDelta(
+  state: StreamingState,
+  event: ClientAssistantMessageEvent,
+): StreamingState {
+  switch (event.type) {
+    case "text_start":
+      return updateContentBlock(state, event.contentIndex, (current) => (
+        current?.type === "text" ? current : { type: "text", text: "" }
+      ));
+    case "text_delta":
+      return updateContentBlock(state, event.contentIndex, (current) => (
+        current?.type === "text"
+          ? { ...current, text: current.text + event.delta }
+          : null
+      ));
+    case "text_end":
+      return updateContentBlock(state, event.contentIndex, (current) => ({
+        ...(current?.type === "text" ? current : {}),
+        type: "text",
+        text: event.content,
+      }));
+    case "thinking_start":
+      return updateContentBlock(state, event.contentIndex, (current) => (
+        current?.type === "thinking" ? current : { type: "thinking", thinking: "" }
+      ));
+    case "thinking_delta":
+      return updateContentBlock(state, event.contentIndex, (current) => (
+        current?.type === "thinking"
+          ? { ...current, thinking: current.thinking + event.delta }
+          : null
+      ));
+    case "thinking_end":
+      return updateContentBlock(state, event.contentIndex, (current) => ({
+        ...(current?.type === "thinking" ? current : {}),
+        type: "thinking",
+        thinking: event.content,
+      }));
+    case "toolcall_end":
+      return updateContentBlock(state, event.contentIndex, () => ({
+        type: "toolCall",
+        toolCallId: event.toolCall.id,
+        toolName: event.toolCall.name,
+        input: event.toolCall.arguments,
+      }));
+    default:
+      return state;
+  }
+}
+
+export function streamReducer(
+  state: StreamingState,
+  action: StreamAction,
+): StreamingState {
+  switch (action.type) {
+    case "batch":
+      return action.actions.reduce(streamReducer, state);
+    case "start":
+      return { isStreaming: true, streamingMessage: null };
+    case "snapshot": {
+      const message = normalizeToolCalls(action.message);
+      return message.role === "assistant"
+        ? { isStreaming: true, streamingMessage: message }
+        : state;
+    }
+    case "delta":
+      return applyDelta(state, action.event);
+    case "end":
+      return INITIAL_STREAMING_STATE;
+    default:
+      return state;
+  }
+}

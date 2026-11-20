@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { MAX_ATTACHMENT_BYTES, resolveComposerAttachments, storeComposerFiles } from "@/lib/composer-attachments";
+import { MAX_ATTACHMENT_BYTES, resolveComposerAttachments, storeComposerFiles } from "@/features/chat/shared/composer-attachments";
 
 export const runtime = "nodejs";
 export async function POST(request: Request) {

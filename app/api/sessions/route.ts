@@ -3,8 +3,9 @@ import {
   attachSessionProjectInfo,
   listAllSessions,
   mergeSessionLists,
-} from "@/lib/session-reader";
-import { getRpcSessionInfos, getRunningRpcSessionIds } from "@/lib/rpc-session-registry";
+} from "@/features/sessions/server/session-reader";
+import { getRpcSessionInfos, getRunningRpcSessionIds } from "@/server/agent/rpc-session-registry";
+import { readSessionArchives } from "@/features/sessions/server/session-archives";
 
 export const dynamic = "force-dynamic";
 
@@ -15,7 +16,11 @@ export async function GET(req: Request) {
       listAllSessions({ force }),
       attachSessionProjectInfo(getRpcSessionInfos()),
     ]);
-    const sessions = mergeSessionLists(persistedSessions, runtimeSessions);
+    const archives = readSessionArchives();
+    const sessions = mergeSessionLists(persistedSessions, runtimeSessions).map((session) => ({
+      ...session,
+      archivedAt: archives.get(session.id)?.archivedAt,
+    }));
     return NextResponse.json(
       { sessions, runningSessionIds: getRunningRpcSessionIds() },
       { headers: { "Cache-Control": "no-store" } },

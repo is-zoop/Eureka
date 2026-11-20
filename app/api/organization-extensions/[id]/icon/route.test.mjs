@@ -9,10 +9,11 @@ test("market and plugin icons share the authenticated proxy; a different plugin 
   const root = await mkdtemp(join(tmpdir(), "eureka-plugin-icon-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   await mkdir(join(root, "lib/auth"), { recursive: true });
+  await mkdir(join(root, "server/extensions"), { recursive: true });
   await writeFile(join(root, "route.ts"), await readFile(new URL("./route.ts", import.meta.url)));
   await writeFile(join(root, "lib/auth/config.ts"), 'exports.getAuthConfig=()=>({issuer:"https://haze.example"});');
   await writeFile(join(root, "lib/auth/session.ts"), "exports.writeAuthSession=async()=>{};");
-  await writeFile(join(root, "lib/organization-extensions.ts"), `
+  await writeFile(join(root, "server/extensions/organization-extensions.ts"), `
     exports.OrganizationExtensionsError=class extends Error {constructor(kind){super(kind);this.kind=kind;}};
     exports.getHazeMarketplaceSession=async()=>{const s=globalThis.__pluginIconRouteTest;if(!s.signedIn)throw new exports.OrganizationExtensionsError('unauthenticated');return {accessToken:'test-only',session:{}};};
     exports.fetchOrganizationExtensionIcon=async(id)=>{globalThis.__pluginIconRouteTest.ids.push(id);return new Response('test-icon',{headers:{'Content-Type':'image/png'}});};

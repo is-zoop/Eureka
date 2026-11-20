@@ -1,7 +1,7 @@
-import { createProviderModelRuntime } from "@/lib/provider-model-runtime";
+import { createProviderModelRuntime } from "@/server/models/provider-model-runtime";
 import type { AuthEvent, AuthPrompt } from "@earendil-works/pi-ai";
-import { invalidateModelsCache } from "@/lib/models-cache";
-import { createProviderLoginOptions } from "@/lib/provider-login";
+import { invalidateModelsCache } from "@/server/models/models-cache";
+import { createProviderLoginOptions } from "@/server/models/provider-login";
 
 export const dynamic = "force-dynamic";
 

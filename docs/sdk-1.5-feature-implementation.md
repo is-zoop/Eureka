@@ -85,7 +85,7 @@ N03 没有单独的测试按钮。其新增覆盖对象是聊天运行中的 SDK
 
 ```powershell
 cd E:\Eureka
-node --experimental-strip-types --test --test-name-pattern "SDK UI waits|aborting a blocked|classif" lib/extension-lifecycle-sdk.integration.test.mjs lib/automation-app-classifier.test.mjs
+node --experimental-strip-types --test --test-name-pattern "SDK UI waits|aborting a blocked|classif" tests/extensions/extension-lifecycle-sdk.integration.test.mjs tests/automation/automation-app-classifier.test.mjs
 ```
 
 N06 的界面与真实账号测试：
@@ -110,10 +110,10 @@ N06 的界面与真实账号测试：
 
 | 测试 | 当前失败原因 | 本轮处理 |
 | --- | --- | --- |
-| `lib/browser-runtime.test.mjs` | 隔离 Chromium 页面启动/导航失败；单独在限制环境外运行仍出现 ERR_ABORTED | 记录环境/浏览器问题，未修改浏览器实现 |
-| `lib/instrumentation.test.mjs` | Webpack 测试夹具没有解析现有 automation-scheduler 导入 | 未修改调度或启动实现 |
-| `lib/next-config-esm.test.mjs` | Node 原生 ESM 导入 next.config.ts 时不能解析无扩展名的 automation-data-limits 路径 | 未修改 Next 配置 |
-| `lib/plan-mode.test.mjs` | 旧断言要求显式包含 optionId: undefined，当前实现省略该字段 | 未修改计划回答业务逻辑 |
+| `tests/browser/browser-runtime.test.mjs` | 隔离 Chromium 页面启动/导航失败；单独在限制环境外运行仍出现 ERR_ABORTED | 记录环境/浏览器问题，未修改浏览器实现 |
+| `tests/shared/instrumentation.test.mjs` | Webpack 测试夹具没有解析现有 automation-scheduler 导入 | 未修改调度或启动实现 |
+| `tests/shared/next-config-esm.test.mjs` | Node 原生 ESM 导入 next.config.ts 时不能解析无扩展名的 automation-data-limits 路径 | 未修改 Next 配置 |
+| `tests/chat/plan-mode.test.mjs` | 旧断言要求显式包含 optionId: undefined，当前实现省略该字段 | 未修改计划回答业务逻辑 |
 
 因此，本轮可以确认上述五项的专项回归和类型检查通过，不能宣称全项目测试全部通过。桌面安装版需要重新编译后才能使用这些前端与服务端改动；本轮未生成安装包。
 

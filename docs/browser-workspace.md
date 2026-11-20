@@ -142,7 +142,7 @@ AI 接管时用 [Win32 EnableWindow](https://learn.microsoft.com/en-us/windows/w
 
 ### 网页版转发面板（保留的兼容路径）
 
-`lib/browser-window-launcher.ts` 直接启动配套 Chromium，使用随机独立临时资料目录和预分配的本机明确调试端口，再通过 connectOverCDP 连接默认上下文。浏览器默认最小化；面板通过 CDP 获取网页画面并转发输入，并非原生窗口嵌套，因而有编码、请求排队和解码延时。系统任务栏可能仍显示 Chrome；本轮去掉了内置模式中不必要的窗口置前调用。不同会话使用独立进程；正常关闭或启动失败会关闭该进程并清理专用目录，崩溃或断电不能保证清理。
+`server/browser/browser-window-launcher.ts` 直接启动配套 Chromium，使用随机独立临时资料目录和预分配的本机明确调试端口，再通过 connectOverCDP 连接默认上下文。浏览器默认最小化；面板通过 CDP 获取网页画面并转发输入，并非原生窗口嵌套，因而有编码、请求排队和解码延时。系统任务栏可能仍显示 Chrome；本轮去掉了内置模式中不必要的窗口置前调用。不同会话使用独立进程；正常关闭或启动失败会关闭该进程并清理专用目录，崩溃或断电不能保证清理。
 
 `POST /api/automation/browser` 使用 `presentation: "embedded"`。与组织插件面板不同，自动化的两种显示模式都保持直接启动、默认网络及缓存，不安装全站请求路由。通过 Eureka 打开或跳转的地址仍校验 HTTP/HTTPS，真实窗口原生导航遵守浏览器自身安全规则。
 
@@ -249,7 +249,7 @@ Eureka 消费 `browser_url`，在当前对话右侧打开顶层网页；同一�
 
 ## 验证
 
-运行 `lib/plugin-selection.test.mjs`、`lib/plugin-composer-runtime.test.mjs` 与 `lib/browser-runtime.test.mjs`。最后一项需要已安装 Chromium，会使用独立临时账号目录和本机 HTTP 测试页面，不操作日常浏览器。
+运行 `tests/extensions/plugin-selection.test.mjs`、`tests/extensions/plugin-composer-runtime.test.mjs` 与 `tests/browser/browser-runtime.test.mjs`。最后一项需要已安装 Chromium，会使用独立临时账号目录和本机 HTTP 测试页面，不操作日常浏览器。
 
 真实 Atlas 联调需要可用的 Haze 登录、已授权的组织插件和 Atlas MCP 服务；模拟包与浏览器测试不替代“Haze 发布 → 安装 → 当前对话选数 → 原业务会话查询”的完整验证。
 

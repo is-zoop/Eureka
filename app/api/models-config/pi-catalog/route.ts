@@ -1,4 +1,4 @@
-import { piCatalogStatus, refreshPiCatalog, schedulePiCatalogSync, setPiCatalogEnabled } from "@/lib/pi-catalog-sync";
+import { piCatalogStatus, refreshPiCatalog, schedulePiCatalogSync, setPiCatalogEnabled } from "@/server/models/pi-catalog-sync";
 
 export const dynamic = "force-dynamic";
 

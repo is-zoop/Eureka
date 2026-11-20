@@ -303,7 +303,14 @@ export interface SessionTreeNode {
   branchPreview?: BranchPreview;
 }
 
+export interface SessionArchive {
+  archivedAt: string;
+  turnCount: number;
+  lastConversationAt: string | null;
+}
+
 export interface SessionInfo {
+  archivedAt?: string;
   path: string;
   id: string;
   cwd: string;

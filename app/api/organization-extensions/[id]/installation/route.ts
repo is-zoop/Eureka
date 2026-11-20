@@ -1,14 +1,14 @@
-import { commitOrganizationPlugin, mutateOrganizationPlugin, PluginInstallError, prepareOrganizationPlugin } from "@/lib/haze-plugin-install";
-import { pluginPresentation } from "@/lib/haze-plugin-resources";
+import { commitOrganizationPlugin, mutateOrganizationPlugin, PluginInstallError, prepareOrganizationPlugin } from "@/server/extensions/haze-plugin-install";
+import { pluginPresentation } from "@/server/extensions/haze-plugin-resources";
 import { getAuthConfig } from "@/lib/auth/config";
 import { readRuntimeHazeSession } from "@/lib/auth/runtime-session";
 import { NextResponse } from "next/server";
-import { getAllowedFileRoots, isExistingFilePathAllowed } from "@/lib/file-access";
+import { getAllowedFileRoots, isExistingFilePathAllowed } from "@/features/files/server/file-access";
 import { hasJsonContentType, isApiRequestAllowed } from "@/lib/request-security";
 import { getProjectTrustStatus } from "@/lib/project-trust";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
-import { getHazeMarketplaceSession, listOrganizationExtensions, OrganizationExtensionsError, type OrganizationExtensionType } from "@/lib/organization-extensions";
-import { configureHazeManagedMcp, hazeMcpRuntimeOptions, installHazeCapability, listHazeManagedInstalls, setHazeCapabilityDisabled, uninstallHazeCapability, type HazeCapabilityType, type HazeInstallScope } from "@/lib/haze-managed-capabilities";
+import { getHazeMarketplaceSession, listOrganizationExtensions, OrganizationExtensionsError, type OrganizationExtensionType } from "@/server/extensions/organization-extensions";
+import { configureHazeManagedMcp, hazeMcpRuntimeOptions, installHazeCapability, listHazeManagedInstalls, setHazeCapabilityDisabled, uninstallHazeCapability, type HazeCapabilityType, type HazeInstallScope } from "@/server/extensions/haze-managed-capabilities";
 
 function validId(value: string) { return /^\d+$/.test(value); }
 function scope(value: unknown): HazeInstallScope { return value === "global" ? "global" : "project"; }

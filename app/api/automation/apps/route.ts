@@ -1,11 +1,11 @@
-import { appFailure, appJson, automationAppAccess, readAppRequest } from "@/lib/automation-app-server";
-import { AutomationAppError } from "@/lib/automation-app-package";
-import { isAppId } from "@/lib/automation-app";
+import { appFailure, appJson, automationAppAccess, readAppRequest } from "@/features/automation/runtime/automation-app-server";
+import { AutomationAppError } from "@/features/automation/runtime/automation-app-package";
+import { isAppId } from "@/features/automation/shared/automation-app";
 import { hasJsonContentType, isApiRequestAllowed } from "@/lib/request-security";
-import { syncOrganizationAutomations } from "@/lib/haze-automation-install";
-import { getAllowedFileRoots,isExistingFilePathAllowed } from "@/lib/file-access";
+import { syncOrganizationAutomations } from "@/features/automation/publication/haze-automation-install";
+import { getAllowedFileRoots,isExistingFilePathAllowed } from "@/features/files/server/file-access";
 import { readAuthSession } from "@/lib/auth/session";
-import { hazeAutomationAccess } from "@/lib/automation-access";
+import { hazeAutomationAccess } from "@/features/automation/runtime/automation-access";
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {

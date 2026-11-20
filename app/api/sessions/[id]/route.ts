@@ -1,8 +1,8 @@
-import { readClarificationState } from "@/lib/clarification";
-import { readAutomationMode } from "@/lib/automation-mode";
-import { creationBinding } from "@/lib/automation-creation";
-import { authorizeCreationSessionId } from "@/lib/automation-creation-auth";
-import { closeSessionBrowsers } from "@/lib/browser-runtime";
+import { readClarificationState } from "@/features/chat/shared/clarification";
+import { readAutomationMode } from "@/features/automation/shared/automation-mode";
+import { creationBinding } from "@/features/automation/authoring/automation-creation";
+import { authorizeCreationSessionId } from "@/features/automation/authoring/automation-creation-auth";
+import { closeSessionBrowsers } from "@/server/browser/browser-runtime";
 import { NextResponse } from "next/server";
 import { existsSync, readdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from "fs";
 import { dirname, join } from "path";
@@ -15,12 +15,13 @@ import {
   buildSessionContext,
   buildSessionHistory,
   readSessionHeader,
-} from "@/lib/session-reader";
-import { sessionPathKey } from "@/lib/session-path";
-import { getRpcSession } from "@/lib/rpc-manager";
-import { projectTreeForResponse } from "@/lib/project-tree";
-import { computeSessionTotalActiveMs } from "@/lib/session-timing";
-import { readPlanState } from "@/lib/plan-mode";
+} from "@/features/sessions/server/session-reader";
+import { sessionPathKey } from "@/features/sessions/server/session-path";
+import { getRpcSession } from "@/server/agent/rpc-manager";
+import { projectTreeForResponse } from "@/features/sessions/shared/project-tree";
+import { computeSessionTotalActiveMs } from "@/features/sessions/shared/session-timing";
+import { readPlanState } from "@/features/chat/shared/plan-mode";
+import { readSessionArchives, updateSessionArchive } from "@/features/sessions/server/session-archives";
 
 export async function GET(
   req: Request,
@@ -75,6 +76,7 @@ export async function GET(
         : "(no messages)",
       parentSessionId,
       transient: !filePath || !existsSync(filePath),
+      archivedAt: readSessionArchives().get(id)?.archivedAt,
     } : null;
 
     return NextResponse.json({
@@ -171,6 +173,9 @@ export async function DELETE(
     try { unlinkSync(`${filePath}.context-usage.json`); } catch { /* Optional numeric snapshot. */ }
     invalidateSessionPathCache(id);
     invalidateSessionListCache();
+    try {
+      if (readSessionArchives().has(id)) await updateSessionArchive(id, () => null);
+    } catch { /* A stale archive record is ignored when its session is gone. */ }
     return NextResponse.json({ ok: true });
   } catch (error) {
     return NextResponse.json({ error: String(error) }, { status: 500 });

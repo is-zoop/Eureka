@@ -1,8 +1,8 @@
 import path from "node:path";
 import { NextRequest, NextResponse } from "next/server";
-import { getAllowedFileRoots, isExistingFilePathAllowed, isFilePathAllowed } from "@/lib/file-access";
-import { getGitRepositoryRoot, getGitWorkspace, GitOperationError, mutateGit } from "@/lib/git-operations";
-import type { GitMutation } from "@/lib/git-types";
+import { getAllowedFileRoots, isExistingFilePathAllowed, isFilePathAllowed } from "@/features/files/server/file-access";
+import { getGitRepositoryRoot, getGitWorkspace, GitOperationError, mutateGit } from "@/features/files/server/git-operations";
+import type { GitMutation } from "@/features/files/shared/git-types";
 import { hasJsonContentType } from "@/lib/request-security";
 
 async function authorizedRepository(cwd: unknown): Promise<string> {

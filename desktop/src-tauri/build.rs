@@ -1,5 +1,5 @@
 fn main() {
-    let source = "../../lib/automation-sdk-contract.json";
+    let source = "../../features/automation/sdk/automation-sdk-contract.json";
     println!("cargo:rerun-if-changed={source}");
     let contract: serde_json::Value = serde_json::from_slice(&std::fs::read(source).expect("read SDK contract")).expect("parse SDK contract");
     let response = contract["limits"]["httpResponseBytes"].as_u64().expect("HTTP limit");

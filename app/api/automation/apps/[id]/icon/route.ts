@@ -1,6 +1,6 @@
-import { appFailure, automationAppAccess } from "@/lib/automation-app-server";
-import { AutomationAppError } from "@/lib/automation-app-package";
-import { isAppId } from "@/lib/automation-app";
+import { appFailure, automationAppAccess } from "@/features/automation/runtime/automation-app-server";
+import { AutomationAppError } from "@/features/automation/runtime/automation-app-package";
+import { isAppId } from "@/features/automation/shared/automation-app";
 export const dynamic = "force-dynamic";
 export async function GET(request: Request, route: { params: Promise<{ id: string }> }) {
   try {

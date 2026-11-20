@@ -1,5 +1,5 @@
 import type { ResourceDiagnostic } from "@earendil-works/pi-coding-agent";
-import type { OrganizationCapabilityRef } from "./organization-capability";
+import type { OrganizationCapabilityRef } from "../features/extensions/shared/organization-capability";
 
 export interface SkillSearchResult {
   package: string;

@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
-import { automationAccess } from "@/lib/automation-access";
-import { assertLocalAutomationNamespace } from "@/lib/automation-local-context";
-import { getRpcSession } from "@/lib/rpc-manager";
-import { resolveSessionPath } from "@/lib/session-reader";
-import { parseAutomationTaskRef } from "@/lib/automation-mode";
-import { readAutomationTask, changeAutomationTask } from "@/lib/automation-mode-store";
+import { automationAccess } from "@/features/automation/runtime/automation-access";
+import { assertLocalAutomationNamespace } from "@/features/automation/runtime/automation-local-context";
+import { getRpcSession } from "@/server/agent/rpc-manager";
+import { resolveSessionPath } from "@/features/sessions/server/session-reader";
+import { parseAutomationTaskRef } from "@/features/automation/shared/automation-mode";
+import { readAutomationTask, changeAutomationTask } from "@/features/automation/runtime/automation-mode-store";
 import { hasJsonContentType, isApiRequestAllowed } from "@/lib/request-security";
-import { automationModeFromSession } from "@/lib/automation-session-mode";
+import { automationModeFromSession } from "@/features/automation/runtime/automation-session-mode";
 export const dynamic = "force-dynamic";
 const json = (v: unknown, status = 200) => NextResponse.json(v, { status, headers: { "Cache-Control": "no-store" } });
 async function context(id: string) {
@@ -20,8 +20,8 @@ export async function GET(request: Request) {
   try {
     const auth = await automationAccess(), runtimeId = auth.runtimeId;
     const id = new URL(request.url).searchParams.get("sessionId"); let mode = null, publication: {appId:string;revision:number;version:string}|null = null, resumeBaseApp: {id:string;revision:number;version:string;displayName:string}|null = null, closedTaskId: string | null = null;
-    if (id) { const record = await automationModeFromSession(id); if (record) { const saved = await readAutomationTask(record.task); if (saved?.sessionId === id) { if (saved.status === "exited") {closedTaskId = saved.task.id;resumeBaseApp=await(await import("@/lib/automation-authoring")).authorSavedReference(saved.task);} else mode = { task: saved.task, sessionId: id, status: saved.status, updatedAt: saved.updatedAt }; } } }
-    if(mode){const {authorAccess,readAuthor}=await import("@/lib/automation-authoring");const state=await readAuthor(await authorAccess(mode.task,true));if(state.publication)publication={appId:state.publication.appId,revision:state.publication.revision,version:state.publication.version};}
+    if (id) { const record = await automationModeFromSession(id); if (record) { const saved = await readAutomationTask(record.task); if (saved?.sessionId === id) { if (saved.status === "exited") {closedTaskId = saved.task.id;resumeBaseApp=await(await import("@/features/automation/authoring/automation-authoring")).authorSavedReference(saved.task);} else mode = { task: saved.task, sessionId: id, status: saved.status, updatedAt: saved.updatedAt }; } } }
+    if(mode){const {authorAccess,readAuthor}=await import("@/features/automation/authoring/automation-authoring");const state=await readAuthor(await authorAccess(mode.task,true));if(state.publication)publication={appId:state.publication.appId,revision:state.publication.revision,version:state.publication.version};}
     auth.assertIdentity(); return json({ ownerKey: mode?.task.ownerKey ?? auth.ownerKey, runtimeId, mode, publication, resumeBaseApp, closedTaskId, stage: "A05", creationPhase: "authoring" });
   } catch { return json({ error: "无法读取本地创建任务，请重新载入后重试。" }, 409); }
 }

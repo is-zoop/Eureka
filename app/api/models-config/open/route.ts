@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { openModelsConfigFile } from "@/lib/models-config-open";
+import { openModelsConfigFile } from "@/server/models/models-config-open";
 import { isApiRequestAllowed } from "@/lib/request-security";
 
 export const dynamic = "force-dynamic";

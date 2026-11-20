@@ -1,6 +1,6 @@
-import { appFailure, appJson, automationAppAccess, readAppRequest } from "@/lib/automation-app-server";
-import { createSchedule, changeSchedule, listSchedules, scheduleRuns, startAutomationScheduler } from "@/lib/automation-scheduler";
-import { AutomationAppError } from "@/lib/automation-app-package";
+import { appFailure, appJson, automationAppAccess, readAppRequest } from "@/features/automation/runtime/automation-app-server";
+import { createSchedule, changeSchedule, listSchedules, scheduleRuns, startAutomationScheduler } from "@/features/automation/runtime/automation-scheduler";
+import { AutomationAppError } from "@/features/automation/runtime/automation-app-package";
 import { hasJsonContentType } from "@/lib/request-security";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";

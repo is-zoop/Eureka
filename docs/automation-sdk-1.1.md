@@ -2,9 +2,9 @@
 
 ## 统一能力契约
 
-`lib/automation-sdk-contract.json` 是能力、声明 Schema、方法和关键限制的源数据。模型章节读取返回同一份契约摘要；`ctx.sdk` 提供同样的版本、方法和限制。应用包和请求使用契约校验后，仍执行原有授权、范围、文件一致性和语义检查。原生 HTTP 与旧下载通道的大小常量从契约生成。
+`features/automation/sdk/automation-sdk-contract.json` 是能力、声明 Schema、方法和关键限制的源数据。模型章节读取返回同一份契约摘要；`ctx.sdk` 提供同样的版本、方法和限制。应用包和请求使用契约校验后，仍执行原有授权、范围、文件一致性和语义检查。原生 HTTP 与旧下载通道的大小常量从契约生成。
 
-`npm run sdk:contract` 导出 Haze 文件；`npm run sdk:contract:check` 检查导出文件是否过期。公共测试样例在 `lib/automation-sdk-contract-fixtures.json`，Node、Python、Rust 使用同一批 request 样例核对兼容性。
+`npm run sdk:contract` 导出 Haze 文件；`npm run sdk:contract:check` 检查导出文件是否过期。公共测试样例在 `features/automation/sdk/automation-sdk-contract-fixtures.json`，Node、Python、Rust 使用同一批 request 样例核对兼容性。
 
 Haze 对接目录是 `integrations/haze/`。云端将 `validate_sdk_files(files)` 接入原有 `eureka_package.py` 的声明校验阶段，合并返回的 compatibility.errors；保留身份、上传限制、ZIP 安全、归属和审核检查。此仓库不直接部署 Haze。
 

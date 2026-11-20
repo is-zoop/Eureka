@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
-import { authorizeCreationSessionId } from "@/lib/automation-creation-auth";
+import { authorizeCreationSessionId } from "@/features/automation/authoring/automation-creation-auth";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
-import { generateSessionTitle } from "@/lib/session-title";
-import { getRpcSession, startRpcSession } from "@/lib/rpc-manager";
-import { invalidateSessionListCache, resolveSessionPath } from "@/lib/session-reader";
+import { generateSessionTitle } from "@/features/sessions/server/session-title";
+import { getRpcSession, startRpcSession } from "@/server/agent/rpc-manager";
+import { invalidateSessionListCache, resolveSessionPath } from "@/features/sessions/server/session-reader";
 
 export async function POST(
   _req: Request,

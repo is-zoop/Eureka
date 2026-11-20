@@ -1,12 +1,12 @@
-import { isManagedPluginPath } from "@/lib/haze-plugin-paths";
+import { isManagedPluginPath } from "@/server/extensions/haze-plugin-paths";
 import { NextResponse } from "next/server";
 import { existsSync, readFileSync, writeFileSync } from "fs";
 import { homedir } from "os";
 import path from "path";
 import { getAgentDir, parseFrontmatter } from "@earendil-works/pi-coding-agent";
-import { loadSkillsWithInstallInfo } from "@/lib/skills-service";
-import { loadCommandResources } from "@/lib/command-catalog";
-import { getAllowedFileRoots, isExistingFilePathAllowed } from "@/lib/file-access";
+import { loadSkillsWithInstallInfo } from "@/server/extensions/skills-service";
+import { loadCommandResources } from "@/server/agent/command-catalog";
+import { getAllowedFileRoots, isExistingFilePathAllowed } from "@/features/files/server/file-access";
 
 export const dynamic = "force-dynamic";
 

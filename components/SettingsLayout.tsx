@@ -59,7 +59,7 @@ export function SettingsCard({ className, ...props }: ComponentPropsWithoutRef<"
 }
 
 export function SettingsRow({ label, description, htmlFor, descriptionId, children }: {
-  label: string;
+  label: ReactNode;
   description: string;
   htmlFor?: string;
   descriptionId?: string;

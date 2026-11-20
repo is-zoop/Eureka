@@ -1,15 +1,15 @@
 import type { Metadata, Viewport } from "next";
 import { fontVariableClasses } from "@/lib/app-fonts";
-import { PwaRegistration } from "@/components/PwaRegistration";
-import { DesktopNativeBridge } from "@/components/DesktopNativeBridge";
-import { DesktopMenus } from "@/components/DesktopMenus";
-import { ThemeAwareFavicon } from "@/components/ThemeAwareFavicon";
+import { PwaRegistration } from "@/features/workspace/ui/PwaRegistration";
+import { DesktopNativeBridge } from "@/features/workspace/ui/DesktopNativeBridge";
+import { DesktopMenus } from "@/features/workspace/ui/DesktopMenus";
+import { ThemeAwareFavicon } from "@/features/workspace/ui/ThemeAwareFavicon";
 import "katex/dist/katex.min.css";
 import "./globals.css";
 import { I18nProvider } from "@/hooks/useI18n";
-import { NotificationProvider } from "@/components/Notifications";
-import { FontSizePreference } from "@/components/FontSizePreference";
-import { FONT_SIZE_BOOTSTRAP_SCRIPT } from "@/lib/font-size-preference";
+import { NotificationProvider } from "@/features/workspace/ui/Notifications";
+import { FontSizePreference } from "@/features/workspace/ui/FontSizePreference";
+import { FONT_SIZE_BOOTSTRAP_SCRIPT } from "@/features/settings/shared/font-size-preference";
 
 export const metadata: Metadata = {
   title: "Eureka",

@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
-import { authorizeCreationSessionId } from "@/lib/automation-creation-auth";
+import { authorizeCreationSessionId } from "@/features/automation/authoring/automation-creation-auth";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
-import { buildSessionHistory, resolveSessionPath, SessionHistoryCursorError } from "@/lib/session-reader";
-import { getRpcSession } from "@/lib/rpc-manager";
+import { buildSessionHistory, resolveSessionPath, SessionHistoryCursorError } from "@/features/sessions/server/session-reader";
+import { getRpcSession } from "@/server/agent/rpc-manager";
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;

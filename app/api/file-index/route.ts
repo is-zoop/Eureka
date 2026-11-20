@@ -8,8 +8,8 @@ import {
   isExistingFilePathAllowed,
   isFilePathAllowed,
   isWindowsAbsolutePath,
-} from "@/lib/file-access";
-import { buildEntriesFromFiles, filterFileEntries, type FileIndexEntry } from "@/lib/file-fuzzy";
+} from "@/features/files/server/file-access";
+import { buildEntriesFromFiles, filterFileEntries, type FileIndexEntry } from "@/features/files/shared/file-fuzzy";
 
 const execFileAsync = promisify(execFile);
 

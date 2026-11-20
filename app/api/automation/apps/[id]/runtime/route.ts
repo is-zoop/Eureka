@@ -1,6 +1,6 @@
-import { appFailure, appJson, applicationAccess, readAppRequest } from "@/lib/automation-app-server";
-import { AutomationAppError } from "@/lib/automation-app-package";
-import { answerAppRun, appRunArtifactStream, appRunValue, getAppRun, grantAppFile, listAppRuns, readAppConfiguration, saveAppConfiguration, startAppRun, stopAppRun } from "@/lib/automation-app-runtime";
+import { appFailure, appJson, applicationAccess, readAppRequest } from "@/features/automation/runtime/automation-app-server";
+import { AutomationAppError } from "@/features/automation/runtime/automation-app-package";
+import { answerAppRun, appRunArtifactStream, appRunValue, getAppRun, grantAppFile, listAppRuns, readAppConfiguration, saveAppConfiguration, startAppRun, stopAppRun } from "@/features/automation/runtime/automation-app-runtime";
 import { hasJsonContentType, isApiRequestAllowed } from "@/lib/request-security";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -40,7 +40,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     if (body.action === "save") result = await saveAppConfiguration(auth, id, body.revision, body.configRevision, body.values, body.actionId);
     else if (body.action === "grant") { if (typeof body.fieldId !== "string" || typeof body.path !== "string") throw new AutomationAppError("文件选择无效"); result = await grantAppFile(auth, id, body.revision, body.fieldId, body.path, body.access, body.actionId); }
     else if (body.action === "start") { if (typeof body.actionId !== "string") throw new AutomationAppError("请选择运行按钮"); result = body.taskId
-      ? await (await import("@/lib/automation-authoring")).authorManualTest({id:body.taskId,ownerKey:auth.ownerKey,runtimeId:auth.runtimeId},id,body.revision,body.runId,body.values,body.configRevision,body.actionId)
+      ? await (await import("@/features/automation/authoring/automation-authoring")).authorManualTest({id:body.taskId,ownerKey:auth.ownerKey,runtimeId:auth.runtimeId},id,body.revision,body.runId,body.values,body.configRevision,body.actionId)
       : await startAppRun(auth, id, body.revision, body.runId, body.values, body.configRevision, body.actionId, body.resumeFrom ? { resumeFrom: body.resumeFrom } : undefined); }
     else if (body.action === "stop") result = await stopAppRun(auth, id, body.runId);
     else result = await answerAppRun(auth, id, body.runId, body.questionId, body.responses);

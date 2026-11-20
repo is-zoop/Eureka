@@ -1,8 +1,8 @@
-import { appFailure, appJson, automationAppAccess, readAppRequest } from "@/lib/automation-app-server";
-import { AutomationAppError } from "@/lib/automation-app-package";
+import { appFailure, appJson, automationAppAccess, readAppRequest } from "@/features/automation/runtime/automation-app-server";
+import { AutomationAppError } from "@/features/automation/runtime/automation-app-package";
 import { hasJsonContentType, isApiRequestAllowed } from "@/lib/request-security";
-import { readPublicationAiSettings, writePublicationAiSettings } from "@/lib/automation-publication-ai-store";
-import { parsePublicationAiSettings } from "@/lib/automation-publication-ai-settings";
+import { readPublicationAiSettings, writePublicationAiSettings } from "@/features/automation/publication/automation-publication-ai-store";
+import { parsePublicationAiSettings } from "@/features/automation/publication/automation-publication-ai-settings";
 
 export const dynamic = "force-dynamic";
 export async function GET(request: Request) {

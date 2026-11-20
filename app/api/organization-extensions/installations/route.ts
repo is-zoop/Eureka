@@ -1,9 +1,9 @@
-import { pluginPresentation } from "@/lib/haze-plugin-resources";
+import { pluginPresentation } from "@/server/extensions/haze-plugin-resources";
 import { getAuthConfig } from "@/lib/auth/config";
 import { readRuntimeHazeSession } from "@/lib/auth/runtime-session";
 import { NextResponse } from "next/server";
-import { getAllowedFileRoots, isExistingFilePathAllowed } from "@/lib/file-access";
-import { listHazeManagedInstalls, type HazeCapabilityType, type HazeInstallScope } from "@/lib/haze-managed-capabilities";
+import { getAllowedFileRoots, isExistingFilePathAllowed } from "@/features/files/server/file-access";
+import { listHazeManagedInstalls, type HazeCapabilityType, type HazeInstallScope } from "@/server/extensions/haze-managed-capabilities";
 
 export const dynamic = "force-dynamic";
 

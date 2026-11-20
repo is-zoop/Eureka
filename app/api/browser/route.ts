@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import { browserAccess, browserError } from "@/lib/browser-access";
-import { browserAction, browserReady, browserState, closeBrowser } from "@/lib/browser-runtime";
-import type { BrowserAction } from "@/lib/browser-types";
+import { browserAccess, browserError } from "@/server/browser/browser-access";
+import { browserAction, browserReady, browserState, closeBrowser } from "@/server/browser/browser-runtime";
+import type { BrowserAction } from "@/features/workspace/platform/browser-types";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 export async function GET(request: Request) {

@@ -15,13 +15,13 @@
 
 源码入口：
 
-- `lib/automation-sdk-contract.json`：模型、运行时和 Haze 共用能力结构与限制。
-- `lib/automation-session-request.ts`、`lib/automation-app-upload.ts`：接口声明和授权上传快照。
+- `features/automation/sdk/automation-sdk-contract.json`：模型、运行时和 Haze 共用能力结构与限制。
+- `features/automation/runtime/automation-session-request.ts`、`features/automation/runtime/automation-app-upload.ts`：接口声明和授权上传快照。
 - `desktop/src-tauri/src/automation_credentials.rs`：应用隔离的加密凭证、撤销及凭证版本。
 - `desktop/src-tauri/src/automation_session_request.rs`：原生鉴权注入、流式 multipart 和受控跳转。
-- `lib/automation-checkpoints.ts`、`lib/automation-app-runtime.ts`：检查点边界、恢复与写入跟踪。
-- `lib/automation-app-browser-runtime.ts`、`desktop/src-tauri/src/app-browser.js`、`desktop/src-tauri/src/automation_browser.rs`：浏览器授权、上下文和原生文件控件。
-- `components/AutomationAppCredentials.tsx`、`components/AutomationApplication.tsx`：凭证设置和手动恢复入口。
+- `features/automation/runtime/automation-checkpoints.ts`、`features/automation/runtime/automation-app-runtime.ts`：检查点边界、恢复与写入跟踪。
+- `features/automation/runtime/automation-app-browser-runtime.ts`、`desktop/src-tauri/src/app-browser.js`、`desktop/src-tauri/src/automation_browser.rs`：浏览器授权、上下文和原生文件控件。
+- `features/automation/ui/AutomationAppCredentials.tsx`、`features/automation/ui/AutomationApplication.tsx`：凭证设置和手动恢复入口。
 
 精确参数及使用约定见 `docs/automation-sdk-reference.md`。模型从 `eureka_automation_task {sdkSection:"http"}`、`{sdkSection:"checkpoints"}`、`{sdkSection:"browser"}` 分章读取。
 

@@ -6,8 +6,8 @@ import { basename, dirname, join } from "path";
 import { promisify } from "util";
 import { fileURLToPath, pathToFileURL } from "url";
 import { NextResponse } from "next/server";
-import { authorizeCreationSessionId } from "@/lib/automation-creation-auth";
-import { resolveSessionPath } from "@/lib/session-reader";
+import { authorizeCreationSessionId } from "@/features/automation/authoring/automation-creation-auth";
+import { resolveSessionPath } from "@/features/sessions/server/session-reader";
 
 const execFileAsync = promisify(execFile);
 

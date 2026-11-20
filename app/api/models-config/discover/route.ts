@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { discoverModelsFromProvider } from "@/lib/model-discovery-client";
+import { discoverModelsFromProvider } from "@/features/settings/shared/model-discovery-client";
 
 export const dynamic = "force-dynamic";
 

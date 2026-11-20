@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAllowedFileRoots, isExistingFilePathAllowed, isFilePathAllowed, isWindowsAbsolutePath } from "@/lib/file-access";
-import { getGitFileDiff } from "@/lib/git-changes";
+import { getAllowedFileRoots, isExistingFilePathAllowed, isFilePathAllowed, isWindowsAbsolutePath } from "@/features/files/server/file-access";
+import { getGitFileDiff } from "@/features/files/server/git-changes";
 
 export async function GET(request: NextRequest) {
   try {

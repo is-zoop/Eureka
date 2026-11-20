@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { runNpx } from "@/lib/npx";
 import type { SkillInstallScope } from "@/lib/api-types";
-import { buildSkillUpdateArgs } from "@/lib/skill-updates";
-import { loadSkillsWithInstallInfo } from "@/lib/skills-service";
-import { getAllowedFileRoots, isExistingFilePathAllowed } from "@/lib/file-access";
+import { buildSkillUpdateArgs } from "@/server/extensions/skill-updates";
+import { loadSkillsWithInstallInfo } from "@/server/extensions/skills-service";
+import { getAllowedFileRoots, isExistingFilePathAllowed } from "@/features/files/server/file-access";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { getProjectTrustStatus } from "@/lib/project-trust";
 

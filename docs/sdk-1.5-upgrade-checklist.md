@@ -116,7 +116,7 @@ SDK 的终端界面优化不会自动成为 Eureka 的网页或桌面界面功�
 
 - 状态：已完成。
 - 问题与复现：环境变量请求头测试使用默认用户认证目录，SDK 初始化可用性检查尝试创建真实 `auth.json.lock`，被沙箱权限拒绝；认证解析并不需要先检查所有服务商。
-- 处理范围：修改 `lib/model-discovery-auth.ts` 和 `lib/model-discovery.test.mjs`。
+- 处理范围：修改 `server/models/model-discovery-auth.ts` 和 `tests/settings/model-discovery.test.mjs`。
 - 修改结果：认证解析创建运行时时显式设置 `allowModelNetwork: false`、`refreshOnCreate: false`，由 `getAuth()` 按需解析目标凭证；测试通过 `PI_CODING_AGENT_DIR` 隔离认证文件，并在结束后恢复环境变量、清理临时目录。
 - 自动化验证：模型发现、凭证存储、API Key 接口、模型配置存储、模型缓存、模型范围、SDK 集成及 C01 上下文用量共 53 项测试全部通过；类型检查和修改文件的 lint 通过。
 - 已验证行为：无 API Key 的环境变量请求头；环境变量 API Key 与插值请求头；已保存密钥优先于配置密钥；认证读取不改写测试凭证文件；OpenAI、Anthropic、Google 的认证请求头；显式 Authorization 保留；缺失环境变量时在上游请求前报错；自动发现的命令凭证检测仍正常。
@@ -129,7 +129,7 @@ SDK 的终端界面优化不会自动成为 Eureka 的网页或桌面界面功�
 
 - 状态：已完成，范围为当前 Eureka 工具、已集成 MCP 适配器及代表性第三方扩展加载与调用。
 - 核查结果：当前 Eureka 工具和 `pi-mcp-adapter` 未发现需要迁移的 `Type.Refine`、Codec、BigInt、Undefined、Void 或自定义 TypeBox Format 定义；当前生产校验逻辑无需修改。
-- 处理范围：新增 `lib/tool-schema-sdk.integration.test.mjs`，使用真实 SDK `runToolCall()`、Agent 工具循环和扩展加载器验证参数校验，不改写 SDK 或第三方依赖文件。
+- 处理范围：新增 `tests/chat/tool-schema-sdk.integration.test.mjs`，使用真实 SDK `runToolCall()`、Agent 工具循环和扩展加载器验证参数校验，不改写 SDK 或第三方依赖文件。
 - 已验证行为：TypeBox 与普通 JSON Schema 的数字和布尔字符串转换、单值转数组、可选 null 移除；必填字段、数值范围、枚举、额外字段、引用和字面属性名校验；原始调用参数不被修改；转换后仍执行权限钩子；非法调用不执行工具。
 - 错误恢复：真实 Agent 循环收到校验错误后提交修正参数，工具只执行一次。
 - 第三方扩展：临时 TypeScript 扩展从 `@earendil-works/pi-ai` 导入旧式 `Type`，通过 SDK 扩展加载器和注册工具包装器完成调用。
@@ -156,7 +156,7 @@ SDK 1.5 按 JSON Schema 校验工具参数，不调用 TypeBox 私有回调。�
 
 - 状态：已完成。
 - 实际问题：SDK 1.5 的 `agent.state.systemPrompt` 为只读属性。原有计划模式切换、关闭全部工具和自动化运行后恢复逻辑直接赋值，真实 SDK 测试复现了 `Cannot set property systemPrompt ... which has only a getter`。
-- 处理范围：修改 `lib/rpc-manager.ts`、`lib/pi-types.ts` 和进度测试；新增 `lib/session-prompt-policy.ts`、`lib/extension-lifecycle-sdk.integration.test.mjs`，同步 `AGENTS.md` 的 SDK 约定。
+- 处理范围：修改 `server/agent/rpc-manager.ts`、`lib/pi-types.ts` 和进度测试；新增 `server/agent/session-prompt-policy.ts`、`tests/extensions/extension-lifecycle-sdk.integration.test.mjs`，同步 `AGENTS.md` 的 SDK 约定。
 - 修改结果：计划及评审指令由 `before_agent_start` 返回，结束后由 SDK 恢复下一运行的基础指令；自动化完成只恢复工具和解除任务绑定；禁用工具策略使用可跨热重载保留的弱引用集合，并在最后一个宿主启动钩子中清空工具和指令；系统提示类型标记为只读以防再次误写。
 - 普通与扩展消息：真实 SDK 覆盖 `messageType: "user"` 和 `messageType: "custom"`；每次启动只准备一次，进度指令不重复追加；`nextTurn` 消息不会额外启动一次模型请求。
 - 启动并发与取消：异步启动期间会话为忙状态；扩展排队消息进入现有运行；启动期间取消不发送模型请求，也不触发自动计划续跑。
@@ -236,16 +236,16 @@ SDK 1.5 按 JSON Schema 校验工具参数，不调用 TypeBox 私有回调。�
 ## 四 参考资料
 
 - [SDK 变更记录](../node_modules/@earendil-works/pi-coding-agent/CHANGELOG.md)：以本地安装的 `1.5.0` 为准，需要先安装依赖。
-- [服务商与 SDK 集成测试](../lib/provider-sdk.integration.test.mjs)。
-- [工具参数与第三方扩展兼容测试](../lib/tool-schema-sdk.integration.test.mjs)。
-- [扩展与自动化生命周期兼容测试](../lib/extension-lifecycle-sdk.integration.test.mjs)。
-- [上下文编辑兼容测试](../lib/session-context-edit.test.mjs)。
-- [Kimi 协议与接口测试](../lib/kimi-sdk.integration.test.mjs)。
-- [认证生命周期契约测试](../lib/provider-auth-lifecycle-sdk.integration.test.mjs)。
+- [服务商与 SDK 集成测试](../tests/models/provider-sdk.integration.test.mjs)。
+- [工具参数与第三方扩展兼容测试](../tests/chat/tool-schema-sdk.integration.test.mjs)。
+- [扩展与自动化生命周期兼容测试](../tests/extensions/extension-lifecycle-sdk.integration.test.mjs)。
+- [上下文编辑兼容测试](../tests/sessions/session-context-edit.test.mjs)。
+- [Kimi 协议与接口测试](../tests/shared/kimi-sdk.integration.test.mjs)。
+- [认证生命周期契约测试](../tests/models/provider-auth-lifecycle-sdk.integration.test.mjs)。
 - [原生 MCP 实测及替换评估](sdk-1.5-mcp-assessment.md)。
 - [桌面 SDK 依赖复制实现与测试](../desktop/scripts/sdk-resources.mjs)。
-- [澄清与真实工具循环测试](../lib/clarification.test.mjs)。
-- [提示提交与关闭流程测试](../lib/rpc-manager-shutdown.test.mjs)。
+- [澄清与真实工具循环测试](../tests/chat/clarification.test.mjs)。
+- [提示提交与关闭流程测试](../tests/agent/rpc-manager-shutdown.test.mjs)。
 - [桌面安装与升级验收](upgrade-acceptance.md)。
 
 本轮测试日志保存在被 Git 忽略的 `.tmp/sdk-upgrade/`，属于本地诊断材料，不作为长期验收记录或发布附件。

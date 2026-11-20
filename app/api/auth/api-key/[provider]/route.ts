@@ -1,7 +1,7 @@
-import { getProviderModelRuntime } from "@/lib/provider-model-runtime";
+import { getProviderModelRuntime } from "@/server/models/provider-model-runtime";
 import { NextResponse } from "next/server";
-import { invalidateModelsCache } from "@/lib/models-cache";
-import { removeStoredCredentialIfType, storeProviderCredential } from "@/lib/provider-credential-store";
+import { invalidateModelsCache } from "@/server/models/models-cache";
+import { removeStoredCredentialIfType, storeProviderCredential } from "@/server/models/provider-credential-store";
 
 export const dynamic = "force-dynamic";
 

@@ -6,7 +6,7 @@
 
 ## 本地上下文
 
-`lib/automation-local-context.ts` 在 agent 目录保存 `eureka-local-automation.json`，包含随机 `workspaceId` 和存储命名空间 `ownerKey`，不含登录凭证。首次初始化使用完整临时文件及不可覆盖的链接发布，避免多个进程初始化出不同上下文。
+`features/automation/runtime/automation-local-context.ts` 在 agent 目录保存 `eureka-local-automation.json`，包含随机 `workspaceId` 和存储命名空间 `ownerKey`，不含登录凭证。首次初始化使用完整临时文件及不可覆盖的链接发布，避免多个进程初始化出不同上下文。
 
 API 保留原有 `ownerKey`、`runtimeId` 字段以兼容前端和原生浏览器；本地接口中的 `runtimeId` 现在是持久化的 `workspaceId`，不是 Haze 登录代次。重置工作区仍会使旧操作失效。运行还保留进程、租约、版本、停止状态、文件授权和网页操作授权校验。
 
@@ -36,6 +36,6 @@ API 保留原有 `ownerKey`、`runtimeId` 字段以兼容前端和原生浏览�
 
 ## 加载回归验证
 
-`lib/extension-catalog-cache.test.mjs` 和 `lib/extension-catalog-routes.test.mjs` 覆盖请求合并、TTL、容量预算、手动刷新、收藏失效、账号/issuer 隔离及缓存命中后的权限撤销。正常目录读取在登记文件已被其他写入锁定时仍可完成。
+`tests/extensions/extension-catalog-cache.test.mjs` 和 `tests/extensions/extension-catalog-routes.test.mjs` 覆盖请求合并、TTL、容量预算、手动刷新、收藏失效、账号/issuer 隔离及缓存命中后的权限撤销。正常目录读取在登记文件已被其他写入锁定时仍可完成。
 
-`lib/automation-local.integration.test.mjs` 使用隔离临时目录，覆盖旧目录读取与修改、旧任务恢复、真实本地 worker、聊天逐步执行、云端登录变化、工作区重置、同 ID 冲突、目录联接拒绝以及未登录不能发布。测试不调用真实模型、业务网站或云端发布接口。
+`tests/automation/automation-local.integration.test.mjs` 使用隔离临时目录，覆盖旧目录读取与修改、旧任务恢复、真实本地 worker、聊天逐步执行、云端登录变化、工作区重置、同 ID 冲突、目录联接拒绝以及未登录不能发布。测试不调用真实模型、业务网站或云端发布接口。

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { mkdirSync } from "fs";
 import { homedir } from "os";
 import { join } from "path";
-import { allowFileRoot } from "@/lib/file-access";
+import { allowFileRoot } from "@/features/files/server/file-access";
 
 // POST /api/default-cwd
 // Creates ~/Eureka if it doesn't exist and returns the path.

@@ -1,10 +1,10 @@
-import { appFailure, appJson, automationAppAccess, readAppRequest } from "@/lib/automation-app-server";
-import { AutomationAppError } from "@/lib/automation-app-package";
-import { isAppId } from "@/lib/automation-app";
-import { hazePublishingClient } from "@/lib/haze-publishing";
+import { appFailure, appJson, automationAppAccess, readAppRequest } from "@/features/automation/runtime/automation-app-server";
+import { AutomationAppError } from "@/features/automation/runtime/automation-app-package";
+import { isAppId } from "@/features/automation/shared/automation-app";
+import { hazePublishingClient } from "@/server/extensions/haze-publishing";
 import { hasJsonContentType } from "@/lib/request-security";
 import { readAuthSession } from "@/lib/auth/session";
-import { hazeAutomationAccess } from "@/lib/automation-access";
+import { hazeAutomationAccess } from "@/features/automation/runtime/automation-access";
 import { join } from "node:path";
 
 export const dynamic = "force-dynamic";

@@ -1,4 +1,4 @@
-import { generatedImageAccess, generatedImageFailure, ImageGenerationError } from "@/lib/generated-image-api";
+import { generatedImageAccess, generatedImageFailure, ImageGenerationError } from "@/features/chat/server/generated-image-api";
 export const dynamic = "force-dynamic";
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {

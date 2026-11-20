@@ -1,6 +1,6 @@
-import { appFailure, appJson, automationAppAccess } from "@/lib/automation-app-server";
-import { AutomationAppError } from "@/lib/automation-app-package";
-import { syncOrganizationAutomations } from "@/lib/haze-automation-install";
+import { appFailure, appJson, automationAppAccess } from "@/features/automation/runtime/automation-app-server";
+import { AutomationAppError } from "@/features/automation/runtime/automation-app-package";
+import { syncOrganizationAutomations } from "@/features/automation/publication/haze-automation-install";
 export const dynamic = "force-dynamic";
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {

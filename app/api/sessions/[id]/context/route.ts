@@ -1,9 +1,9 @@
-import { readClarificationState } from "@/lib/clarification";
-import { authorizeCreationSessionId } from "@/lib/automation-creation-auth";
+import { readClarificationState } from "@/features/chat/shared/clarification";
+import { authorizeCreationSessionId } from "@/features/automation/authoring/automation-creation-auth";
 import { NextResponse } from "next/server";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
-import { resolveSessionPath, buildSessionContext, buildSessionHistory, SessionHistoryCursorError } from "@/lib/session-reader";
-import { getRpcSession } from "@/lib/rpc-manager";
+import { resolveSessionPath, buildSessionContext, buildSessionHistory, SessionHistoryCursorError } from "@/features/sessions/server/session-reader";
+import { getRpcSession } from "@/server/agent/rpc-manager";
 
 export async function GET(
   req: Request,

@@ -102,5 +102,5 @@
 
 ```powershell
 cd E:\Eureka
-node --test lib/automation-app-version.test.mjs lib/automation-app-store.test.mjs
+node --test tests/automation/automation-app-version.test.mjs tests/automation/automation-app-store.test.mjs
 ```

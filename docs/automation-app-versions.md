@@ -10,4 +10,4 @@
 
 应用配置、业务文件、浏览器环境和登录态仍属于同一个应用，旧版本的文件授权会继续校验代码摘要。组织插件保持由安装来源选择有效版本，不提供个人应用的历史切换入口。
 
-回归覆盖：`lib/automation-app-version-scope.test.mjs`、`lib/automation-app-runtime.test.mjs`、`lib/automation-authoring-write.integration.test.mjs`。
+回归覆盖：`tests/automation/automation-app-version-scope.test.mjs`、`tests/automation/automation-app-runtime.test.mjs`、`tests/automation/automation-authoring-write.integration.test.mjs`。

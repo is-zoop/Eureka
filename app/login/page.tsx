@@ -1,7 +1,7 @@
-import { NotificationNotice } from "@/components/Notifications";
+import { NotificationNotice } from "@/features/workspace/ui/Notifications";
 import { Card, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { HazeLoginButton } from "@/components/HazeLoginButton";
-import { DesktopStartupReady } from "@/components/DesktopStartupReady";
+import { HazeLoginButton } from "@/features/workspace/ui/HazeLoginButton";
+import { DesktopStartupReady } from "@/features/workspace/ui/DesktopStartupReady";
 import { isSafeReturnTo } from "@/lib/auth/session";
 
 const errors: Record<string, string> = {

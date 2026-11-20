@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Eureka</title>
+  <link rel="stylesheet" href="completion.css">
+  <script defer src="completion.js"></script>
+</head>
+<body>
+  <article id="card" class="card" aria-labelledby="task-title" hidden>
+    <header class="card-header">
+      <h1 id="task-title" class="task-title"></h1>
+      <button id="dismiss" class="dismiss" type="button">×</button>
+    </header>
+    <p id="summary" class="summary"></p>
+    <form id="reply-form" class="reply-form">
+      <input id="reply" type="text" maxlength="2000" autocomplete="off" required>
+      <button id="send" type="submit" disabled></button>
+    </form>
+    <p id="reply-status" class="reply-status" role="status"></p>
+  </article>
+</body>
+</html>

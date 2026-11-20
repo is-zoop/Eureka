@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import { authorizeCreationSessionId } from "@/lib/automation-creation-auth";
-import { getRpcSession } from "@/lib/rpc-manager";
-import { resolveSessionPath } from "@/lib/session-reader";
+import { authorizeCreationSessionId } from "@/features/automation/authoring/automation-creation-auth";
+import { getRpcSession } from "@/server/agent/rpc-manager";
+import { resolveSessionPath } from "@/features/sessions/server/session-reader";
 
 export async function GET(
   _req: Request,

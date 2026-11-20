@@ -1,15 +1,15 @@
-import { requiresCloudPluginSelection } from "@/lib/plugin-selection";
+import { requiresCloudPluginSelection } from "@/features/extensions/shared/plugin-selection";
 import { readAuthSession } from "@/lib/auth/session";
 import { NextResponse } from "next/server";
-import { automationAccess } from "@/lib/automation-access";
-import { parseAutomationTaskRef } from "@/lib/automation-mode";
-import { assertAutomationTaskIdentity } from "@/lib/automation-mode-store";
+import { automationAccess } from "@/features/automation/runtime/automation-access";
+import { parseAutomationTaskRef } from "@/features/automation/shared/automation-mode";
+import { assertAutomationTaskIdentity } from "@/features/automation/runtime/automation-mode-store";
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import { existsSync } from "fs";
 import { randomUUID } from "crypto";
-import { allowFileRoot } from "@/lib/file-access";
-import { invalidateSessionListCache } from "@/lib/session-reader";
-import { startRpcSession } from "@/lib/rpc-manager";
+import { allowFileRoot } from "@/features/files/server/file-access";
+import { invalidateSessionListCache } from "@/features/sessions/server/session-reader";
+import { startRpcSession } from "@/server/agent/rpc-manager";
 
 const THINKING_LEVELS = new Set<ThinkingLevel>(["off", "minimal", "low", "medium", "high", "xhigh", "max"]);
 

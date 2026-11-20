@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { generatedImageAccess, generatedImageFailure, ImageGenerationError } from "@/lib/generated-image-api";
-import { getProviderModelRuntime } from "@/lib/provider-model-runtime";
+import { generatedImageAccess, generatedImageFailure, ImageGenerationError } from "@/features/chat/server/generated-image-api";
+import { getProviderModelRuntime } from "@/server/models/provider-model-runtime";
 export const dynamic = "force-dynamic";
 export async function GET(request: Request) {
   try {

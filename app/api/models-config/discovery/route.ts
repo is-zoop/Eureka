@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { readModelDiscoveryState, refreshConfiguredProvider, setModelDiscoveryEnabled } from "@/lib/model-discovery-refresh";
+import { readModelDiscoveryState, refreshConfiguredProvider, setModelDiscoveryEnabled } from "@/server/models/model-discovery-refresh";
 
 export const dynamic = "force-dynamic";
 

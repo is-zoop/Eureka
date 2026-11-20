@@ -1,11 +1,11 @@
-import { appFailure, appJson, automationAppAccess, readAppRequest } from "@/lib/automation-app-server";
-import { AutomationAppError, parseAutomationAppArchive } from "@/lib/automation-app-package";
-import { isAppId } from "@/lib/automation-app";
-import { PublicationStore } from "@/lib/automation-publication-store";
-import { AutomationPublication } from "@/lib/automation-publication-service";
-import { hazePublishingClient, readPublishContext } from "@/lib/haze-publishing";
+import { appFailure, appJson, automationAppAccess, readAppRequest } from "@/features/automation/runtime/automation-app-server";
+import { AutomationAppError, parseAutomationAppArchive } from "@/features/automation/runtime/automation-app-package";
+import { isAppId } from "@/features/automation/shared/automation-app";
+import { PublicationStore } from "@/features/automation/publication/automation-publication-store";
+import { AutomationPublication } from "@/features/automation/publication/automation-publication-service";
+import { hazePublishingClient, readPublishContext } from "@/server/extensions/haze-publishing";
 import { hasJsonContentType } from "@/lib/request-security";
-import { hazeAutomationAccess } from "@/lib/automation-access";
+import { hazeAutomationAccess } from "@/features/automation/runtime/automation-access";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";

@@ -166,7 +166,7 @@ v0.73 更新 v0.72 中“切换会话、隐藏网页、刷新会取消”的旧�
 
 ```powershell
 cd E:\Eureka
-node --test lib/automation-authoring.test.mjs lib/automation-app-browser.test.mjs
+node --test tests/automation/automation-authoring.test.mjs tests/automation/automation-app-browser.test.mjs
 .\node_modules\.bin\tsc.cmd --noEmit
 ```
 
@@ -181,12 +181,12 @@ node --test lib/automation-authoring.test.mjs lib/automation-app-browser.test.mj
 本轮仅修改服务端，无需重编译桌面程序。开发者未运行编译或测试。用户重启根目录 `npm run dev`、刷新后，可在原对话要求“使用现有草稿重新试运行并校验，不要重新生成代码”，确认查询、结果及停止功能仍正常；若失败，反馈完整错误提示。以下回归源码由用户按需执行：
 
 ```powershell
-node --test lib/automation-node-runtime.test.mjs lib/automation-app-store.test.mjs
+node --test tests/automation/automation-node-runtime.test.mjs tests/automation/automation-app-store.test.mjs
 ```
 
 ```powershell
 cd E:\Eureka
-node --test lib/automation-authoring.test.mjs lib/automation-mode.test.mjs
+node --test tests/automation/automation-authoring.test.mjs tests/automation/automation-mode.test.mjs
 .\node_modules\.bin\tsc.cmd --noEmit
 ```
 

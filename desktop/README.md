@@ -13,7 +13,7 @@ preparation synchronize automatically. Release identity is **Eureka** /
 
 The Rust updater exposes `desktop_update_state`, `desktop_update_check`,
 `desktop_update_download` and `desktop_update_install`. The typed frontend bridge
-is `lib/desktop-updater.ts`; changes are emitted only to `eureka-content` as
+is `features/workspace/platform/desktop-updater.ts`; changes are emitted only to `eureka-content` as
 `desktop-update-state`. The updater is disabled in debug/development builds.
 Only the loopback content view has permission; website views and the titlebar do
 not receive updater access or general updater-plugin permissions.

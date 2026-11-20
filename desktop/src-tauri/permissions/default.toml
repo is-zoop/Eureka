@@ -67,3 +67,13 @@ commands.allow = ["set_desktop_menu_state", "desktop_close_menu", "desktop_cycle
 identifier = "allow-desktop-tray-popup"
 description = "Allows only the packaged tray popup to read its menu and perform predefined tray actions."
 commands.allow = ["desktop_tray_snapshot", "desktop_tray_action"]
+
+[[permission]]
+identifier = "allow-desktop-completion-content"
+description = "Allows the Eureka content view to submit completion cards and acknowledge replies."
+commands.allow = ["desktop_task_completed", "desktop_completion_reply_result"]
+
+[[permission]]
+identifier = "allow-desktop-completion-popup"
+description = "Allows the packaged notification view to report readiness, send replies and dismiss its card."
+commands.allow = ["desktop_completion_ready", "desktop_completion_dismiss", "desktop_completion_reply"]
