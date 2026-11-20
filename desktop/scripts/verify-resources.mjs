@@ -15,9 +15,10 @@ async function unusedLocalPort() {
 /** Verify the actual packaged server without logging in or running a task. */
 export async function verifyStandaloneResources(appDirectory, nodeExecutable, timeoutMs = 30000) {
   const port = await unusedLocalPort();
+  const startupId = randomBytes(16).toString("hex");
   const child = spawn(nodeExecutable, ["server.js"], {
     cwd: appDirectory, windowsHide: true,
-    env: { ...withoutSigningSecrets(process.env), EUREKA_AUTH_SESSION_SECRET: randomBytes(32).toString("hex"), NODE_ENV: "production", HOSTNAME: "127.0.0.1", PORT: String(port), PI_WEB_NO_OPEN: "1" },
+    env: { ...withoutSigningSecrets(process.env), EUREKA_AUTH_SESSION_SECRET: randomBytes(32).toString("hex"), EUREKA_DESKTOP_STARTUP_ID: startupId, NODE_ENV: "production", HOSTNAME: "127.0.0.1", PORT: String(port), PI_WEB_NO_OPEN: "1" },
     stdio: ["ignore", "pipe", "pipe"],
   });
   let output = "", startupError;
@@ -38,6 +39,11 @@ export async function verifyStandaloneResources(appDirectory, nodeExecutable, ti
     if (!login) throw new Error("Packaged server startup timed out.");
     await login.arrayBuffer();
     if (login.status !== 200) throw new Error(`Packaged login page returned HTTP ${login.status}.`);
+    const ready = await fetch(`${base}/api/desktop-startup`, { redirect: "manual", signal: AbortSignal.timeout(5000) });
+    await ready.arrayBuffer();
+    if (ready.status !== 204 || ready.headers.get("x-eureka-startup-id") !== startupId) {
+      throw new Error(`Packaged readiness probe returned HTTP ${ready.status} without the expected startup identity.`);
+    }
     const root = await fetch(base, { redirect: "manual", signal: AbortSignal.timeout(5000) });
     await root.arrayBuffer();
     if (![200, 307, 308].includes(root.status)) throw new Error(`Packaged homepage returned HTTP ${root.status}.`);

@@ -1,4 +1,9 @@
 [[permission]]
+identifier = "allow-desktop-startup-retry"
+description = "Allows the packaged startup error page to retry a failed desktop launch."
+commands.allow = ["desktop_startup_retry"]
+
+[[permission]]
 identifier = "allow-desktop-updater"
 description = "Allows only the bundled content view to check, download and explicitly install signed application updates."
 commands.allow = ["desktop_update_state", "desktop_update_check", "desktop_update_download", "desktop_update_install"]

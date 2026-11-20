@@ -149,6 +149,14 @@ take priority over the operating system; auto follows system changes. Reduced
 motion keeps a gentle logo/halo animation and a slower loading indicator instead
 of freezing the startup page.
 
+The installed host waits for the bundled Node process to return its launch ID
+over loopback HTTP. A login page or workspace that has mounted in the content
+WebView completes startup. After two unsuccessful page loads, the packaged
+error page offers a retry and reuses a healthy bundled service when available.
+The rotating `startup.log` links the host and Node PIDs to server readiness,
+navigation and WebView process failures. It also records the window bounds
+when the caption shows the window and when the page reports readiness.
+
 The top five pixels of the local caption forward resize drags to the native
 window, including both upper corners. This keeps the caption WebView from
 blocking the frameless window's top sizing edge. Resize regions are disabled

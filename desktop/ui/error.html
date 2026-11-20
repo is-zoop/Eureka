@@ -8,13 +8,17 @@
       body { background: #111827; color: #f9fafb; font: 16px system-ui, sans-serif; margin: 0; display: grid; min-height: 100vh; place-items: center; }
       main { max-width: 34rem; padding: 2rem; } h1 { margin-top: 0; } p { color: #d1d5db; line-height: 1.6; }
       code { background: #1f2937; padding: .15rem .35rem; border-radius: .25rem; }
+      button { border: 1px solid #64748b; border-radius: .5rem; color: inherit; background: #1f2937; font: inherit; padding: .5rem 1rem; cursor: pointer; }
+      button:disabled { opacity: .65; cursor: wait; }
     </style>
   </head>
   <body>
     <main>
-      <h1>Eureka 服务未能启动</h1>
-      <p>请关闭 Eureka 后重试。如果问题持续存在，请查看应用数据目录中的 <code>logs/eureka.log</code>。</p>
-      <p>此应用会继续兼容您现有的 Pi 会话与配置；错误不会修改这些数据。</p>
+      <h1 id="startup-error">Eureka 未能完成启动</h1>
+      <p>可在这里重试。如果问题持续出现，请查看应用日志目录中的 <code>startup.log</code> 和 <code>eureka.log</code>。</p>
+      <button id="startup-retry" type="button">重试启动</button>
+      <p id="startup-status" role="status"></p>
     </main>
+    <script src="startup-error.js" defer></script>
   </body>
 </html>

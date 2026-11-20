@@ -1,6 +1,7 @@
 import { NotificationNotice } from "@/components/Notifications";
 import { Card, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { HazeLoginButton } from "@/components/HazeLoginButton";
+import { DesktopStartupReady } from "@/components/DesktopStartupReady";
 import { isSafeReturnTo } from "@/lib/auth/session";
 
 const errors: Record<string, string> = {
@@ -16,7 +17,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
   const { returnTo, error, desktop } = await searchParams;
   const target = isSafeReturnTo(returnTo) ? returnTo : "/";
   if (desktop === "success" || desktop === "failed") {
-    return <main className="eureka-login-page"><Card className="relative w-full max-w-sm"><CardHeader><CardTitle>{desktop === "success" ? "Haze 授权已完成" : "Haze 授权未完成"}</CardTitle><CardDescription>{desktop === "success" ? "请返回 Eureka 桌面端，应用会自动继续。你可以关闭此浏览器页面。" : "请返回 Eureka 桌面端重新发起登录。你可以关闭此浏览器页面。"}</CardDescription></CardHeader></Card></main>;
+    return <main className="eureka-login-page"><DesktopStartupReady page="login" /><Card className="relative w-full max-w-sm"><CardHeader><CardTitle>{desktop === "success" ? "Haze 授权已完成" : "Haze 授权未完成"}</CardTitle><CardDescription>{desktop === "success" ? "请返回 Eureka 桌面端，应用会自动继续。你可以关闭此浏览器页面。" : "请返回 Eureka 桌面端重新发起登录。你可以关闭此浏览器页面。"}</CardDescription></CardHeader></Card></main>;
   }
-  return <main className="eureka-login-page"><Card className="relative w-full max-w-sm"><CardHeader><CardTitle>登录 Eureka</CardTitle><CardDescription>登录以使用Haze企业扩展</CardDescription></CardHeader><NotificationNotice message={error ? errors[error] ?? "登录暂时不可用，请重试。" : null} type="error" /><CardFooter className="flex-col gap-3 pt-2"><HazeLoginButton returnTo={target} /></CardFooter></Card></main>;
+  return <main className="eureka-login-page"><DesktopStartupReady page="login" /><Card className="relative w-full max-w-sm"><CardHeader><CardTitle>登录 Eureka</CardTitle><CardDescription>登录以使用Haze企业扩展</CardDescription></CardHeader><NotificationNotice message={error ? errors[error] ?? "登录暂时不可用，请重试。" : null} type="error" /><CardFooter className="flex-col gap-3 pt-2"><HazeLoginButton returnTo={target} /></CardFooter></Card></main>;
 }
