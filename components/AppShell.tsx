@@ -12,6 +12,7 @@ import { useGlobalKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { SessionSidebar } from "./SessionSidebar";
 import { AppNavigation, type AppView } from "./AppNavigation";
 import { DesktopUpdateButton } from "./DesktopUpdateButton";
+import { DesktopStartupReady } from "./DesktopStartupReady";
 import type { AutomationAppDetailsRequest } from "./AutomationAppDetails";
 import { AutomationAuthoringBrowserHost } from "./AutomationAuthoringBrowserHost";
 import { LabelTooltip } from "./LabelTooltip";
@@ -1802,6 +1803,7 @@ export function AppShell({ initialGuest = false }: { initialGuest?: boolean }) {
 
   return (
     <>
+    <DesktopStartupReady page="workspace" />
     <AutomationAuthoringBrowserHost active={!authenticatedUserLoading&&mainView==="chat"} sessionId={selectedSession?.id??null} controls={automationBrowserControls} nativeSpec={automationNativeBrowser} visible={homeNativeBrowser&&automationBrowserOpen&&!settingsOpen&&!projectTrustDialogOpen} taskState={automationTaskState} onOpenBrowser={(id,native)=>{const reuse=sameNativeBrowser(native,automationNativeBrowser);if(reuse&&["stopped","error"].includes(automationTaskState.phase))automationBrowserControls.current?.restart();if(!reuse)setAutomationTaskState({phase:"opening"});setAuthoringSessionId(selectedSession?.id??null);setAutomationBrowserId(id);setAutomationNativeBrowser(current=>sameNativeBrowser(current,native)?current:native??null);setAutomationBrowserOpen(true);}}/>
     <style>{`
       @media (max-width: 640px) {

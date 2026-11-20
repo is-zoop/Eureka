@@ -24,11 +24,29 @@ test("packaging retains server chunks omitted from the standalone trace and reje
   } finally { f.cleanup(); }
 });
 
-test("resource check accepts a login page and homepage redirect without authenticating", async () => {
+test("resource check accepts the bundled startup identity, login page and homepage redirect", async () => {
   const f = fixture();
   try {
-    f.write("server.js", 'require("node:http").createServer((req,res)=>{res.statusCode=req.url==="/login"?200:307;if(req.url!=="/login")res.setHeader("location","/login");res.end("login");}).listen(Number(process.env.PORT),"127.0.0.1");');
+    f.write("server.js", `require("node:http").createServer((req, res) => {
+      if (req.url === "/api/desktop-startup") {
+        res.writeHead(204, { "X-Eureka-Startup-Id": process.env.EUREKA_DESKTOP_STARTUP_ID });
+      } else if (req.url !== "/login") {
+        res.writeHead(307, { location: "/login" });
+      }
+      res.end();
+    }).listen(Number(process.env.PORT), "127.0.0.1");`);
     await verifyStandaloneResources(f.root, process.execPath, 5000);
+  } finally { f.cleanup(); }
+});
+
+test("resource check rejects a healthy login page with a mismatched startup identity", async () => {
+  const f = fixture();
+  try {
+    f.write("server.js", `require("node:http").createServer((req, res) => {
+      if (req.url === "/api/desktop-startup") res.writeHead(204, { "X-Eureka-Startup-Id": "0".repeat(32) });
+      res.end();
+    }).listen(Number(process.env.PORT), "127.0.0.1");`);
+    await assert.rejects(verifyStandaloneResources(f.root, process.execPath, 5000), /expected startup identity/);
   } finally { f.cleanup(); }
 });
 

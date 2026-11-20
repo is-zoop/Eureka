@@ -128,7 +128,9 @@ fn diagnostic(app: &tauri::AppHandle, message: &str) {
             .chars()
             .take(1600)
             .collect();
-        let _ = writeln!(file, "{timestamp} {message}");
+        let startup = crate::desktop_startup::current_id(app);
+        let startup = startup.as_deref().unwrap_or("unknown");
+        let _ = writeln!(file, "{timestamp} {message} startup={startup} host_pid={}", std::process::id());
     }
 }
 

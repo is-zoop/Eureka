@@ -3,6 +3,7 @@
 #[cfg(windows)]
 mod browser_opener;
 mod desktop_menu;
+mod desktop_startup;
 mod desktop_tray;
 mod tray_dismissal;
 mod clipboard_files;
@@ -20,14 +21,11 @@ mod updater_network;
 mod session_secret;
 
 use std::{
-    fs::{create_dir_all, File, OpenOptions},
-    io::Write,
-    net::TcpStream,
+    fs::{create_dir_all, File},
     path::PathBuf,
     process::{Child, Command, Stdio},
     sync::Mutex,
     thread,
-    time::{Duration, Instant},
 };
 
 use serde::Serialize;
@@ -122,12 +120,17 @@ use windows_sys::Win32::{
 const CREATE_NO_WINDOW: u32 = 0x08000000;
 
 struct SidecarState {
-    child: Mutex<Option<Child>>,
+    child: Mutex<Option<BundledSidecar>>,
     // Closing a Windows Job Object terminates every process it owns. This
     // covers uninstaller-forced shutdowns, where Rust's normal exit handler
     // cannot run and an orphaned node.exe would otherwise lock resources/.
     #[cfg(windows)]
     job: Mutex<Option<JobObject>>,
+}
+
+struct BundledSidecar {
+    process: Child,
+    startup_id: String,
 }
 
 #[cfg(windows)]
@@ -144,13 +147,6 @@ impl Drop for JobObject {
     fn drop(&mut self) {
         unsafe { CloseHandle(self.0) };
     }
-}
-
-fn is_service_ready(address: &str) -> bool {
-    // Next starts listening only once its server is ready. Do not make a raw
-    // HTTP/1.1 probe here: differences in Next's production response parsing
-    // made that probe report a false negative despite a healthy local server.
-    TcpStream::connect_timeout(&address.parse().unwrap(), Duration::from_millis(500)).is_ok()
 }
 
 #[cfg(windows)]
@@ -180,7 +176,15 @@ async fn desktop_window_action(
     }
     let window = webview.window();
     match action.as_str() {
-        "ready" => window.show(),
+        "ready" => {
+            let result = window.show();
+            if result.is_ok() {
+                desktop_startup::record_surface(&window, "window_shown");
+            } else {
+                desktop_startup::record(window.app_handle(), "window_show_failed");
+            }
+            result
+        }
         "minimize" => window.minimize(),
         "maximize" => {
             if window.is_maximized().map_err(|error| error.to_string())? {
@@ -495,12 +499,6 @@ fn assign_sidecar_job(child: &Child) -> Result<JobObject, String> {
     }
 }
 
-fn append_log(log_path: &PathBuf, message: &str) {
-    if let Ok(mut log) = OpenOptions::new().create(true).append(true).open(log_path) {
-        let _ = writeln!(log, "{message}");
-    }
-}
-
 fn layout_webviews(window: &tauri::Window) {
     let Ok(size) = window.inner_size() else {
         return;
@@ -617,6 +615,7 @@ fn create_window(app: &tauri::AppHandle) -> Result<(), String> {
             "window.__EUREKA_NATIVE_TITLEBAR__ = true; document.addEventListener('DOMContentLoaded', function(){document.documentElement.classList.add('eureka-desktop','eureka-native-titlebar')}, {once:true});"
         ))
         .on_page_load(|view, payload| {
+            desktop_startup::page_load(&view, &payload);
             if payload.event() == tauri::webview::PageLoadEvent::Started {
                   automation_browser::release_current(view.app_handle());
             }
@@ -628,13 +627,15 @@ fn create_window(app: &tauri::AppHandle) -> Result<(), String> {
             }
             NewWindowResponse::Deny
         });
-    window
+    let content = window
         .add_child(
             content,
             LogicalPosition::new(0.0, TITLEBAR_HEIGHT),
             LogicalSize::new(width, height - TITLEBAR_HEIGHT),
         )
         .map_err(|error| error.to_string())?;
+    desktop_startup::observe(&content);
+    desktop_startup::record(app, &format!("window_created content_width={width} content_height={}", height - TITLEBAR_HEIGHT));
     if preferences.maximized {
         window.maximize().map_err(|error| error.to_string())?;
     }
@@ -673,177 +674,68 @@ fn create_window(app: &tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-fn load_main_page(app: &tauri::AppHandle, url: WebviewUrl) -> Result<(), String> {
-    // Never reopen a startup window that the user has already closed.
-    let webview = app
-        .get_webview(CONTENT_LABEL)
-        .ok_or_else(|| "The Eureka window was closed.".to_string())?;
-    let destination = match url {
-        WebviewUrl::External(url) => url,
-        WebviewUrl::App(path) if path == std::path::Path::new("error.html") => {
-            webview
-                .window()
-                .set_title("Eureka 无法启动")
-                .map_err(|error| error.to_string())?;
-            // The caption always remains on the packaged local origin.
-            app.get_webview(TITLEBAR_LABEL)
-                .ok_or_else(|| "The titlebar was closed.".to_string())?
-                .url()
-                .map_err(|error| error.to_string())?
-                .join("error.html")
-                .map_err(|error| error.to_string())?
-        }
-        _ => return Err("Unsupported Eureka startup destination.".into()),
-    };
-    webview
-        .navigate(destination)
-        .map_err(|error| error.to_string())
+fn start_eureka(app: tauri::AppHandle) {
+    desktop_startup::start(app, false);
 }
 
-fn start_eureka(app: tauri::AppHandle) {
-    let log_dir = match app.path().app_log_dir() {
-        Ok(path) => path,
-        Err(error) => {
-            eprintln!("Could not resolve Eureka log directory: {error}");
-            let _ = load_main_page(&app, WebviewUrl::App("error.html".into()));
-            return;
-        }
-    };
-    if let Err(error) = create_dir_all(&log_dir) {
-        eprintln!("Could not create Eureka log directory: {error}");
-        let _ = load_main_page(&app, WebviewUrl::App("error.html".into()));
-        return;
-    }
-    let log_path = log_dir.join("eureka.log");
-
-    if let Ok(dev_url) = std::env::var("EUREKA_DEV_URL") {
-        let address = dev_url.trim_start_matches("http://").trim_end_matches('/');
-        let deadline = Instant::now() + Duration::from_secs(30);
-        while Instant::now() < deadline {
-            if is_service_ready(address) {
-                let _ = load_main_page(&app, WebviewUrl::External(dev_url.parse().unwrap()));
-                return;
-            }
-            thread::sleep(Duration::from_millis(150));
-        }
-        append_log(
-            &log_path,
-            "Development server is not reachable at EUREKA_DEV_URL.",
-        );
-        let _ = load_main_page(&app, WebviewUrl::App("error.html".into()));
-        return;
-    }
-
-    // The provider callback is registered as http://127.0.0.1:8080/… . OAuth
-    // requires an exact redirect URI, so the desktop server cannot use a
-    // random port while Haze authentication is enabled.
-    let port = 8080_u16;
-    let session_secret = match app.path().app_config_dir().map_err(|e| e.to_string()).and_then(|path| session_secret::load_or_create(&path)) {
-        Ok(secret) => secret,
-        Err(error) => { append_log(&log_path, &error); let _ = load_main_page(&app, WebviewUrl::App("error.html".into())); return; }
-    };
-    let resources = match app.path().resource_dir() {
-        Ok(path) => path.join("resources"),
-        Err(error) => {
-            append_log(
-                &log_path,
-                &format!("Could not resolve bundled resources: {error}"),
-            );
-            let _ = load_main_page(&app, WebviewUrl::App("error.html".into()));
-            return;
-        }
-    };
-    let node = resources
-        .join("node")
-        .join(if cfg!(windows) { "node.exe" } else { "node" });
-    let app_dir = resources.join("app");
-    let stdout = match File::create(&log_path) {
-        Ok(file) => file,
-        Err(error) => {
-            eprintln!("Could not create Eureka log: {error}");
-            let _ = load_main_page(&app, WebviewUrl::App("error.html".into()));
-            return;
-        }
-    };
-    let stderr = match stdout.try_clone() {
-        Ok(file) => file,
-        Err(error) => {
-            append_log(
-                &log_path,
-                &format!("Could not attach service stderr: {error}"),
-            );
-            let _ = load_main_page(&app, WebviewUrl::App("error.html".into()));
-            return;
-        }
-    };
-    let mut command = Command::new(&node);
+fn spawn_bundled_sidecar(app: &tauri::AppHandle, startup_id: &str) -> Result<u32, String> {
+    // Haze OAuth requires the exact 127.0.0.1:8080 callback.
+    let session_secret = session_secret::load_or_create(&app.path().app_config_dir().map_err(|error| error.to_string())?)?;
+    let resources = app.path().resource_dir().map_err(|error| error.to_string())?.join("resources");
+    let node = resources.join("node").join(if cfg!(windows) { "node.exe" } else { "node" });
+    let log_dir = app.path().app_log_dir().map_err(|error| error.to_string())?;
+    create_dir_all(&log_dir).map_err(|error| format!("Could not create service log directory: {error}"))?;
+    let stdout = File::create(log_dir.join("eureka.log")).map_err(|error| format!("Could not open service log: {error}"))?;
+    let stderr = stdout.try_clone().map_err(|error| format!("Could not attach service stderr: {error}"))?;
+    let mut command = Command::new(node);
     command
         .arg("server.js")
-        .current_dir(&app_dir)
+        .current_dir(resources.join("app"))
         .env("HOSTNAME", "127.0.0.1")
-        .env("PORT", port.to_string())
+        .env("PORT", "8080")
         .env("PI_WEB_HOSTNAME", "127.0.0.1")
         .env("PI_WEB_NO_OPEN", "1")
         .env("EUREKA_AUTH_SESSION_SECRET", session_secret)
         .env("EUREKA_DESKTOP_UPDATE_TOKEN", &app.state::<app_updater::UpdaterState>().token)
+        .env("EUREKA_DESKTOP_STARTUP_ID", startup_id)
         .stdout(Stdio::from(stdout))
         .stderr(Stdio::from(stderr));
     #[cfg(windows)]
     command.creation_flags(CREATE_NO_WINDOW);
-    let child = command.spawn();
-    let child = match child {
-        Ok(child) => child,
-        Err(error) => {
-            append_log(
-                &log_path,
-                &format!("Could not start bundled Node service: {error}"),
-            );
-            let _ = load_main_page(&app, WebviewUrl::App("error.html".into()));
-            return;
-        }
-    };
+    let child = command.spawn().map_err(|error| format!("Could not start bundled Node service: {error}"))?;
+    let pid = child.id();
+    let state = app.state::<SidecarState>();
     #[cfg(windows)]
     {
         let job = match assign_sidecar_job(&child) {
             Ok(job) => job,
             Err(error) => {
-                append_log(&log_path, &error);
                 let mut child = child;
                 let _ = child.kill();
                 let _ = child.wait();
-                let _ = load_main_page(&app, WebviewUrl::App("error.html".into()));
-                return;
+                return Err(error);
             }
         };
-        *app.state::<SidecarState>().job.lock().unwrap() = Some(job);
+        *state.job.lock().unwrap() = Some(job);
     }
-    *app.state::<SidecarState>().child.lock().unwrap() = Some(child);
+    *state.child.lock().unwrap() = Some(BundledSidecar { process: child, startup_id: startup_id.into() });
+    Ok(pid)
+}
 
-    let address = format!("127.0.0.1:{port}");
-    let deadline = Instant::now() + Duration::from_secs(30);
-    while Instant::now() < deadline {
-        if is_service_ready(&address) {
-            let url = format!("http://{address}");
-            let _ = load_main_page(&app, WebviewUrl::External(url.parse().unwrap()));
-            return;
-        }
-        thread::sleep(Duration::from_millis(150));
+fn running_sidecar(app: &tauri::AppHandle) -> Result<Option<(u32, String)>, String> {
+    let state = app.state::<SidecarState>();
+    let mut child = state.child.lock().unwrap();
+    let Some(child) = child.as_mut() else { return Ok(None) };
+    if let Some(status) = child.process.try_wait().map_err(|error| error.to_string())? {
+        return Err(status.to_string());
     }
-    append_log(
-        &log_path,
-        "Timed out waiting for the bundled Eureka service.",
-    );
-    if let Some(mut child) = app.state::<SidecarState>().child.lock().unwrap().take() {
-        let _ = child.kill();
-        let _ = child.wait();
-    }
-    let _ = load_main_page(&app, WebviewUrl::App("error.html".into()));
+    Ok(Some((child.process.id(), child.startup_id.clone())))
 }
 
 fn stop_sidecar(app: &tauri::AppHandle) {
     if let Some(mut child) = app.state::<SidecarState>().child.lock().unwrap().take() {
-        let _ = child.kill();
-        let _ = child.wait();
+        let _ = child.process.kill();
+        let _ = child.process.wait();
     }
     #[cfg(windows)]
     app.state::<SidecarState>().job.lock().unwrap().take();
@@ -857,6 +749,7 @@ fn main() {
             job: Mutex::new(None),
         })
         .invoke_handler(tauri::generate_handler![
+            desktop_startup::desktop_startup_retry,
             app_updater::desktop_update_state,
             app_updater::desktop_update_check,
             app_updater::desktop_update_download,
@@ -893,6 +786,7 @@ fn main() {
         }))
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
+            app.manage(desktop_startup::StartupState::new(app.handle()));
             app.manage(app_updater::UpdaterState::new(app.package_info().version.to_string()));
             let path = app.path().app_config_dir()?.join("window-state.json");
             let preferences = WindowPreferences::read(&path);
