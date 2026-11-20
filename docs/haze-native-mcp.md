@@ -53,7 +53,7 @@ Haze 市场接入不要求填写 Bearer Token 或手动复制个人 key；在 Eu
 
 ## 验证与待验收
 
-`lib/haze-native-mcp.integration.test.mjs` 的 9 项端到端测试使用真实 SDK、原生 HTTP MCP 客户端、真实 Agent 回合和本地模拟 Haze/MCP 服务，验证：
+`tests/shared/haze-native-mcp.integration.test.mjs` 的 9 项端到端测试使用真实 SDK、原生 HTTP MCP 客户端、真实 Agent 回合和本地模拟 Haze/MCP 服务，验证：
 
 1. OAuth 过期刷新、个人 key 重置、工具调用与资源读取。
 2. 取消选择插件、禁用工具和撤销地址授权后不发出工具或资源请求。
@@ -93,9 +93,9 @@ Haze 市场接入不要求填写 Bearer Token 或手动复制个人 key；在 Eu
 
 ## 代码入口
 
-- [原生运行时与传输](../lib/native-mcp-runtime.ts)
-- [Haze 认证解析](../lib/haze-native-mcp-auth.ts)
-- [运行时服务绑定](../lib/haze-native-mcp-bindings.ts)
-- [市场与插件服务登记](../lib/haze-mcp-runtime.ts)
-- [浏览器交接](../lib/plugin-browser.ts)
-- [端到端测试](../lib/haze-native-mcp.integration.test.mjs)
+- [原生运行时与传输](../server/mcp/native-mcp-runtime.ts)
+- [Haze 认证解析](../server/mcp/haze-native-mcp-auth.ts)
+- [运行时服务绑定](../server/mcp/haze-native-mcp-bindings.ts)
+- [市场与插件服务登记](../server/mcp/haze-mcp-runtime.ts)
+- [浏览器交接](../server/extensions/plugin-browser.ts)
+- [端到端测试](../tests/shared/haze-native-mcp.integration.test.mjs)

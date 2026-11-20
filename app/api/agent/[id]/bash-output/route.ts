@@ -6,8 +6,8 @@ import {
   openRegularFileNoFollow,
   readUtf8FileWithinLimit,
   resolveBashOutputPath,
-} from "@/lib/bash-output";
-import { isBashOutputPathReferencedBySession } from "@/lib/session-file-references";
+} from "@/server/agent/bash-output";
+import { isBashOutputPathReferencedBySession } from "@/features/sessions/server/session-file-references";
 
 // GET /api/agent/[id]/bash-output?path=<absPath>
 // Reads a bash output temp file referenced by this session. Inline display is

@@ -1,8 +1,8 @@
-import { browserAccess, browserError } from "@/lib/browser-access";
-import { browserOwner, closeBrowser, subscribeBrowser } from "@/lib/browser-runtime";
+import { browserAccess, browserError } from "@/server/browser/browser-access";
+import { browserOwner, closeBrowser, subscribeBrowser } from "@/server/browser/browser-runtime";
 import { readRuntimeHazeSession } from "@/lib/auth/runtime-session";
 import { getAuthConfig } from "@/lib/auth/config";
-import type { BrowserEvent } from "@/lib/browser-types";
+import type { BrowserEvent } from "@/features/workspace/platform/browser-types";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 export async function GET(request: Request) {

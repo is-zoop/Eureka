@@ -107,7 +107,7 @@ async fn download_artifact(url:tauri::Url, path:&Path)->Result<(),String>{
     let result:Result<(),String>=async{
         let mut response=reqwest::Client::builder().no_proxy().redirect(reqwest::redirect::Policy::none()).connect_timeout(std::time::Duration::from_secs(8)).timeout(std::time::Duration::from_secs(1800)).build().map_err(|_|"本地下载初始化失败")?.get(url).send().await.map_err(|_|"产物读取失败")?;
         if !response.status().is_success(){return Err("产物不可用，请刷新运行记录后重试。".into())}
-        let max=serde_json::from_str::<serde_json::Value>(include_str!("../../../lib/automation-sdk-contract.json")).map_err(|_|"SDK 配置无效")?["limits"]["artifactBytes"].as_u64().ok_or("产物上限无效")?;
+        let max=serde_json::from_str::<serde_json::Value>(include_str!("../../../features/automation/sdk/automation-sdk-contract.json")).map_err(|_|"SDK 配置无效")?["limits"]["artifactBytes"].as_u64().ok_or("产物上限无效")?;
         let expected=response.content_length().filter(|v|*v<=max).ok_or("产物长度无效或超过上限")?;
         let mut file=tokio::fs::OpenOptions::new().write(true).create_new(true).open(&temp).await.map_err(|_|"无法创建保存文件")?;created=true;let mut size=0u64;
         while let Some(bytes)=response.chunk().await.map_err(|_|"文件传输未完成")?{size+=bytes.len() as u64;if size>expected{return Err("产物大小已变化".into())}file.write_all(&bytes).await.map_err(|_|"磁盘写入失败")?;}

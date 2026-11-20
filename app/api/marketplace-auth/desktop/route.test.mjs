@@ -23,13 +23,14 @@ userInfo: async () => ({subject:"test-user",name:"Test",permissions:[]})});
 await writeFile(path.join(fixtures, "headers.cjs"), "exports.cookies = async () => globalThis.__desktopAuthRouteTestCookies;");
 await writeFile(path.join(fixtures, "runtime.cjs"), "exports.writeRuntimeHazeSession = (session) => ({...session, runtimeId:'test-login'}); exports.clearRuntimeHazeSession = () => {};");
 await mkdir(path.join(fixtures, "lib/auth"), { recursive: true });
-for (const name of ["session", "session-value", "guest", "crypto", "access-token-cache", "desktop-login-store", "types"]) {
+for (const name of ["session", "session-value", "guest", "crypto", "desktop-login-store", "types"]) {
   await writeFile(path.join(fixtures, `lib/auth/${name}.ts`), await readFile(`lib/auth/${name}.ts`));
 }
 for (const [name, stub] of [["config", "config"], ["provider", "provider"], ["runtime-session", "runtime"]]) {
   await writeFile(path.join(fixtures, `lib/auth/${name}.ts`), await readFile(path.join(fixtures, `${stub}.cjs`)));
 }
-await writeFile(path.join(fixtures, "lib/browser-runtime.ts"), `exports.browserOwner = (source, subject) => JSON.stringify([source, subject]); exports.clearBrowserIdentity = () => {};`);
+await mkdir(path.join(fixtures, "server/browser"), { recursive: true });
+await writeFile(path.join(fixtures, "server/browser/browser-runtime.ts"), `exports.browserOwner = (source, subject) => JSON.stringify([source, subject]); exports.clearBrowserIdentity = () => {};`);
 const jiti = createJiti(import.meta.url, { alias: {
   "@": fixtures,
   "next/server": import.meta.resolve("next/server.js"),

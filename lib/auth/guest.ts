@@ -1,8 +1,9 @@
 /** A local-use preference, never an OAuth identity or enterprise credential. */
 export const GUEST_SESSION_COOKIE = "eureka_guest_session";
 export const GUEST_SESSION_MAX_AGE = 60 * 60 * 24 * 365;
-export const GUEST_NAME = "不愿意透露姓名的神秘用户";
-export const GUEST_AVATAR_URL = "/icons/guest-avatar.png";
+export const GUEST_NAME = "神秘用户";
+export const GUEST_AVATAR_URLS = Array.from({ length: 8 }, (_, index) => `/icons/guest-avatar/guest-avatar-${index + 1}.jpg`);
+export const GUEST_AVATAR_URL = GUEST_AVATAR_URLS[0];
 
 export function isGuestSessionValue(value: string | undefined): boolean {
   return value === "1";

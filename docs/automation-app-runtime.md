@@ -132,7 +132,7 @@ ui.json 配置项支持公开默认值 `default`，类型需要匹配，文件�
 已补充真实脚本事件／产物、相同运行 ID 不重复执行、非响应进程停止、只读文件权限和参数类型的测试源码，未执行。需要检查时由用户自行运行：
 
 ```powershell
-node --experimental-strip-types --test lib/automation-app-runtime.test.mjs lib/automation-app-package.test.mjs lib/automation-app-store.test.mjs
+node --experimental-strip-types --test tests/automation/automation-app-runtime.test.mjs tests/automation/automation-app-package.test.mjs tests/automation/automation-app-store.test.mjs
 ```
 
 A03 用户验收后再推进 A04，不提前将网页探索或 AI 应用生成标记为可用。

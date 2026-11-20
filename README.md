@@ -2,7 +2,7 @@
 
 **One workspace for AI conversations, project files, business plugins, and reusable automations.**
 
-[简体中文](./README.zh-CN.md) · [日本語](./README.ja.md) · [Русский](./README.ru.md)
+[简体中文](./README.zh-CN.md)
 
 Eureka is a local AI workspace built on the [pi coding agent](https://github.com/earendil-works/pi), with a **Windows desktop app and a browser interface**. Ask AI to explore projects, edit code, and process files; connect your organization's business tools; or turn repeated work into applications you can run again with new inputs.
 

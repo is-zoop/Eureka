@@ -1,0 +1,139 @@
+"use client";
+
+import styles from "./Sidebar.module.css";
+import { useEffect, useState, type CSSProperties } from "react";
+import { ChartLineIcon } from "lucide-react";
+import { LabelTooltip } from "./LabelTooltip";
+import { SubscriptionQuotaPreview } from "../../settings/ui/SubscriptionQuotas";
+
+import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { SidebarFooter, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar";
+import { useI18n } from "@/hooks/useI18n";
+import { invalidateSubscriptionQuotaPreview, prefetchSubscriptionQuotaPreview } from "@/features/settings/client/useSubscriptionQuotas";
+import { Skeleton } from "@/components/ui/skeleton";
+import { GUEST_AVATAR_URL, GUEST_AVATAR_URLS } from "@/lib/auth/guest";
+
+export type SidebarUser = {
+  name: string;
+  email?: string | null;
+  avatarUrl?: string | null;
+};
+
+const AVATAR_BOX_STYLE: CSSProperties = {
+  display: "inline-flex", width: 32, height: 32, minWidth: 32,
+  flexShrink: 0, alignItems: "center", justifyContent: "center",
+  overflow: "hidden", borderRadius: "50%",
+};
+
+function UserAvatar({ src, name }: { src?: string | null; name: string }) {
+  const [failedSrc, setFailedSrc] = useState<string | null>(null);
+  const initial = Array.from(name.trim())[0]?.toLocaleUpperCase() || "?";
+  return src && src !== failedSrc
+    ? <img src={src} alt="" width="32" height="32" style={{ display: "block", width: 32, height: 32, maxWidth: 32, maxHeight: 32, objectFit: "cover" }} className="size-full object-cover" onError={() => setFailedSrc(src)} />
+    : <span aria-hidden="true" className={`${styles.defaultAvatar} text-base font-semibold leading-none`}>{initial}</span>;
+}
+
+function SettingsIcon() {
+  return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.38a2 2 0 0 0-.73-2.73l-.15-.09a2 2 0 0 1-1-1.74v-.51a2 2 0 0 1 1-1.72l.15-.1a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2Z" /><circle cx="12" cy="12" r="3" /></svg>;
+}
+
+function ModelsIcon() {
+  return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="4" y="4" width="16" height="16" rx="2" /><rect x="9" y="9" width="6" height="6" /><path d="M9 1v3M15 1v3M9 20v3M15 20v3M20 9h3M20 14h3M1 9h3M1 14h3" /></svg>;
+}
+
+function LogoutIcon() {
+  return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path d="m16 17 5-5-5-5" /><path d="M21 12H9" /></svg>;
+}
+
+export function SidebarUserMenu({ user, guest = false, loading = false, avatarOnly = false, onOpenSettings, onOpenModels, onOpenSubscription }: { user: SidebarUser | null; guest?: boolean; loading?: boolean; avatarOnly?: boolean; onOpenSettings?: () => void; onOpenModels?: () => void; onOpenSubscription?: () => void }) {
+  const { t } = useI18n();
+  const [subscriptionOpen, setSubscriptionOpen] = useState(false);
+  const [guestAvatar, setGuestAvatar] = useState(GUEST_AVATAR_URL);
+  useEffect(() => {
+    if (!guest) return;
+    const pickAvatar = () => GUEST_AVATAR_URLS[Math.floor(Math.random() * GUEST_AVATAR_URLS.length)];
+    try {
+      const saved = sessionStorage.getItem("eureka:guest-avatar");
+      const avatar = saved && GUEST_AVATAR_URLS.includes(saved) ? saved : pickAvatar();
+      sessionStorage.setItem("eureka:guest-avatar", avatar);
+      setGuestAvatar(avatar);
+    } catch {
+      setGuestAvatar(pickAvatar());
+    }
+  }, [guest]);
+  const name = guest ? t("account.guest") : user?.name || t("account.loading");
+  const email = guest ? t("account.notLoggedIn") : user?.email || t("account.emailUnavailable");
+  const avatarUrl = guest ? guestAvatar : user?.avatarUrl;
+  const avatarName = guest ? t("chat.homeGuestName") : name;
+  const handleMenuOpen = (open: boolean) => {
+    if (open && onOpenSubscription) void prefetchSubscriptionQuotaPreview();
+  };
+  const handleSubscriptionOpen = (open: boolean) => {
+    setSubscriptionOpen(open);
+    if (open) void prefetchSubscriptionQuotaPreview();
+  };
+  const handleLogin = () => {
+    const returnTo = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+    window.location.assign(`/login?returnTo=${encodeURIComponent(returnTo)}`);
+  };
+  const handleLogout = async () => {
+    try {
+      const response=await fetch("/api/marketplace-auth/logout", { method: "POST" });
+      if (response.ok) {
+        invalidateSubscriptionQuotaPreview();
+        window.dispatchEvent(new Event("eureka:cloud-session-changed"));
+      }
+    } catch { /* Keep the local workspace open if cloud logout is unavailable. */ }
+  };
+
+  const trigger = (
+    <DropdownMenuTrigger render={<SidebarMenuButton className={`${styles.accountTrigger}${avatarOnly ? ` ${styles.avatarOnlyTrigger}` : ""}`} type="button" aria-label={name} disabled={loading} aria-busy={loading}>
+      {loading ? <>
+        <Skeleton style={AVATAR_BOX_STYLE} className="size-8 shrink-0 rounded-full" />
+        {!avatarOnly && <span className="flex min-w-0 flex-1 flex-col gap-1.5"><Skeleton className="h-3.5 w-24" /><Skeleton className="h-3 w-32" /></span>}
+      </> : <>
+        <span style={AVATAR_BOX_STYLE} className={`${styles.accountAvatar} flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[var(--bg-hover)] text-[var(--text-muted)]`}>
+          <UserAvatar src={avatarUrl} name={avatarName} />
+        </span>
+        {!avatarOnly && <>
+          <span className="min-w-0 flex-1">
+            <LabelTooltip content={name}><span className={`${styles.accountName} block truncate`}>{name}</span></LabelTooltip>
+            <LabelTooltip content={email}><span className={`${styles.accountEmail} block truncate`}>{email}</span></LabelTooltip>
+          </span>
+          <svg width="16" height="16" className="size-4 shrink-0 text-[var(--text-muted)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9" /></svg>
+        </>}
+      </>}
+    </SidebarMenuButton>} />
+  );
+  return (
+    <SidebarFooter className={`${styles.accountFooter}${avatarOnly ? ` ${styles.avatarOnlyFooter}` : ""}`}>
+      <SidebarMenu>
+        <SidebarMenuItem>
+          <DropdownMenu onOpenChange={handleMenuOpen}>
+            {avatarOnly ? <LabelTooltip content={name} side="right">{trigger}</LabelTooltip> : trigger}
+            <DropdownMenuContent side="top" align="start" sideOffset={8} className="w-[var(--anchor-width)] min-w-52 bg-[var(--bg-panel)] text-[var(--text)]">
+              <div className="flex items-center gap-2 px-2 py-2">
+                <span style={AVATAR_BOX_STYLE} className="flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[var(--bg-hover)] text-[var(--text-muted)]">
+                  <UserAvatar src={avatarUrl} name={avatarName} />
+                </span>
+                <span className="min-w-0 flex-1"><span className="block break-words text-sm font-medium">{name}</span><span className="block truncate text-xs text-[var(--text-muted)]">{email}</span></span>
+              </div>
+              <DropdownMenuSeparator className="mx-2" />
+              <DropdownMenuGroup>
+                <DropdownMenuItem onClick={onOpenSettings}><SettingsIcon />{t("account.settings")}</DropdownMenuItem>
+                <DropdownMenuItem onClick={onOpenModels}><ModelsIcon />{t("settings.models")}</DropdownMenuItem>
+                {onOpenSubscription && <DropdownMenuSub open={subscriptionOpen} onOpenChange={handleSubscriptionOpen}>
+                  <DropdownMenuSubTrigger><ChartLineIcon aria-hidden="true" />{t("subscriptions.title")}</DropdownMenuSubTrigger>
+                  <DropdownMenuSubContent side="right" sideOffset={5} className="w-[350px] max-w-[calc(100vw-24px)] bg-[var(--bg-panel)] text-[var(--text)]">
+                    {subscriptionOpen && <SubscriptionQuotaPreview onJump={onOpenSubscription} />}
+                  </DropdownMenuSubContent>
+                </DropdownMenuSub>}
+              </DropdownMenuGroup>
+              {guest ? <DropdownMenuItem onClick={handleLogin}><LogoutIcon />{t("account.login")}</DropdownMenuItem> : <DropdownMenuItem variant="destructive" onClick={() => void handleLogout()}><LogoutIcon />{t("account.logout")}</DropdownMenuItem>}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </SidebarMenuItem>
+      </SidebarMenu>
+    </SidebarFooter>
+  );
+}

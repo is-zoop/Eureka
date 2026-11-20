@@ -2,7 +2,7 @@ import "server-only";
 
 import { MARKETPLACE_PERMISSION, getAuthConfig } from "@/lib/auth/config";
 import { createHash } from "node:crypto";
-import { extensionCatalogCache } from "../extension-catalog-cache";
+import { extensionCatalogCache } from "../../server/extensions/extension-catalog-cache";
 import { getIdentityProvider } from "@/lib/auth/provider";
 import { readAuthSession } from "@/lib/auth/session";
 import { refreshRuntimeHazeSession } from "@/lib/auth/runtime-session";

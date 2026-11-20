@@ -189,6 +189,18 @@
           "markdownDescription": "Allows the composer to read copied file paths when the user pastes."
         },
         {
+          "description": "Allows the Eureka content view to submit completion cards and acknowledge replies.",
+          "type": "string",
+          "const": "allow-desktop-completion-content",
+          "markdownDescription": "Allows the Eureka content view to submit completion cards and acknowledge replies."
+        },
+        {
+          "description": "Allows the packaged notification view to report readiness, send replies and dismiss its card.",
+          "type": "string",
+          "const": "allow-desktop-completion-popup",
+          "markdownDescription": "Allows the packaged notification view to report readiness, send replies and dismiss its card."
+        },
+        {
           "description": "Allows the content view to synchronize menus and recent tray sessions, change view scale/fullscreen, and quit the app.",
           "type": "string",
           "const": "allow-desktop-menu-content",

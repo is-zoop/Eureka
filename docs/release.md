@@ -128,7 +128,7 @@ of an unrelated npm package. It only reports a version and release-notes link.
 No accessible published release returns no available update; other upstream
 failures are reported as errors.
 
-The native updater is now connected through `lib/desktop-updater.ts`: separate
+The native updater is now connected through `features/workspace/platform/desktop-updater.ts`: separate
 check/download/install commands and progress events, signature verification, and
 installation preflight/cleanup. See [native updater setup](../desktop/README.md#native-updater)
 for private key backup and build configuration. Debug/development builds cannot

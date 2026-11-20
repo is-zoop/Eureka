@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "eureka-completion-popup",
+  "description": "Local-only controls for Eureka task completion cards.",
+  "webviews": ["eureka-completion-popup"],
+  "permissions": ["allow-desktop-completion-popup", "core:event:allow-listen"]
+}

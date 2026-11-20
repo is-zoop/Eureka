@@ -1,12 +1,13 @@
-import { requiresCloudPluginSelection } from "@/lib/plugin-selection";
+import { requiresCloudPluginSelection } from "@/features/extensions/shared/plugin-selection";
 import { readAuthSession } from "@/lib/auth/session";
-import { automationAccess } from "@/lib/automation-access";
-import { parseAutomationTaskRef } from "@/lib/automation-mode";
-import { assertAutomationTaskIdentity } from "@/lib/automation-mode-store";
-import { authorizeCreationSessionId } from "@/lib/automation-creation-auth";
+import { automationAccess } from "@/features/automation/runtime/automation-access";
+import { parseAutomationTaskRef } from "@/features/automation/shared/automation-mode";
+import { assertAutomationTaskIdentity } from "@/features/automation/runtime/automation-mode-store";
+import { authorizeCreationSessionId } from "@/features/automation/authoring/automation-creation-auth";
 import { NextResponse } from "next/server";
-import { resolveSessionPath } from "@/lib/session-reader";
-import { startRpcSession, getRpcSession, sendSessionToolCommand, readSessionCommands } from "@/lib/rpc-manager";
+import { resolveSessionPath } from "@/features/sessions/server/session-reader";
+import { readSessionArchives } from "@/features/sessions/server/session-archives";
+import { startRpcSession, getRpcSession, sendSessionToolCommand, readSessionCommands } from "@/server/agent/rpc-manager";
 
 // POST /api/agent/[id] - Send a command to an existing session
 export async function POST(
@@ -24,6 +25,12 @@ export async function POST(
     if (body.selectedPlugins && requiresCloudPluginSelection(body.selectedPlugins) && !await readAuthSession()) return NextResponse.json({ error: "请先登录 Haze", code: "prompt_rejected", accepted: false }, { status: 401 });
     commandType = typeof body.type === "string" ? body.type : undefined;
     const isPromptCommand = body.type === "prompt" || body.type === "execute_plan";
+    const archiveRejection = () => {
+      if (commandType?.startsWith("get_") || !readSessionArchives().has(id)) return null;
+      return NextResponse.json({ error: "Unarchive this session to continue.", code: "session_archived", accepted: false }, { status: 409 });
+    };
+    const archived = archiveRejection();
+    if (archived) return archived;
 
     // Fast path: already-running session
     const existing = getRpcSession(id);
@@ -43,6 +50,9 @@ export async function POST(
       }, { status: 404 });
     }
 
+    const archivedAfterLookup = archiveRejection();
+    if (archivedAfterLookup) return archivedAfterLookup;
+
     if (body.type === "get_tools" || body.type === "set_tools") {
       const result = await sendSessionToolCommand(id, filePath, body);
       return NextResponse.json({ success: true, data: result });
@@ -53,6 +63,8 @@ export async function POST(
     }
 
     const { session } = await startRpcSession(id, filePath, undefined);
+    const archivedAfterStartup = archiveRejection();
+    if (archivedAfterStartup) return archivedAfterStartup;
     const result = await session.send(body);
     promptAccepted = isPromptCommand;
 

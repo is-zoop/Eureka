@@ -2,10 +2,10 @@ import { stat } from "fs/promises";
 import { resolve } from "path";
 import { NextResponse } from "next/server";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
-import { getAllowedFileRoots, isExistingFilePathAllowed } from "@/lib/file-access";
-import { invalidateModelsCache } from "@/lib/models-cache";
+import { getAllowedFileRoots, isExistingFilePathAllowed } from "@/features/files/server/file-access";
+import { invalidateModelsCache } from "@/server/models/models-cache";
 import { getProjectTrustStatus, trustProject } from "@/lib/project-trust";
-import { destroyRpcSessionsForCwd, hasBusyRpcSessionForCwd } from "@/lib/rpc-manager";
+import { destroyRpcSessionsForCwd, hasBusyRpcSessionForCwd } from "@/server/agent/rpc-manager";
 
 export const dynamic = "force-dynamic";
 

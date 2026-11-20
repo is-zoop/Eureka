@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { loadUsageStatistics, usageRanges, type UsageRange } from "@/lib/usage-statistics";
+import { loadUsageStatistics, usageRanges, type UsageRange } from "@/server/models/usage-statistics";
 
 export const dynamic = "force-dynamic";
 

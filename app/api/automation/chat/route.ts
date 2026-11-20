@@ -1,10 +1,10 @@
-import { automationAppAccess, appFailure, appJson, readAppRequest } from "@/lib/automation-app-server";
-import { automationChatAccess, chatInvocationSnapshot, listChatInvocations, prepareChatRestart, selectChatFile } from "@/lib/automation-chat";
+import { automationAppAccess, appFailure, appJson, readAppRequest } from "@/features/automation/runtime/automation-app-server";
+import { automationChatAccess, chatInvocationSnapshot, listChatInvocations, prepareChatRestart, selectChatFile } from "@/features/automation/runtime/automation-chat";
 import { hasJsonContentType } from "@/lib/request-security";
-import { authorizeCreationSessionId } from "@/lib/automation-creation-auth";
-import { resolveSessionPath } from "@/lib/session-reader";
-import { isAppId } from "@/lib/automation-app";
-import { AutomationAppError } from "@/lib/automation-app-package";
+import { authorizeCreationSessionId } from "@/features/automation/authoring/automation-creation-auth";
+import { resolveSessionPath } from "@/features/sessions/server/session-reader";
+import { isAppId } from "@/features/automation/shared/automation-app";
+import { AutomationAppError } from "@/features/automation/runtime/automation-app-package";
 export const dynamic = "force-dynamic";
 export async function POST(request: Request) {
   try {

@@ -12,4 +12,4 @@ SDK 1.2 adds request `auth`, `multipart`, `responseHeaders`, `redirects`, `timeo
 
 The JSON Schema validates portable declaration structure. Eureka's runtime additionally checks actual file grants, site/URL authorization, credentials, current run identity and filesystem state; these checks cannot be performed statically in Haze. Existing Haze semantic/security checks must remain in place.
 
-Contract fixtures in `lib/automation-sdk-contract-fixtures.json` (exported here as `contract-fixtures.json`) are shared by Node, Python and native Rust request tests. Node/Python parity requires Python jsonschema. Deploy this adapter with its matching JSON and manifest files; this repository does not deploy Haze itself.
+Contract fixtures in `features/automation/sdk/automation-sdk-contract-fixtures.json` (exported here as `contract-fixtures.json`) are shared by Node, Python and native Rust request tests. Node/Python parity requires Python jsonschema. Deploy this adapter with its matching JSON and manifest files; this repository does not deploy Haze itself.

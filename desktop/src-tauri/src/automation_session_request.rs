@@ -5,7 +5,7 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 use tauri::{http::header, webview::cookie::Cookie, Url};
 
-// Keep aligned with lib/automation-data-limits.ts. Response envelopes have a
+// Keep aligned with features/automation/shared/automation-data-limits.ts. Response envelopes have a
 // separate 20 MiB budget on the web/worker side.
 include!(concat!(env!("OUT_DIR"), "/automation-sdk-limits.rs"));
 
@@ -179,7 +179,7 @@ fn redact(value: &mut Value, secrets: &[String]) {
 pub struct StreamDownload { path: String, max_bytes: u64, timeout_ms: u64 }
 impl StreamDownload {
     fn validate(&self) -> Result<(), String> {
-        let contract: Value = serde_json::from_str(include_str!("../../../lib/automation-sdk-contract.json")).map_err(|_| "SDK contract invalid")?;
+        let contract: Value = serde_json::from_str(include_str!("../../../features/automation/sdk/automation-sdk-contract.json")).map_err(|_| "SDK contract invalid")?;
         let path = std::path::Path::new(&self.path);
         let name = path.file_name().and_then(|s| s.to_str()).unwrap_or("");
         let token = name.strip_prefix(".eureka-stream-").and_then(|s| s.strip_suffix(".part")).unwrap_or("");
@@ -299,7 +299,7 @@ fn controlled_redirect(base:&Url,current:&Url,location:&str)->Result<Url,String>
 fn attach_multipart(declaration:&Declaration,request:reqwest::Request,input:MultipartInput)->Result<reqwest::Request,String>{
     use std::os::windows::fs::{OpenOptionsExt,MetadataExt};
     let spec=declaration.multipart.as_ref().ok_or("未声明上传")?;
-    let limits:Value=serde_json::from_str(include_str!("../../../lib/automation-sdk-contract.json")).map_err(|_|"SDK contract invalid")?;
+    let limits:Value=serde_json::from_str(include_str!("../../../features/automation/sdk/automation-sdk-contract.json")).map_err(|_|"SDK contract invalid")?;
     let maximum=limits["limits"]["uploadBytes"].as_u64().unwrap_or(0);let max_bytes=spec.max_bytes.unwrap_or(maximum);
     if spec.files.is_empty()||spec.files.len()>16||max_bytes==0||max_bytes>maximum||input.files.is_empty()||input.files.len()>16||input.fields.len()>100{return Err("上传声明或大小限制无效".into());}
     let mut form=reqwest::multipart::Form::new();let mut fields_size=0;
@@ -342,7 +342,7 @@ mod stream_tests {
         let calls=AtomicUsize::new(0);tauri::async_runtime::block_on(async{let request=client().unwrap().get("http://127.0.0.1:1/never").build().unwrap();assert!(send_checked(request,&||{calls.fetch_add(1,Ordering::SeqCst);Err("cancelled".into())}).await.is_err());});assert_eq!(calls.load(Ordering::SeqCst),1);
     }
     #[test] fn native_request_fields_match_the_shared_cloud_and_model_fixtures() {
-        let fixtures: Vec<Value> = serde_json::from_str(include_str!("../../../lib/automation-sdk-contract-fixtures.json")).unwrap();
+        let fixtures: Vec<Value> = serde_json::from_str(include_str!("../../../features/automation/sdk/automation-sdk-contract-fixtures.json")).unwrap();
         for fixture in fixtures {
             if fixture[0].as_str()!=Some("request"){continue;}
             let valid=serde_json::from_value::<Declaration>(fixture[1].clone()).and_then(|value|prepare(&value,json!({}),&[],"https://seller.example","1000").map(|_|()).map_err(serde::de::Error::custom)).is_ok();

@@ -3,11 +3,14 @@
 ## Quick Start
 
 ```bash
-npm run dev   # port 30141
+npm run dev   # port 8080
 ```
 
 Typecheck: `node_modules/.bin/tsc --noEmit`  
-Lint: `npm run lint`  
+Lint: `npm run lint`
+
+Web tests: `npm test` runs `app/**/*.test.mjs` and `tests/**/*.test.mjs`.
+
 **Never run `next build` during dev** — pollutes `.next/` and breaks `npm run dev`.
 
 ---
@@ -30,8 +33,9 @@ Browser                Next.js Server              AgentSession (in-process)
   │◀── data: {...} ─────────│                               │
 ```
 
-**Session browsing** (read-only): reads `.jsonl` files through SDK `SessionManager` helpers and `lib/session-reader.ts` — no AgentSession created.  
-**Sending a message**: `startRpcSession()` in `lib/rpc-manager.ts` creates an AgentSession in-process.
+**Session browsing** reads `.jsonl` files through SDK `SessionManager` helpers and `features/sessions/server/session-reader.ts` without creating an AgentSession.
+
+**Sending a message**: `startRpcSession()` in `server/agent/rpc-manager.ts` creates an AgentSession in-process.
 
 ---
 
@@ -68,54 +72,41 @@ app/api/
   skills/search/route.ts          GET/POST skills.sh search
   worktrees/route.ts              GET/POST/DELETE git worktrees
 
-lib/
-  agent-client.ts      typed fetch helper for /api/agent commands
-  draft-store.ts       local draft persistence helpers
-  file-access.ts       allowed file roots for /api/files and worktrees
-  file-paths.ts        client/server path encoding helpers
-  markdown.ts          shared markdown helpers
-  npx.ts               npx runner used by skill install
-  pi-types.ts          local structural types for pi SDK objects
-  rpc-manager.ts      AgentSessionWrapper + registry + startRpcSession
-  session-reader.ts   SessionManager wrappers + path cache + buildSessionContext adapter
-  tool-presets.ts     PRESET_NONE/READ_ONLY/DEFAULT/FULL + getPresetFromTools()
-  tool-preset-preference.ts  browser-persisted default for fresh sessions
-  command-catalog.ts   skills/prompt metadata without starting agents or importing extensions
-  types.ts            shared TypeScript types
-  normalize.ts        normalizeToolCalls() — field name mismatch between file format and our types
-  worktree.ts         project/worktree resolution and git worktree operations
+features/
+  workspace/           AppShell, navigation, panel state, and desktop WebView bridges
+  chat/                ChatWindow, ChatInput, useAgentSession, messages and streaming
+  sessions/            Sidebar, branching, history, archive, and worktree access
+  files/               Explorer, file tabs, viewer, Git and file-access services
+  extensions/          ExtensionsCenter, Skills, Plugins and MCP configuration UI
+  automation/          Automation UI, authoring, runtime, publication, and SDK contracts
+  settings/            SettingsPage, model configuration, preferences and usage UI
+
+server/
+  agent/               AgentSession registry, command catalog, SSE and run policies
+  browser/             Managed browser runtime and request access
+  desktop/             Desktop update endpoints and authorization
+  extensions/          Extension catalog, installation and resource discovery
+  mcp/                 Native MCP registration, transport, authorization and status
+  models/              Provider model runtime, discovery, credentials and usage
 
 components/
-  AppShell.tsx        layout + URL state + tab management
-  SessionSidebar.tsx  session tree + FileExplorer
-  ChatWindow.tsx      chat composition + completion sound wrapper
-  ChatInput.tsx       input bar + model/thinking/tools/compact controls
-  MessageView.tsx     renders one message (user/assistant/toolCall/toolResult)
-  BranchNavigator.tsx in-session branch switcher
-  ChatMinimap.tsx     scroll minimap alongside the message list
-  MarkdownBody.tsx    markdown renderer
-  ModelsConfig.tsx    modal for editing models.json (opened from sidebar bottom)
-  SettingsLayout.tsx  required page/section/card/row template for all settings pages
-  PluginsConfig.tsx   modal for installed package plugins
-  SkillsConfig.tsx    modal for loaded/search/installable skills
-  FileExplorer.tsx    file tree inside sidebar
-  FileIcons.tsx       file icon helpers
-  FileViewer.tsx      file content in a tab
-  TabBar.tsx          tab bar (Chat + open file tabs)
+  ui/                  Shared UI controls
+  content/             Markdown, Mermaid and other reusable content rendering
+  SettingsLayout.tsx   Shared settings page, section, card and row template
 
-hooks/
-  useAgentSession.ts  messages + streaming + SSE + fork/navigate/reconciliation logic
-  useAudio.ts         completion sound + browser AudioContext unlock
-  useDragDrop.ts      shared drag/drop state
-  useIsMobile.ts      responsive breakpoint hook
-  useTheme.ts         theme state
+lib/                   Shared types, auth, i18n, path and request utilities
+hooks/useI18n.tsx       I18nProvider and shared language hook
+tests/                 Node tests and fixtures grouped by feature or runtime
+desktop/               Tauri, packaging scripts and desktop-specific tests
 ```
+
+Place feature-specific UI, client hooks and services in the owning feature. Put reusable UI in `components/` and shared server services in `server/`.
 
 ---
 
 ## Key Design Decisions & Traps
 
-### AgentSession lifecycle (`lib/rpc-manager.ts`)
+### AgentSession lifecycle (`server/agent/rpc-manager.ts`)
 - One `AgentSessionWrapper` per session id, keyed in `globalThis.__piSessions`
 - `globalThis` survives Next.js hot-reload; plain module-level Map does not
 - Idle timeout: 10 minutes. Concurrent `startRpcSession()` calls share a single start Promise (`globalThis.__piStartLocks`)
@@ -133,10 +124,10 @@ hooks/
 `parentSession` in the header is **display metadata only** — has zero effect on chat content. Safe to `writeFileSync` the entire file (pi does this itself during migrations). Used when cascade-reparenting children on delete.
 
 ### ToolCall field normalization
-Pi stores toolCall blocks as `{type:"toolCall", id, name, arguments}` but `ToolCallContent` uses `{toolCallId, toolName, input}`. `normalizeToolCalls()` in `lib/normalize.ts` handles this — called in both `session-reader.ts` (file load) and `ChatWindow.handleAgentEvent()` (streaming).
+Pi stores toolCall blocks as `{type:"toolCall", id, name, arguments}` but `ToolCallContent` uses `{toolCallId, toolName, input}`. `normalizeToolCalls()` in `features/chat/shared/normalize.ts` handles this — called in both `session-reader.ts` (file load) and `ChatWindow.handleAgentEvent()` (streaming).
 
 ### New session tool preset
-Tool names are passed at session creation (`POST /api/agent/new` → `toolNames[]`). For existing sessions, the active preset is inferred on mount via `get_tools` → `getPresetFromTools()`. When tools are fully disabled (`toolNames = []`), `rpc-manager.ts` passes an empty tool allow-list and registers the host prompt policy in `lib/session-prompt-policy.ts`. Its final `before_agent_start` hook enforces empty active tools and returns `systemPrompt: ""` for each run; `get_state` also reports an empty prompt. Keep this policy extension after the other host extensions.
+Tool names are passed at session creation (`POST /api/agent/new` → `toolNames[]`). For existing sessions, the active preset is inferred on mount via `get_tools` → `getPresetFromTools()`. When tools are fully disabled (`toolNames = []`), `rpc-manager.ts` passes an empty tool allow-list and registers the host prompt policy in `server/agent/session-prompt-policy.ts`. Its final `before_agent_start` hook enforces empty active tools and returns `systemPrompt: ""` for each run; `get_state` also reports an empty prompt. Keep this policy extension after the other host extensions.
 
 The new-session default is stored in browser `localStorage` and initializes fresh-session composers only. Existing sessions never trust that preference; they use live `get_tools` state, or their `eureka_tool_permissions` custom entry when no wrapper exists (falling back to pi's default). Idle `get_tools` / `set_tools` commands read or append that metadata without constructing an AgentSession; startup restores the saved tool names. Permission-menu reads are cached after success and never block an explicit choice.
 
@@ -147,10 +138,10 @@ The new-session default is stored in browser `localStorage` and initializes fres
 - Planning/review prompt overrides are returned by `EUREKA_NATIVE_PLAN_EXTENSION`; automation authoring overrides remain in its intake hook. The SDK scopes those overrides to the current run, so restoring tools after completion must not restore a prompt by assigning to agent state.
 
 ### Model defaults for new sessions
-`GET /api/models` returns `defaultModel` read from `~/.pi/agent/settings.json`. `ChatWindow` pre-selects this on mount for new sessions. Explicit browser model/thinking selections are applied atomically during AgentSession construction, then `lib/startup-preferences.ts` persists their effective values without replaying `set_model`/`set_thinking_level`; implicit `enabledModels` fallbacks and thinking pins are not persisted.
+`GET /api/models` returns `defaultModel` read from `~/.pi/agent/settings.json`. `ChatWindow` pre-selects this on mount for new sessions. Explicit browser model/thinking selections are applied atomically during AgentSession construction, then `server/agent/startup-preferences.ts` persists their effective values without replaying `set_model`/`set_thinking_level`; implicit `enabledModels` fallbacks and thinking pins are not persisted.
 
 ### `enabledModels` scoping
-The `enabledModels` setting uses pi's `--models` syntax: minimatch globs against `provider/modelId` or a bare `modelId`, fuzzy matching for non-glob patterns, and an optional `:thinkingLevel` suffix. Never compare those patterns as literal strings — `lib/model-scope.ts` delegates to the SDK's `resolveModelScopeWithDiagnostics()` so pi-web and the TUI agree on the visible model list, and falls back to all available models when patterns resolve to nothing. `startRpcSession()` resolves that scope before creating an AgentSession and passes the selected initial model, thinking pin, and SDK-native `scopedModels` atomically; `GET /api/models` reuses the helper only for selector data, `thinkingLevelPins`, and `modelScopeWarnings` display.
+The `enabledModels` setting uses pi's `--models` syntax: minimatch globs against `provider/modelId` or a bare `modelId`, fuzzy matching for non-glob patterns, and an optional `:thinkingLevel` suffix. Never compare those patterns as literal strings — `server/models/model-scope.ts` delegates to the SDK's `resolveModelScopeWithDiagnostics()` so pi-web and the TUI agree on the visible model list, and falls back to all available models when patterns resolve to nothing. `startRpcSession()` resolves that scope before creating an AgentSession and passes the selected initial model, thinking pin, and SDK-native `scopedModels` atomically; `GET /api/models` reuses the helper only for selector data, `thinkingLevelPins`, and `modelScopeWarnings` display.
 
 ### SSE reconnect on page refresh mid-stream
 - SDK 1.5 streams `system` transcript checkpoints before the user echo. Both `message_start` and `message_end` must pass through `chatMessageFromEvent()` before updating chat/stream state. Appending an invisible system checkpoint between the optimistic user bubble and its echo breaks adjacency-based reconciliation and duplicates the visible user message.
@@ -169,7 +160,7 @@ Newer pi emits `compaction_start` / `compaction_end`; older versions emitted `au
 - Prompt runs use a monotonic run id; late SSE or slow reconciliation responses from an old run must be ignored so they cannot resurrect stale streaming bubbles.
 
 ### Worktrees and project grouping
-- `lib/worktree.ts` resolves linked worktree top-levels back to the main repo `projectRoot`; `listAllSessions()` attaches that to each `SessionInfo` so all worktrees for one repo are grouped together in the sidebar.
+- `features/sessions/server/worktree.ts` resolves linked worktree top-levels back to the main repo `projectRoot`; `listAllSessions()` attaches that to each `SessionInfo` so all worktrees for one repo are grouped together in the sidebar.
 - Worktree operations are served by `/api/worktrees` and guarded by the same allowed-root rules as `/api/files`.
 - New worktrees are created under `<repoRoot>-worktrees/<sanitized-branch>`. Existing branches are reused; otherwise `git worktree add -b` creates the branch.
 - Removing a dirty worktree returns `409` with `{ dirty: true }` so the UI can ask before retrying with `force`.
@@ -183,9 +174,9 @@ Newer pi emits `compaction_start` / `compaction_end`; older versions emitted `au
 
 ### Plugins and skills
 
-- Local automation editing/execution uses `lib/automation-local-context.ts`, not Haze login generations. `LocalAutomationAppStore` discovers legacy namespaces in place; do not move or merge private data or browser credentials. Persisted task refs normalize to the stable local workspace on read. Local-only chat/queue/clarification ownership uses `lib/automation-task-owner.ts`. Cloud publishing and organization management retain Haze auth; publication mutations additionally pin `cloudSessionId`. See `docs/automation-local-workspace.md`.
+- Local automation editing/execution uses `features/automation/runtime/automation-local-context.ts`, not Haze login generations. `LocalAutomationAppStore` discovers legacy namespaces in place; do not move or merge private data or browser credentials. Persisted task refs normalize to the stable local workspace on read. Local-only chat/queue/clarification ownership uses `features/automation/authoring/automation-task-owner.ts`. Cloud publishing and organization management retain Haze auth; publication mutations additionally pin `cloudSessionId`. See `docs/automation-local-workspace.md`.
 
-- Automation authoring reads user-provided original projects through `eureka_app_source`, without requiring a candidate or picker. `changeAutomationTask()` records paths from raw user submissions in private task metadata; legacy recovery considers only the matching task's user entries. Never authorize a model-supplied path alone, derive roots from file/tool/model content, or turn source access into runtime file grants. `lib/automation-authoring-source.ts` owns read-only scope, pagination and link/private-file checks. Business inputs continue through `eureka_app_file` and application configuration.
+- Automation authoring reads user-provided original projects through `eureka_app_source`, without requiring a candidate or picker. `changeAutomationTask()` records paths from raw user submissions in private task metadata; legacy recovery considers only the matching task's user entries. Never authorize a model-supplied path alone, derive roots from file/tool/model content, or turn source access into runtime file grants. `features/automation/authoring/automation-authoring-source.ts` owns read-only scope, pagination and link/private-file checks. Business inputs continue through `eureka_app_file` and application configuration.
 - `/api/plugins` uses pi's `SettingsManager` + `DefaultPackageManager` for global/project package install, remove, update, enable, and disable. Disabling writes empty `extensions/skills/prompts/themes` arrays for that package entry.
 - `/api/skills` uses `DefaultResourceLoader` so settings paths, package skills, and project `.agents/skills` are listed the same way the runtime sees them.
 - Skill toggling edits only the `disable-model-invocation` frontmatter key on the target `SKILL.md`; keep that surgical so user formatting survives.
@@ -193,29 +184,29 @@ Newer pi emits `compaction_start` / `compaction_end`; older versions emitted `au
 
 ### Native MCP and Haze
 - Production sessions load `installHazeManagedMcpRuntime` followed by `installNativeMcpRuntime`; the latter uses the public SDK MCP, tool-search and Codemode extensions. Do not also load the legacy adapter into these sessions.
-- Haze servers use `pi.registerMcpServer()`. `lib/haze-native-mcp-bindings.ts` records host-owned server identity and URL bindings. `lib/native-mcp-runtime.ts` checks them at the HTTP boundary for direct, resource and Codemode calls; do not replace this with tool-name prefix authorization.
-- `lib/haze-native-mcp-auth.ts` resolves a fresh personal key per request and shares the existing encrypted OAuth store/file lock. Check identity, task, selection, permissions and approved URL again after waiting and while consuming responses. Never persist the personal MCP key in config or transcripts.
+- Haze servers use `pi.registerMcpServer()`. `server/mcp/haze-native-mcp-bindings.ts` records host-owned server identity and URL bindings. `server/mcp/native-mcp-runtime.ts` checks them at the HTTP boundary for direct, resource and Codemode calls; do not replace this with tool-name prefix authorization.
+- `server/mcp/haze-native-mcp-auth.ts` resolves a fresh personal key per request and shares the existing encrypted OAuth store/file lock. Check identity, task, selection, permissions and approved URL again after waiting and while consuming responses. Never persist the personal MCP key in config or transcripts.
 - New manual configs use `<agentDir>/mcp.json` and `<cwd>/.pi/mcp.json`, native `enabled/exposure/timeout` fields and environment-variable credential references. Old adapter configs and historical tool formats are intentionally not migrated. See `docs/haze-native-mcp.md`.
 - Native tool results carry structured MCP output outside `details`; browser handoff must redact both text and structured output, including calls nested in Codemode.
 - SDK `AgentSession.dispose()` does not emit `session_shutdown`. Direct wrapper destruction must call `disposeNativeMcpRuntime()` before SDK disposal; it closes transports and returns the original session id so fork's in-place id mutation cannot leave the previous bindings/status behind.
 
 ### Auth and model config
-- Provider-listing and credential routes use `lib/provider-model-runtime.ts` so installed global extension providers (including WorkBuddy CN/Global) have the same auth definitions as chat. Status reads reuse a serialized, offline-refreshed runtime; OAuth creates its own. Models-cache generation invalidates this cache after auth/plugin/reload changes. Never hardcode extension providers as SDK built-ins or load untrusted project extensions merely to show an auth picker.
+- Provider-listing and credential routes use `server/models/provider-model-runtime.ts` so installed global extension providers (including WorkBuddy CN/Global) have the same auth definitions as chat. Status reads reuse a serialized, offline-refreshed runtime; OAuth creates its own. Models-cache generation invalidates this cache after auth/plugin/reload changes. Never hardcode extension providers as SDK built-ins or load untrusted project extensions merely to show an auth picker.
 - `ModelsConfig` combines models from `~/.pi/agent/models.json` with provider auth status from pi's `AuthStorage`/`ModelRegistry`.
-- Provider listing is capability-driven, never id-driven: `lib/provider-listing.ts` decides membership from `auth.apiKey.login` / `auth.oauth` plus the stored credential type, so dual-auth providers (anthropic and github-copilot today — which providers declare both changes between SDK releases, so never assume it from an id) appear exactly once and never fall through both lists (#309). `lib/provider-listing-runtime.ts` adapts `ModelRuntime` to those pure helpers.
+- Provider listing is capability-driven, never id-driven: `server/models/provider-listing.ts` decides membership from `auth.apiKey.login` / `auth.oauth` plus the stored credential type, so dual-auth providers (anthropic and github-copilot today — which providers declare both changes between SDK releases, so never assume it from an id) appear exactly once and never fall through both lists (#309). `server/models/provider-listing-runtime.ts` adapts `ModelRuntime` to those pure helpers.
 - auth.json holds **one** credential per provider and `ModelRuntime.logout()` deletes whichever it is. The delete routes therefore use `removeStoredCredentialIfType()` to compare and delete under the same file lock used by pi's auth storage. `ModelsConfig` also refreshes *both* provider lists after any auth change — refreshing one leaves a dual-auth provider rendered twice.
 - OAuth/device-code/manual-code flows are streamed by `GET /api/auth/login/[provider]`; manual code responses POST back with a short-lived token stored in `globalThis.__piLoginCallbacks`.
 - API-key routes store and remove keys through `AuthStorage`. Status endpoints must never return the raw key.
 - The model test route is `app/api/models-config/test/route.ts`; `app/api/models/test/` is not a real route.
 
 ### Image generation (N07)
-- `lib/image-generation-extension.ts` registers `eureka_generate_image` inactive by default. Keep it excluded from `withExtensionTools()` auto-activation. Its run hook enables it only for an explicit user-started image request with write-capable tools; plans, automation authoring, suppressed tools and custom-triggered runs cannot use it. Preserve the one-attempt-per-run execution guard.
+- `server/agent/image-generation-extension.ts` registers `eureka_generate_image` inactive by default. Keep it excluded from `withExtensionTools()` auto-activation. Its run hook enables it only for an explicit user-started image request with write-capable tools; plans, automation authoring, suppressed tools and custom-triggered runs cannot use it. Preserve the one-attempt-per-run execution guard.
 - Use `ModelRuntime.getAvailableOfType("image")` and `generateImages()`, not the current chat model or extracted keys. The installed SDK's built-in image adapter is OpenRouter; other image providers require installed global extensions. Do not imply ChatGPT/Codex OAuth includes image API access.
-- `lib/generated-images.ts` owns bounded raster validation, private local-workspace storage, safe usage, duplicate-submission protection and per-workspace concurrency. No arbitrary provider text, credentials or image base64 enters the transcript; tool results contain an image ID. `TaskTurnView` renders its preview outside folded processing; downloads use the existing Save As flow.
+- `features/chat/server/generated-images.ts` owns bounded raster validation, private local-workspace storage, safe usage, duplicate-submission protection and per-workspace concurrency. No arbitrary provider text, credentials or image base64 enters the transcript; tool results contain an image ID. `TaskTurnView` renders its preview outside folded processing; downloads use the existing Save As flow.
 - `/api/generated-images` is read-only. Generation is dispatched through the guarded chat tool; file routes enforce request security, local identity, strict UUIDs and private paths. Do not expose an unrestricted generation POST or broaden `/api/files` roots for these artifacts.
 
 ### Completion sound
-- `hooks/useAudio.ts` stores the toggle in `localStorage` as `pi-sound-enabled` and reuses one `AudioContext`.
+- `features/workspace/client/useAudio.ts` stores the toggle in `localStorage` as `pi-sound-enabled` and reuses one `AudioContext`.
 - Browser autoplay policy means sound must be unlocked from a user gesture; `ChatInput` calls the unlock hook from interactive controls, and `ChatWindow` plays the tone from `onAgentEnd`.
 
 ### Exported session HTML

@@ -1,6 +1,6 @@
-import { getProviderModelRuntime } from "@/lib/provider-model-runtime";
-import { invalidateModelsCache } from "@/lib/models-cache";
-import { removeStoredCredentialIfType } from "@/lib/provider-credential-store";
+import { getProviderModelRuntime } from "@/server/models/provider-model-runtime";
+import { invalidateModelsCache } from "@/server/models/models-cache";
+import { removeStoredCredentialIfType } from "@/server/models/provider-credential-store";
 
 export const dynamic = "force-dynamic";
 

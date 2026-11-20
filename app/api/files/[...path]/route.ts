@@ -7,7 +7,7 @@ import {
   isFilePathAllowed,
   isWindowsAbsolutePath,
   normalizeSlashes,
-} from "@/lib/file-access";
+} from "@/features/files/server/file-access";
 import {
   DOCX_PREVIEW_MAX_BYTES,
   IMAGE_PREVIEW_MAX_BYTES,
@@ -17,18 +17,18 @@ import {
   getDocumentMime,
   getFileExt,
   getImageMime,
-} from "@/lib/file-types";
-import { resolveDirentIsDirectory } from "@/lib/file-dirent";
-import { isFilePathReferencedBySession } from "@/lib/session-file-references";
+} from "@/features/files/shared/file-types";
+import { resolveDirentIsDirectory } from "@/features/files/server/file-dirent";
+import { isFilePathReferencedBySession } from "@/features/sessions/server/session-file-references";
 import { isApiRequestAllowed } from "@/lib/request-security";
 import {
   inspectUploadTargets,
   parseUploadConflictStrategy,
   validateUploadFileNames,
-} from "@/lib/file-upload";
+} from "@/features/files/server/file-upload";
 import { parseFormDataWithinLimit, RequestBodyTooLargeError } from "@/lib/bounded-form-data";
 import { samePath } from "@/lib/paths";
-import { registeredPluginRoots } from "@/lib/haze-plugin-paths";
+import { registeredPluginRoots } from "@/server/extensions/haze-plugin-paths";
 
 const IGNORED_NAMES = new Set([
   "node_modules", ".git", ".next", "dist", "build", "__pycache__",

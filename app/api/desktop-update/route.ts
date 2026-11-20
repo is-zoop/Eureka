@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { authorizeDesktopUpdate, setDesktopUpdateDrain } from "@/lib/desktop-update-gate";
+import { authorizeDesktopUpdate, setDesktopUpdateDrain } from "@/server/desktop/desktop-update-gate";
 
 export const dynamic = "force-dynamic";
 // Native-only: the per-launch secret is passed directly to the bundled sidecar.

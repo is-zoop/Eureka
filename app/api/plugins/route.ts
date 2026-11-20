@@ -1,4 +1,4 @@
-import { readPackageChangelog } from "@/lib/package-changelog";
+import { readPackageChangelog } from "@/features/extensions/shared/package-changelog";
 import { NextResponse } from "next/server";
 import { existsSync, readFileSync, statSync } from "fs";
 import { basename, dirname, extname, join, relative } from "path";
@@ -10,10 +10,10 @@ import {
   type ResolvedPaths,
   type ResolvedResource,
 } from "@earendil-works/pi-coding-agent";
-import { getAllowedFileRoots, isExistingFilePathAllowed } from "@/lib/file-access";
+import { getAllowedFileRoots, isExistingFilePathAllowed } from "@/features/files/server/file-access";
 import { hasJsonContentType, isApiRequestAllowed } from "@/lib/request-security";
 import { getProjectTrustStatus } from "@/lib/project-trust";
-import { invalidateModelsCache } from "@/lib/models-cache";
+import { invalidateModelsCache } from "@/server/models/models-cache";
 import type {
   PluginDiagnostic,
   PluginPackageInfo,

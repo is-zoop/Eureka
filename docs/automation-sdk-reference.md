@@ -7,7 +7,7 @@ SDK 能力契约版本：1.3.0；能力、方法、限制与运行时共用 auto
 
 生成器先调用 `eureka_automation_task {}` 获取任务和章节索引；随后可用 `eureka_automation_task {sdkSection:"http"}` 等按需查询。章节查询不会执行应用，也不重复返回整个草稿。
 
-本文件由 `lib/automation-sdk-reference.json` 与 `renderAutomationSdkReference()` 生成，与模型按章节读取的内容共用同一份参考数据。
+本文件由 `features/automation/sdk/automation-sdk-reference.json` 与 `renderAutomationSdkReference()` 生成，与模型按章节读取的内容共用同一份参考数据。
 
 | 章节 ID | 功能 |
 | --- | --- |
@@ -57,7 +57,7 @@ SDK 能力契约版本：1.3.0；能力、方法、限制与运行时共用 auto
 
 本地定时运行由用户在应用“配置 → 定时运行”中创建，应用脚本不提供定时器注册 SDK。支持一次、每天、每周、1～10080分钟间隔；固定版本、功能和参数，动态日期按触发时重算。Eureka退出、休眠或错过的时间不补跑，上一轮未结束时跳过，不自动恢复或重试业务。计划不进入发布包、不上传Haze，不依赖Haze登录。不要用长时间 sleep/无限循环模拟定时功能。
 
-实现位置：[lib/automation-intake-extension.ts](../lib/automation-intake-extension.ts)、[lib/automation-app-worker.ts](../lib/automation-app-worker.ts)、[lib/automation-app-runtime.ts](../lib/automation-app-runtime.ts)。
+实现位置：[features/automation/authoring/automation-intake-extension.ts](../features/automation/authoring/automation-intake-extension.ts)、[features/automation/runtime/automation-app-worker.ts](../features/automation/runtime/automation-app-worker.ts)、[features/automation/runtime/automation-app-runtime.ts](../features/automation/runtime/automation-app-runtime.ts)。
 
 ## authoring 创建阶段工具
 
@@ -81,7 +81,7 @@ SDK 能力契约版本：1.3.0；能力、方法、限制与运行时共用 auto
 
 模型可见业务值的单页预算为 20,000 字节，过大时返回结构和引用，不静默丢失宿主数据；使用更具体的 path/fields 或更小分页。人工运行数据完全不走这条返回链路。历史模型上下文通过 SDK context 投影隔离旧试运行内容、重复 SDK、历史整包与大探索正文；JSONL 和界面记录保持原样。
 
-实现位置：[lib/automation-intake-extension.ts](../lib/automation-intake-extension.ts)、[lib/automation-authoring.ts](../lib/automation-authoring.ts)、[lib/automation-authoring-source.ts](../lib/automation-authoring-source.ts)、[lib/automation-authoring-context.ts](../lib/automation-authoring-context.ts)、[lib/automation-authoring-edit.ts](../lib/automation-authoring-edit.ts)、[lib/automation-authoring-output.ts](../lib/automation-authoring-output.ts)、[lib/automation-authoring-history.ts](../lib/automation-authoring-history.ts)。
+实现位置：[features/automation/authoring/automation-intake-extension.ts](../features/automation/authoring/automation-intake-extension.ts)、[features/automation/authoring/automation-authoring.ts](../features/automation/authoring/automation-authoring.ts)、[features/automation/authoring/automation-authoring-source.ts](../features/automation/authoring/automation-authoring-source.ts)、[features/automation/authoring/automation-authoring-context.ts](../features/automation/authoring/automation-authoring-context.ts)、[features/automation/authoring/automation-authoring-edit.ts](../features/automation/authoring/automation-authoring-edit.ts)、[features/automation/authoring/automation-authoring-output.ts](../features/automation/authoring/automation-authoring-output.ts)、[features/automation/authoring/automation-authoring-history.ts](../features/automation/authoring/automation-authoring-history.ts)。
 
 ## package 应用包界面与多功能声明
 
@@ -112,7 +112,7 @@ actions[].capabilities 未填时会继承根应用能力。读写混合应用必
 
 日期输入和传入 ctx.params 的格式均为 `yyyy-mm-dd`。日期 default 可以是固定日期字符串，或 `{relative:"today"}` / `{relative:"yesterday"}` / `{relative:"tomorrow"}`。相对日期在启用应用时按本机日期重新计算（跨月、跨年使用日历日期运算），会覆盖上次保存的旧日期；运行配置不展示“启用时默认”控件，旧的浏览器日期默认值偏好不再参与计算；默认值由开发时的 AI 根据用户需求写入字段声明，例如 `{id:"startDate",label:"开始日期",type:"date",required:true,default:{relative:"yesterday"}}`。用户仍可在日期选择器中修改本次日期。固定日期或未声明动态默认值的字段继续优先使用已保存的值。文件和目录字段仍不允许默认路径。
 
-实现位置：[lib/automation-app.ts](../lib/automation-app.ts)、[lib/automation-app-package.ts](../lib/automation-app-package.ts)、[lib/automation-app-actions.ts](../lib/automation-app-actions.ts)、[components/AutomationApplication.tsx](../components/AutomationApplication.tsx)。
+实现位置：[features/automation/shared/automation-app.ts](../features/automation/shared/automation-app.ts)、[features/automation/runtime/automation-app-package.ts](../features/automation/runtime/automation-app-package.ts)、[features/automation/runtime/automation-app-actions.ts](../features/automation/runtime/automation-app-actions.ts)、[features/automation/ui/AutomationApplication.tsx](../features/automation/ui/AutomationApplication.tsx)。
 
 ## core 入口步骤日志等待与用户询问
 
@@ -135,7 +135,7 @@ actions[].capabilities 未填时会继承根应用能力。读写混合应用必
 
 询问形状：ctx.ask([{title,question,options:[{label,description?}],selection?:"single"|"multiple"}])。返回的是答案数组，按 questionId、optionIds、text、custom、skipped 等读取；自由文本或多选不保证存在 optionId。没有选项时仍需传 options:[]。
 
-实现位置：[lib/automation-app-worker.ts](../lib/automation-app-worker.ts)、[lib/automation-app-runtime.ts](../lib/automation-app-runtime.ts)、[lib/automation-step-driver.ts](../lib/automation-step-driver.ts)、[lib/automation-app-run.ts](../lib/automation-app-run.ts)、[lib/user-input.ts](../lib/user-input.ts)。
+实现位置：[features/automation/runtime/automation-app-worker.ts](../features/automation/runtime/automation-app-worker.ts)、[features/automation/runtime/automation-app-runtime.ts](../features/automation/runtime/automation-app-runtime.ts)、[features/automation/runtime/automation-step-driver.ts](../features/automation/runtime/automation-step-driver.ts)、[features/automation/runtime/automation-app-run.ts](../features/automation/runtime/automation-app-run.ts)、[features/chat/shared/user-input.ts](../features/chat/shared/user-input.ts)。
 
 ## files 文件读取写入与产物下载
 
@@ -173,7 +173,7 @@ ZIP 解压现在只读取中央目录和条目头，文件体以分块流读取�
 
 `await ctx.artifacts.fromFile(name,ref,mediaType="application/octet-stream")`：将已授权文件保存为本轮结果列表中的独立副本。需要 artifacts 和 files.read；ref 必须是工作目录或用户授权的文件引用，不能传绝对路径。单文件最多1GiB，每轮最多64个文件产物。保留字节、文件名、类型和 SHA256；源文件后来变化不影响副本。文件内容不进入 AI 上下文，不上传 Haze。下载通过分段读取和原生“另存为”保存，大文件不走 Base64/Blob IPC；旧桌面支持的32MiB以内文件仍使用兼容通道；更大的文件需升级桌面程序。原有文字产物 write 的16MiB限制保持不变。
 
-实现位置：[lib/automation-app-files.ts](../lib/automation-app-files.ts)、[lib/automation-app-worker.ts](../lib/automation-app-worker.ts)、[lib/automation-app-runtime.ts](../lib/automation-app-runtime.ts)、[components/AutomationApplication.tsx](../components/AutomationApplication.tsx)、[lib/automation-zip.ts](../lib/automation-zip.ts)、[lib/automation-stream-files.ts](../lib/automation-stream-files.ts)、[lib/automation-artifacts.ts](../lib/automation-artifacts.ts)。
+实现位置：[features/automation/runtime/automation-app-files.ts](../features/automation/runtime/automation-app-files.ts)、[features/automation/runtime/automation-app-worker.ts](../features/automation/runtime/automation-app-worker.ts)、[features/automation/runtime/automation-app-runtime.ts](../features/automation/runtime/automation-app-runtime.ts)、[features/automation/ui/AutomationApplication.tsx](../features/automation/ui/AutomationApplication.tsx)、[features/automation/runtime/automation-zip.ts](../features/automation/runtime/automation-zip.ts)、[features/automation/runtime/automation-stream-files.ts](../features/automation/runtime/automation-stream-files.ts)、[features/automation/runtime/automation-artifacts.ts](../features/automation/runtime/automation-artifacts.ts)。
 
 ## formats 文件格式依赖与签名能力缺口
 
@@ -194,7 +194,7 @@ ZIP 解压现在只读取中央目录和条目头，文件体以分块流读取�
 
 私有配置表示不会随应用包发布，不等于提供了加密 SecretStore 或任意字段自动脱敏。当前 UI 没有 password/secret 类型；业务密钥必须显式声明为私有输入，避免放入日志、step 输入/输出、AI 输入或公开默认值。请求输入可能进入本任务的私有审计/证据；若要求独立密钥或签名完全不进入脚本/模型，需要专门的宿主凭证适配。
 
-实现位置：[lib/automation-app-worker.ts](../lib/automation-app-worker.ts)、[lib/automation-node-runtime.ts](../lib/automation-node-runtime.ts)、[lib/automation-app-package.ts](../lib/automation-app-package.ts)、[lib/automation-authoring-validation.ts](../lib/automation-authoring-validation.ts)。
+实现位置：[features/automation/runtime/automation-app-worker.ts](../features/automation/runtime/automation-app-worker.ts)、[features/automation/runtime/automation-node-runtime.ts](../features/automation/runtime/automation-node-runtime.ts)、[features/automation/runtime/automation-app-package.ts](../features/automation/runtime/automation-app-package.ts)、[features/automation/authoring/automation-authoring-validation.ts](../features/automation/authoring/automation-authoring-validation.ts)。
 
 ## tables CSV/XLSX 表格服务
 
@@ -206,7 +206,7 @@ XLSX 读取使用 `{format:"xlsx"}`，返回各表真实行号与名称，日期
 追加批次：`await ctx.tables.appendRows(writer,[{id:"0012345678901234567890",cost:12.5,roi:{formula:"B2*2",result:25}}],"明细");`。也支持按列顺序传数组行。末尾 `const saved=await ctx.tables.commitWriter(writer)` 返回 bytes/sha256/rows；`abortWriter(writer)` 取消。输出先落临时文件，成功后原子发布，默认不覆盖，可设 overwrite:true/maxBytes。追加指同一未提交 writer 内增加行，不是打开已关闭的 XLSX 原地追加。
 公式仅写入表达式和可选缓存值，宿主不求值；Excel/WPS 重算取决于客户端设置。CSV 没有公式/格式元数据，formula 列仅输出提供的缓存值或空文本。XLS/ODS、合并单元格、图表、宏、任意模板无损编辑不在本版能力内。
 
-实现位置：[lib/automation-tables.ts](../lib/automation-tables.ts)、[lib/automation-stream-files.ts](../lib/automation-stream-files.ts)。
+实现位置：[features/automation/runtime/automation-tables.ts](../features/automation/runtime/automation-tables.ts)、[features/automation/runtime/automation-stream-files.ts](../features/automation/runtime/automation-stream-files.ts)。
 
 ## browser 网页观察定位读取与操作
 
@@ -238,7 +238,7 @@ SDK 1.2 定位上下文：locator 可添加 context:[{kind:"frame",locator:{css:
 
 一次最多16个文件、合计512MiB，可降低上限；多选须同时声明 upload.multiple 且控件本身允许 multiple。每轮最多16次选择，快照保留到本轮结束，供后续表单提交读取。脚本必须 await 网站实际提交完成并核对业务结果后才能结束；设置 file input 不代表服务器已接收。上传派发后超时或验证失败都不自动再次选择/提交。使用更新后的桌面原生宿主，Web 更新不会为旧二进制增加文件选择能力。
 
-实现位置：[lib/automation-app-browser.ts](../lib/automation-app-browser.ts)、[lib/automation-app-browser-runtime.ts](../lib/automation-app-browser-runtime.ts)、[desktop/src-tauri/src/app-browser.js](../desktop/src-tauri/src/app-browser.js)、[desktop/src-tauri/src/automation_browser.rs](../desktop/src-tauri/src/automation_browser.rs)、[lib/automation-app-upload.ts](../lib/automation-app-upload.ts)。
+实现位置：[features/automation/runtime/automation-app-browser.ts](../features/automation/runtime/automation-app-browser.ts)、[features/automation/runtime/automation-app-browser-runtime.ts](../features/automation/runtime/automation-app-browser-runtime.ts)、[desktop/src-tauri/src/app-browser.js](../desktop/src-tauri/src/app-browser.js)、[desktop/src-tauri/src/automation_browser.rs](../desktop/src-tauri/src/automation_browser.rs)、[features/automation/runtime/automation-app-upload.ts](../features/automation/runtime/automation-app-upload.ts)。
 
 ## checkpoints 长任务检查点与显式恢复
 
@@ -256,7 +256,7 @@ SDK 1.2 定位上下文：locator 可添加 context:[{kind:"frame",locator:{css:
 
 任何网页/API 变更和文件发布都会在执行前把已有检查点标为不可恢复。应用收到并确认业务结果后再保存新检查点，才能重新允许恢复。检查点后有写入、但来不及保存新批次状态时，用户需人工核对并新建运行；不会拿旧检查点重放该写入。HTTP 200 由应用按真实业务状态判定；不确定的写请求必须停止，不依赖 checkpoint 猜测成功或自动补发。幂等键/查询核对仅按真实接口协议实现。
 
-实现位置：[lib/automation-checkpoints.ts](../lib/automation-checkpoints.ts)、[lib/automation-app-runtime.ts](../lib/automation-app-runtime.ts)、[lib/automation-app-worker.ts](../lib/automation-app-worker.ts)。
+实现位置：[features/automation/runtime/automation-checkpoints.ts](../features/automation/runtime/automation-checkpoints.ts)、[features/automation/runtime/automation-app-runtime.ts](../features/automation/runtime/automation-app-runtime.ts)、[features/automation/runtime/automation-app-worker.ts](../features/automation/runtime/automation-app-worker.ts)。
 
 ## http 会话 API 协议参数鉴权与签名
 
@@ -300,7 +300,7 @@ responseHeaders 只能显式选择 content-type/content-disposition/retry-after/
 
 auth 请求的原生回执附带 credentialRevision（不含密钥的版本标识），供宿主固定检查点恢复身份；应用不应将其作为业务结果。
 
-实现位置：[lib/automation-data-limits.ts](../lib/automation-data-limits.ts)、[lib/automation-session-request.ts](../lib/automation-session-request.ts)、[lib/automation-app-browser-runtime.ts](../lib/automation-app-browser-runtime.ts)、[desktop/src-tauri/src/automation_session_request.rs](../desktop/src-tauri/src/automation_session_request.rs)、[lib/automation-app-download.ts](../lib/automation-app-download.ts)、[lib/automation-app-upload.ts](../lib/automation-app-upload.ts)、[desktop/src-tauri/src/automation_credentials.rs](../desktop/src-tauri/src/automation_credentials.rs)。
+实现位置：[features/automation/shared/automation-data-limits.ts](../features/automation/shared/automation-data-limits.ts)、[features/automation/runtime/automation-session-request.ts](../features/automation/runtime/automation-session-request.ts)、[features/automation/runtime/automation-app-browser-runtime.ts](../features/automation/runtime/automation-app-browser-runtime.ts)、[desktop/src-tauri/src/automation_session_request.rs](../desktop/src-tauri/src/automation_session_request.rs)、[features/automation/runtime/automation-app-download.ts](../features/automation/runtime/automation-app-download.ts)、[features/automation/runtime/automation-app-upload.ts](../features/automation/runtime/automation-app-upload.ts)、[desktop/src-tauri/src/automation_credentials.rs](../desktop/src-tauri/src/automation_credentials.rs)。
 
 ## ai 固定 AI 规则、分类模型与图片输入
 
@@ -414,7 +414,7 @@ return ctx.step("judge", { description: ctx.params.description }, async () => {
 
 应用运行配置中的“业务 AI”单独设置模型、推理强度、请求超时10～1800秒和输出上限256～128000 token。未配置的旧应用沿用默认模型、60秒、4000 token。设置仅存本地，不进入发布包；一次运行固定设置，记录实际使用的模型；不可用或不支持的模型明确报错，不静默替换。脚本仍不能逐调用指定模型。在线模型会接收交给它的分析内容并可能收费；这不依赖 Haze 登录。
 
-实现位置：[lib/automation-app-ai.ts](../lib/automation-app-ai.ts)、[lib/automation-app-ai-images.ts](../lib/automation-app-ai-images.ts)、[lib/automation-app-files.ts](../lib/automation-app-files.ts)、[lib/automation-app-runtime.ts](../lib/automation-app-runtime.ts)、[lib/automation-business-ai-store.ts](../lib/automation-business-ai-store.ts)、[lib/automation-app-classifier.ts](../lib/automation-app-classifier.ts)。
+实现位置：[features/automation/runtime/automation-app-ai.ts](../features/automation/runtime/automation-app-ai.ts)、[features/automation/runtime/automation-app-ai-images.ts](../features/automation/runtime/automation-app-ai-images.ts)、[features/automation/runtime/automation-app-files.ts](../features/automation/runtime/automation-app-files.ts)、[features/automation/runtime/automation-app-runtime.ts](../features/automation/runtime/automation-app-runtime.ts)、[features/automation/runtime/automation-business-ai-store.ts](../features/automation/runtime/automation-business-ai-store.ts)、[features/automation/runtime/automation-app-classifier.ts](../features/automation/runtime/automation-app-classifier.ts)。
 
 ## validation 仅人工测试、结果隔离与持续保存
 
@@ -430,7 +430,7 @@ return ctx.step("judge", { description: ctx.params.description }, async () => {
 
 模型上下文仅做提供给模型的投影，不删除 JSONL，也不修改 UI 历史或私有实际结果。历史校验记录可保留供用户查看，不再作为保存门槛或模型输入。
 
-实现位置：[lib/automation-authoring.ts](../lib/automation-authoring.ts)、[lib/automation-authoring-context.ts](../lib/automation-authoring-context.ts)、[lib/automation-authoring-history.ts](../lib/automation-authoring-history.ts)、[components/AutomationAuthoringCard.tsx](../components/AutomationAuthoringCard.tsx)、[app/api/automation/authoring/route.ts](../app/api/automation/authoring/route.ts)。
+实现位置：[features/automation/authoring/automation-authoring.ts](../features/automation/authoring/automation-authoring.ts)、[features/automation/authoring/automation-authoring-context.ts](../features/automation/authoring/automation-authoring-context.ts)、[features/automation/authoring/automation-authoring-history.ts](../features/automation/authoring/automation-authoring-history.ts)、[features/automation/ui/AutomationAuthoringCard.tsx](../features/automation/ui/AutomationAuthoringCard.tsx)、[app/api/automation/authoring/route.ts](../app/api/automation/authoring/route.ts)。
 
 ## limits 大小并发与超时限制汇总
 
@@ -455,7 +455,7 @@ return ctx.step("judge", { description: ctx.params.description }, async () => {
 
 浏览器连接不可用时，未派发命令会保留并等待原面板重连，等待不总是被固定的 60 秒截断。因此看见长等待应先看 status、连接和派发阶段，而不是另起一个 run。模型不再调用试运行工具；用户在界面观察或停止当前运行。
 
-实现位置：[lib/automation-app-package.ts](../lib/automation-app-package.ts)、[lib/automation-app-run.ts](../lib/automation-app-run.ts)、[lib/automation-app-runtime.ts](../lib/automation-app-runtime.ts)、[lib/automation-app-browser-runtime.ts](../lib/automation-app-browser-runtime.ts)、[lib/automation-app-ai.ts](../lib/automation-app-ai.ts)、[lib/automation-authoring.ts](../lib/automation-authoring.ts)。
+实现位置：[features/automation/runtime/automation-app-package.ts](../features/automation/runtime/automation-app-package.ts)、[features/automation/runtime/automation-app-run.ts](../features/automation/runtime/automation-app-run.ts)、[features/automation/runtime/automation-app-runtime.ts](../features/automation/runtime/automation-app-runtime.ts)、[features/automation/runtime/automation-app-browser-runtime.ts](../features/automation/runtime/automation-app-browser-runtime.ts)、[features/automation/runtime/automation-app-ai.ts](../features/automation/runtime/automation-app-ai.ts)、[features/automation/authoring/automation-authoring.ts](../features/automation/authoring/automation-authoring.ts)。
 
 ## recovery 常见阻塞与正确恢复方式
 
@@ -472,7 +472,7 @@ return ctx.step("judge", { description: ctx.params.description }, async () => {
 
 人工运行的 waiting-user/waiting-browser/completed/failed/interrupted 是运行器状态，不是模型继续调用工具的指令。进程重启不会重建任意 JS 执行栈；未知变更结果不重放。
 
-实现位置：[lib/automation-authoring.ts](../lib/automation-authoring.ts)、[lib/automation-authoring-validation.ts](../lib/automation-authoring-validation.ts)、[lib/automation-app-runtime.ts](../lib/automation-app-runtime.ts)、[lib/automation-app-browser-runtime.ts](../lib/automation-app-browser-runtime.ts)、[hooks/useAgentSession.ts](../hooks/useAgentSession.ts)。
+实现位置：[features/automation/authoring/automation-authoring.ts](../features/automation/authoring/automation-authoring.ts)、[features/automation/authoring/automation-authoring-validation.ts](../features/automation/authoring/automation-authoring-validation.ts)、[features/automation/runtime/automation-app-runtime.ts](../features/automation/runtime/automation-app-runtime.ts)、[features/automation/runtime/automation-app-browser-runtime.ts](../features/automation/runtime/automation-app-browser-runtime.ts)、[features/chat/client/useAgentSession.ts](../features/chat/client/useAgentSession.ts)。
 
 ## recipe 可靠生成顺序与最小入口示例
 
@@ -503,4 +503,4 @@ export default async function run(ctx) {
 
 这个示例只演示小文本处理和文本产物；没有把文件 SDK 伪装成 Excel 服务。结果列可声明 index:number、value:text；私有检查使用完整结果预期或独立证据。真实文件、网页和变更功能还需各自的授权、格式适配与校验。
 
-实现位置：[lib/automation-authoring-guide.ts](../lib/automation-authoring-guide.ts)、[lib/automation-intake-extension.ts](../lib/automation-intake-extension.ts)、[lib/automation-app-worker.ts](../lib/automation-app-worker.ts)。
+实现位置：[features/automation/authoring/automation-authoring-guide.ts](../features/automation/authoring/automation-authoring-guide.ts)、[features/automation/authoring/automation-intake-extension.ts](../features/automation/authoring/automation-intake-extension.ts)、[features/automation/runtime/automation-app-worker.ts](../features/automation/runtime/automation-app-worker.ts)。

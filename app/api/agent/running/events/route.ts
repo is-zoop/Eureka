@@ -1,4 +1,5 @@
-import { getRunningRpcSessionIds, subscribeRunningSessions } from "@/lib/rpc-session-registry";
+import { getRunningRpcSessionIds, subscribeRunningSessions } from "@/server/agent/rpc-session-registry";
+import { subscribeSessionCompletions } from "@/features/sessions/server/session-completions";
 
 export const dynamic = "force-dynamic";
 
@@ -6,6 +7,7 @@ export const dynamic = "force-dynamic";
 // session ids. Pushes an update whenever any session starts or stops working,
 // so the sidebar never has to poll.
 export async function GET(req: Request) {
+  let cleanup = () => {};
   const stream = new ReadableStream({
     start(controller) {
       const encoder = new TextEncoder();
@@ -19,6 +21,13 @@ export async function GET(req: Request) {
       const unsubscribe = subscribeRunningSessions((ids) => {
         try {
           encode({ type: "running", runningSessionIds: ids });
+        } catch {
+          // controller already closed
+        }
+      });
+      const unsubscribeCompletions = subscribeSessionCompletions((completion) => {
+        try {
+          controller.enqueue(encoder.encode(`event: completion\ndata: ${JSON.stringify(completion)}\n\n`));
         } catch {
           // controller already closed
         }
@@ -37,14 +46,18 @@ export async function GET(req: Request) {
         }
       }, 30_000);
 
-      const cleanup = () => {
+      cleanup = () => {
         clearInterval(heartbeat);
         unsubscribe();
+        unsubscribeCompletions();
+        req.signal.removeEventListener("abort", cleanup);
         try { controller.close(); } catch { /* already closed */ }
       };
 
-      req.signal?.addEventListener("abort", cleanup);
+      req.signal.addEventListener("abort", cleanup, { once: true });
+      if (req.signal.aborted) cleanup();
     },
+    cancel() { cleanup(); },
   });
 
   return new Response(stream, {

@@ -17,7 +17,7 @@
 
 ## 实现
 
-- `lib/provider-model-runtime.ts` 创建不包含 AgentSession 的扩展模型运行时，加载安装目录的全局扩展，不授权项目本地扩展。
+- `server/models/provider-model-runtime.ts` 创建不包含 AgentSession 的扩展模型运行时，加载安装目录的全局扩展，不授权项目本地扩展。
 - 状态读取共用运行时，每次串行离线刷新凭证和 models.json；OAuth 登录使用独立实例。
 - 模型缓存失效也会使扩展运行时重建；插件安装、更新、启停、删除和会话 reload 能刷新列表。
 - API Key 读写及 OAuth 退出保留原来的凭证类型检查与文件锁，状态接口不返回密钥。

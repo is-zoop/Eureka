@@ -1,6 +1,6 @@
 import { Suspense } from "react";
 import { redirect } from "next/navigation";
-import { AppShell } from "@/components/AppShell";
+import { AppShell } from "@/features/workspace/ui/AppShell";
 import { readAppSession } from "@/lib/auth/session";
 
 export default async function Home() {

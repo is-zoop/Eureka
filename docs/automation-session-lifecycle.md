@@ -56,7 +56,7 @@
 
 ```powershell
 cd E:\Eureka
-node --test lib/automation-app-browser.test.mjs lib/automation-authoring.test.mjs
+node --test tests/automation/automation-app-browser.test.mjs tests/automation/automation-authoring.test.mjs
 .\node_modules\.bin\tsc.cmd --noEmit
 ```
 

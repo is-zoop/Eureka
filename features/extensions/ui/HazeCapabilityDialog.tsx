@@ -1,0 +1,85 @@
+"use client";
+
+import { LabelTooltip } from "@/features/workspace/ui/LabelTooltip";
+import { OrganizationPluginDialog, type PluginConfirmation, type PluginDialogOptions } from "./OrganizationPluginDialog";
+import { useEffect, useState } from "react";
+import { CheckIcon, RefreshCwIcon } from "lucide-react";
+import { ExtensionNotice as NotificationNotice } from "./ExtensionNotice";
+import { OrganizationCapabilityIcon } from "./OrganizationCapabilityIcon";
+import type { OrganizationExtensionDetailItem } from "./OrganizationExtensionDetails";
+import { RadioGroup, RadioGroupItem } from "../../../components/ui/radio-group";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogBody } from "@/components/ui/dialog";
+import { McpExposureOptions } from "./McpExposureOptions";
+import { useI18n } from "@/hooks/useI18n";
+
+export type InstallScope = "project" | "global";
+export type McpRuntimeOptions = { exposure?: "direct" | "deferred" | "codemode"; lifecycle?: "lazy" | "eager" | "keep-alive"; idleTimeout?: number };
+
+function DialogFrame({ item, title, children, onClose }: { item: OrganizationExtensionDetailItem; title: string; children: React.ReactNode; onClose: () => void }) {
+  return <Dialog open onOpenChange={value => { if (!value) onClose(); }}><DialogContent className="max-w-xl"><DialogHeader><DialogTitle className="flex items-center gap-3"><OrganizationCapabilityIcon capability={{ capabilityId: item.id }} iconUrl={item.iconUrl} type={item.type} size={28} />{title}</DialogTitle></DialogHeader><DialogBody className="p-0">{children}</DialogBody></DialogContent></Dialog>;
+}
+
+function RuntimeFields({ value, onChange, disabled }: { value: McpRuntimeOptions; onChange: (value: McpRuntimeOptions) => void; disabled: boolean }) {
+  return <McpExposureOptions value={value.exposure} disabled={disabled} onChange={exposure => onChange({ exposure: exposure as McpRuntimeOptions["exposure"] })} />;
+}
+
+function ScopeIcon({ scope }: { scope: InstallScope }) {
+  return scope === "project"
+    ? <svg aria-hidden="true" viewBox="0 0 24 24" className="size-6 shrink-0 text-slate-500" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M3.5 6.5A2.5 2.5 0 0 1 6 4h4l2 2h6A2.5 2.5 0 0 1 20.5 8.5v8A2.5 2.5 0 0 1 18 19H6a2.5 2.5 0 0 1-2.5-2.5z" /></svg>
+    : <svg aria-hidden="true" viewBox="0 0 24 24" className="size-6 shrink-0 text-slate-500" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="8.5" /><path d="M3.8 12h16.4M12 3.5c2.2 2.3 3.4 5.2 3.4 8.5S14.2 18.2 12 20.5M12 3.5C9.8 5.8 8.6 8.7 8.6 12s1.2 6.2 3.4 8.5" /></svg>;
+}
+
+type ScopeAvailability = Record<InstallScope, boolean>;
+
+type CapabilityDialogProps = { item: OrganizationExtensionDetailItem; cwd: string; busy: boolean; onClose: () => void; onConfirm: (scope: InstallScope, runtime?: McpRuntimeOptions, plugin?: PluginConfirmation) => Promise<boolean> } & PluginDialogOptions;
+export function HazeCapabilityInstallDialog(props: CapabilityDialogProps) {
+  return props.item.type === "Plugin" ? <OrganizationPluginDialog {...props} /> : <SingleCapabilityInstallDialog {...props} />;
+}
+
+function SingleCapabilityInstallDialog({ item, cwd, busy, onClose, onConfirm, fixedScope }: CapabilityDialogProps) {
+  const { t } = useI18n();
+  const [scope, setScope] = useState<InstallScope>(fixedScope ?? "project");
+  const [runtime, setRuntime] = useState<McpRuntimeOptions>({ exposure: "direct" });
+  const [projectTrusted, setProjectTrusted] = useState<boolean | null>(null);
+  const [installed, setInstalled] = useState<ScopeAvailability>({ project: false, global: false });
+  const [error, setError] = useState<string | null>(null);
+  const [completed, setCompleted] = useState(false);
+  useEffect(() => {
+    let active = true;
+    setScope(fixedScope ?? "project"); setRuntime({ exposure: "direct" }); setError(null); setCompleted(false); setInstalled({ project: false, global: false }); setProjectTrusted(null);
+    void Promise.all([
+      fetch(`/api/project-trust?cwd=${encodeURIComponent(cwd)}`, { cache: "no-store" }).then(async (response) => ({ response, payload: await response.json().catch(() => null) as { trusted?: boolean } | null })),
+      fetch(`/api/organization-extensions/${item.id}/installation?cwd=${encodeURIComponent(cwd)}`, { cache: "no-store" }).then(async (response) => ({ response, payload: await response.json().catch(() => null) as { project?: Array<{ capabilityId?: string | number }>; global?: Array<{ capabilityId?: string | number }> } | null })),
+    ]).then(([trust, installations]) => {
+      if (!active) return;
+      const trusted = trust.response.ok && trust.payload?.trusted === true;
+      const capabilityId = String(item.id);
+      const isInstalled = (records: Array<{ capabilityId?: string | number }> | undefined) => records?.some((record) => String(record.capabilityId) === capabilityId) === true;
+      const nextInstalled = { project: installations.response.ok && isInstalled(installations.payload?.project), global: installations.response.ok && isInstalled(installations.payload?.global) };
+      setProjectTrusted(trusted); setInstalled(nextInstalled);
+      if (!fixedScope) {
+        if (nextInstalled.project || !trusted) { if (!nextInstalled.global) setScope("global"); }
+        else setScope("project");
+      }
+    }).catch(() => { if (active) setProjectTrusted(false); });
+    return () => { active = false; };
+  }, [cwd, item.id, fixedScope]);
+  const projectUnavailable = installed.project || projectTrusted === false;
+  const globalUnavailable = installed.global;
+  const selectedUnavailable = scope === "project" ? projectUnavailable : globalUnavailable;
+  const noInstallableScope = projectUnavailable && globalUnavailable;
+  const submit = async () => { if (selectedUnavailable) return; setError(null); const success = await onConfirm(scope, item.type === "MCP" ? runtime : undefined); if (success) { setCompleted(true); await new Promise<void>((resolve) => window.setTimeout(resolve, 650)); setCompleted(false); } };
+  const scopeOptions: Array<{ value: InstallScope; title: string; note: string }> = [{ value: "project", title: t("extensions.project"), note: t("extensions.projectInstallNote") }, { value: "global", title: t("extensions.global"), note: t("extensions.globalInstallNote") }];
+  return <DialogFrame item={item} title={t("extensions.installDialogTitle", { name: item.name })} onClose={busy || completed ? () => undefined : onClose}><div className="space-y-5 p-5">{!fixedScope && <div><p className="text-sm font-medium text-[var(--text)]">{t("extensions.installScope")}</p><RadioGroup aria-label={t("extensions.installScope")} value={scope} onValueChange={(value) => setScope(value as InstallScope)} className="mt-2 grid grid-cols-2 gap-3">{scopeOptions.map((option) => { const isInstalled = installed[option.value]; const disabled = option.value === "project" ? projectUnavailable : globalUnavailable; return <LabelTooltip key={option.value} content={disabled ? isInstalled ? t("extensions.scopeAlreadyInstalled") : t("extensions.projectUntrusted") : option.note}><label className={`relative flex min-w-0 items-start gap-3 rounded-[var(--radius-control)] border border-[var(--border)] p-3 transition-colors ${disabled ? "cursor-not-allowed bg-[var(--bg-hover)] opacity-60" : scope === option.value ? "cursor-pointer bg-[var(--bg-hover)]" : "cursor-pointer hover:bg-[var(--bg-hover)]"}`}><RadioGroupItem value={option.value} disabled={disabled} className="sr-only" /><ScopeIcon scope={option.value} /><span className="min-w-0 flex-1"><span className="flex items-center gap-2"><span className="truncate text-sm font-semibold text-[var(--text)]">{option.title}</span>{isInstalled ? <span className="shrink-0 rounded-full bg-slate-200 px-1.5 py-0.5 text-[10px] font-medium text-slate-500">{t("extensions.alreadyInstalled")}</span> : null}</span><span className="mt-1 block truncate whitespace-nowrap text-xs text-[var(--text-muted)]">{option.note}</span></span>{scope === option.value && !disabled ? <span aria-hidden="true" className="grid size-5 shrink-0 place-items-center rounded-full bg-[var(--text)] text-xs font-bold text-[var(--bg-panel)]">✓</span> : null}</label></LabelTooltip>; })}</RadioGroup>{scope === "project" && projectTrusted === false && !installed.project ? <p className="mt-2 text-xs text-red-600">{t("extensions.projectUntrusted")}</p> : null}</div>}{fixedScope === "project" && projectTrusted === false ? <p className="text-xs text-red-600">{t("extensions.projectUntrusted")}</p> : null}{item.type === "MCP" ? <RuntimeFields value={runtime} onChange={setRuntime} disabled={busy} /> : null}{error ? <NotificationNotice type="error" message={error} /> : null}</div><footer className="flex justify-end gap-2 border-t border-[var(--border)] px-5 py-3"><button type="button" disabled={busy || completed} onClick={onClose} className="h-8 rounded-[var(--radius-control)] border border-[var(--border)] px-3 text-sm text-[var(--text)] hover:bg-[var(--bg-hover)] disabled:opacity-50">{t("extensions.cancel")}</button><button type="button" disabled={busy || completed || selectedUnavailable || noInstallableScope || projectTrusted === null} onClick={() => void submit()} className="inline-flex h-8 items-center rounded-[var(--radius-control)] bg-[var(--text)] px-3 text-sm font-medium text-[var(--bg-panel)] hover:opacity-90 disabled:cursor-not-allowed disabled:bg-[var(--border)] disabled:text-[var(--text-muted)] disabled:hover:opacity-100">{busy ? <><RefreshCwIcon className="mr-1.5 h-3.5 w-3.5 animate-spin" />{t("extensions.installing")}</> : completed ? <><CheckIcon className="mr-1.5 h-3.5 w-3.5" />{t("extensions.installedSuccess")}</> : t("extensions.confirmInstall")}</button></footer></DialogFrame>;
+}
+
+export function HazeMcpConfigDialog({ item, initial, busy, onClose, onConfirm }: { item: OrganizationExtensionDetailItem; initial: McpRuntimeOptions; busy: boolean; onClose: () => void; onConfirm: (runtime: McpRuntimeOptions) => Promise<boolean> }) {
+  const { t } = useI18n();
+  const initialExposure = initial.exposure ?? "direct";
+  const [runtime, setRuntime] = useState<McpRuntimeOptions>({ exposure: initialExposure });
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => { setRuntime({ exposure: initialExposure }); setError(null); }, [initialExposure]);
+  const submit = async () => { setError(null); await onConfirm(runtime); };
+  return <DialogFrame item={item} title={t("extensions.configureDialogTitle", { name: item.name })} onClose={busy ? () => undefined : onClose}><div className="space-y-5 p-5"><RuntimeFields value={runtime} onChange={setRuntime} disabled={busy} />{error ? <NotificationNotice type="error" message={error} /> : null}</div><footer className="flex justify-end gap-2 border-t border-[var(--border)] px-5 py-3"><button type="button" disabled={busy} onClick={onClose} className="h-8 rounded-[var(--radius-control)] border border-[var(--border)] px-3 text-sm text-[var(--text)] hover:bg-[var(--bg-hover)] disabled:opacity-50">{t("extensions.cancel")}</button><button type="button" disabled={busy} onClick={() => void submit()} className="h-8 rounded-[var(--radius-control)] bg-blue-500 px-3 text-sm font-medium text-white hover:bg-blue-600 disabled:opacity-50">{busy ? t("extensions.saving") : t("extensions.saveConfiguration")}</button></footer></DialogFrame>;
+}
+

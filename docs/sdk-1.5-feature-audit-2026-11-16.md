@@ -120,15 +120,15 @@ CLI 自更新命令、终端按键提示、终端图片及 TUI 渲染优化不�
 
 | 对照项 | 主要代码 |
 | --- | --- |
-| 依赖和会话创建 | [package.json](E:/Eureka/package.json)、[rpc-manager.ts](E:/Eureka/lib/rpc-manager.ts) |
-| 工具搜索、Codemode、OAuth 传输 | [native-mcp-runtime.ts](E:/Eureka/lib/native-mcp-runtime.ts) |
-| 手动 MCP 表单与写入规则 | [McpConfig.tsx](E:/Eureka/components/McpConfig.tsx)、[mcp-config.ts](E:/Eureka/lib/mcp-config.ts)、[api-types.ts](E:/Eureka/lib/api-types.ts) |
-| Haze 工具暴露 | [haze-mcp-runtime.ts](E:/Eureka/lib/haze-mcp-runtime.ts) |
-| 权限预设和任务阶段 | [tool-presets.ts](E:/Eureka/lib/tool-presets.ts)、[task-phases.ts](E:/Eureka/lib/task-phases.ts) |
-| 消息类型与模型/费用展示 | [types.ts](E:/Eureka/lib/types.ts)、[MessageView.tsx](E:/Eureka/components/MessageView.tsx) |
-| 自动化 AI | [automation-app-ai.ts](E:/Eureka/lib/automation-app-ai.ts) |
-| SSE 进度过滤 | [agent-event-wire.ts](E:/Eureka/lib/agent-event-wire.ts) |
-| 上下文投影和用量 | [session-reader.ts](E:/Eureka/lib/session-reader.ts)、[context-usage route](E:/Eureka/app/api/sessions/[id]/context-usage/route.ts) |
+| 依赖和会话创建 | [package.json](E:/Eureka/package.json)、[rpc-manager.ts](E:/Eureka/server/agent/rpc-manager.ts) |
+| 工具搜索、Codemode、OAuth 传输 | [native-mcp-runtime.ts](E:/Eureka/server/mcp/native-mcp-runtime.ts) |
+| 手动 MCP 表单与写入规则 | [McpConfig.tsx](E:/Eureka/features/extensions/ui/McpConfig.tsx)、[mcp-config.ts](E:/Eureka/server/mcp/mcp-config.ts)、[api-types.ts](E:/Eureka/lib/api-types.ts) |
+| Haze 工具暴露 | [haze-mcp-runtime.ts](E:/Eureka/server/mcp/haze-mcp-runtime.ts) |
+| 权限预设和任务阶段 | [tool-presets.ts](E:/Eureka/features/chat/shared/tool-presets.ts)、[task-phases.ts](E:/Eureka/features/chat/shared/task-phases.ts) |
+| 消息类型与模型/费用展示 | [types.ts](E:/Eureka/lib/types.ts)、[MessageView.tsx](E:/Eureka/features/chat/ui/MessageView.tsx) |
+| 自动化 AI | [automation-app-ai.ts](E:/Eureka/features/automation/runtime/automation-app-ai.ts) |
+| SSE 进度过滤 | [agent-event-wire.ts](E:/Eureka/server/agent/agent-event-wire.ts) |
+| 上下文投影和用量 | [session-reader.ts](E:/Eureka/features/sessions/server/session-reader.ts)、[context-usage route](E:/Eureka/app/api/sessions/[id]/context-usage/route.ts) |
 
 SDK 工厂初始化、版本首次引入时间和 API 类型均另外核对了本项目 `node_modules` 中对应 1.5.0 安装文件。本轮属于静态功能审计，未新增生产功能、未运行账号调用或全量测试；旧文档的测试数量不代表本轮结果。
 
@@ -157,7 +157,7 @@ N14 是有明确第三方 OAuth MCP 接入需求时的下一项；N07、N11 需�
 
 | 编号 | 对当前 Agent 的收益 | 当前缺口 | 建议本次交付 |
 | --- | --- | --- | --- |
-| N13 长工具实时进度 | 长时间命令、MCP 或批处理有中间反馈，减少把正常执行误认为卡死的情况 | `lib/agent-event-wire.ts` 明确过滤 `tool_execution_update`；聊天 Hook 处理工具开始/结束，缺少增量进度合并 | 透传经过限制及脱敏的进度，按工具调用合并，只展示最近内容；重连读取当前运行快照 |
+| N13 长工具实时进度 | 长时间命令、MCP 或批处理有中间反馈，减少把正常执行误认为卡死的情况 | `server/agent/agent-event-wire.ts` 明确过滤 `tool_execution_update`；聊天 Hook 处理工具开始/结束，缺少增量进度合并 | 透传经过限制及脱敏的进度，按工具调用合并，只展示最近内容；重连读取当前运行快照 |
 | N10 请求诊断 | 区分模型响应慢、重试和工具执行慢，便于排查 Agent 运行问题 | 未建立请求级诊断记录，也未显式接入 SDK span；现有处理详情主要是阶段和工具结果 | 记录可观测的请求时长、首个响应事件、重试和结果状态，与会话/运行关联；在既有处理详情中查看 |
 | N12 Pi 扩展更新说明 | 更新扩展后能判断哪些工具或行为发生变化；对模型能力没有直接提升 | 插件 API 已有安装、更新和资源信息，但没有呈现包内 changelog 和已读状态 | 读取已安装包的更新说明及版本，在现有扩展详情显示；支持按包和配置作用域记录已读 |
 | N04 缓存预热控制与状态 | 长工具执行或连续对话时，符合条件的模型可降低提示缓存过期带来的重读成本；实际收益取决于模型和请求 | SDK 会话工厂已有 CacheWarmer，默认模式为 streaming；Eureka 缺少开关、有效状态、原因及预热用量展示 | 提供 off / streaming / idle 设置，显示未生效原因、预热状态与用量，沿用 SDK 的资格和成本判断 |

@@ -7,7 +7,7 @@ import { prepareBrowserAssets } from "./scripts/browser-assets.mjs";
 import { configureDevWebpackMemory } from "./scripts/dev-webpack-memory.mjs";
 
 const configDir = dirname(fileURLToPath(import.meta.url));
-const automationContract = JSON.parse(readFileSync(join(configDir, "lib/automation-sdk-contract.json"), "utf8"));
+const automationContract = JSON.parse(readFileSync(join(configDir, "features/automation/sdk/automation-sdk-contract.json"), "utf8"));
 const APP_BROWSER_POST_MAX_BYTES = automationContract.limits.executionValueBytes + 64 * 1024;
 const browserAssets = prepareBrowserAssets(configDir);
 const { version } = JSON.parse(readFileSync(join(configDir, "package.json"), "utf8")) as { version: string };
@@ -23,6 +23,7 @@ const nextConfig: NextConfig = {
   ...(process.env.EUREKA_DESKTOP_BUILD === "1" ? { output: "standalone" } : {}),
   outputFileTracingRoot: configDir,
   outputFileTracingExcludes: { "*": desktopTraceExcludes },
+  outputFileTracingIncludes: { "/api/subscription-quotas": ["./node_modules/@specode/pi-subscription-usage/**/*"] },
   // The proxy clones request bodies before route-level streaming limits apply.
   experimental: {
     proxyClientMaxBodySize: APP_BROWSER_POST_MAX_BYTES,

@@ -1,4 +1,4 @@
-import { createCompatibleModelRuntime } from "@/lib/model-runtime-compat";
+import { createCompatibleModelRuntime } from "@/server/models/model-runtime-compat";
 import { NextResponse } from "next/server";
 import { mkdtempSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";

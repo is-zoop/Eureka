@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { runNpx } from "@/lib/npx";
-import { getAllowedFileRoots, isExistingFilePathAllowed } from "@/lib/file-access";
+import { getAllowedFileRoots, isExistingFilePathAllowed } from "@/features/files/server/file-access";
 import { hasJsonContentType, isApiRequestAllowed } from "@/lib/request-security";
 import { getProjectTrustStatus } from "@/lib/project-trust";
 

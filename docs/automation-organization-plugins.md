@@ -50,7 +50,7 @@
 
 ```powershell
 cd E:\Eureka
-node --test lib/haze-automation-install.test.mjs lib/haze-plugin-install.test.mjs lib/haze-plugin-package.test.mjs
+node --test tests/automation/haze-automation-install.test.mjs tests/extensions/haze-plugin-install.test.mjs tests/extensions/haze-plugin-package.test.mjs
 .\node_modules\.bin\tsc.cmd --noEmit
 ```
 

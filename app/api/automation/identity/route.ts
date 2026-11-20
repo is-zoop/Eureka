@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { automationAccess, DraftIdentityError } from "@/lib/automation-access";
-import { localAutomationNamespaces } from "@/lib/automation-local-context";
+import { automationAccess, DraftIdentityError } from "@/features/automation/runtime/automation-access";
+import { localAutomationNamespaces } from "@/features/automation/runtime/automation-local-context";
 export const dynamic = "force-dynamic";
 export async function GET() {
   try { const identity = await automationAccess(); identity.assertIdentity(); return NextResponse.json({ ownerKey: identity.ownerKey, ownerKeys: [...new Set([identity.ownerKey, ...localAutomationNamespaces()])] }, { headers: { "Cache-Control": "no-store" } }); }

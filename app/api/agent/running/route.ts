@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getRunningRpcSessionIds } from "@/lib/rpc-session-registry";
+import { getRunningRpcSessionIds } from "@/server/agent/rpc-session-registry";
 
 export const dynamic = "force-dynamic";
 

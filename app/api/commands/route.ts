@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
-import { getRpcSession } from "@/lib/rpc-manager";
-import { readSessionHeader, resolveSessionPath } from "@/lib/session-reader";
-import { getAllowedFileRoots, isExistingFilePathAllowed } from "@/lib/file-access";
-import { loadCommandResources } from "@/lib/command-catalog";
+import { getRpcSession } from "@/server/agent/rpc-manager";
+import { readSessionHeader, resolveSessionPath } from "@/features/sessions/server/session-reader";
+import { getAllowedFileRoots, isExistingFilePathAllowed } from "@/features/files/server/file-access";
+import { loadCommandResources } from "@/server/agent/command-catalog";
 
 export const dynamic = "force-dynamic";
 

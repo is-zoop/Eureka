@@ -3,6 +3,8 @@ declare module "lucide-react" {
 
   type LucideIcon = ComponentType<SVGProps<SVGSVGElement> & { size?: number | string; strokeWidth?: number | string }>;
 
+  export const ArchiveIcon: LucideIcon;
+  export const ArchiveRestoreIcon: LucideIcon;
   export const ArrowLeftIcon: LucideIcon;
   export const ArrowRightIcon: LucideIcon;
   export const ArrowUpIcon: LucideIcon;
@@ -11,6 +13,8 @@ declare module "lucide-react" {
   export const GlobeIcon: LucideIcon;
   export const CircleHelpIcon: LucideIcon;
   export const CornerUpLeftIcon: LucideIcon;
+  export const CopyIcon: LucideIcon;
+  export const DatabaseIcon: LucideIcon;
   export const DownloadIcon: LucideIcon;
   export const PackageIcon: LucideIcon;
   export const FileTextIcon: LucideIcon;
@@ -23,6 +27,7 @@ declare module "lucide-react" {
   export const XIcon: LucideIcon;
   export const ChevronDownIcon: LucideIcon;
   export const ChevronRightIcon: LucideIcon;
+  export const ChartLineIcon: LucideIcon;
   export const ClockIcon: LucideIcon;
   export const CalendarIcon: LucideIcon;
   export const CpuIcon: LucideIcon;
@@ -31,6 +36,7 @@ declare module "lucide-react" {
   export const FolderGit2Icon: LucideIcon;
   export const FolderPlusIcon: LucideIcon;
   export const GitBranchIcon: LucideIcon;
+  export const HashIcon: LucideIcon;
   export const LayersIcon: LucideIcon;
   export const LayoutGridIcon: LucideIcon;
   export const HouseIcon: LucideIcon;
@@ -53,5 +59,7 @@ declare module "lucide-react" {
   export const Settings2Icon: LucideIcon;
   export const StarIcon: LucideIcon;
   export const SparklesIcon: LucideIcon;
+  export const WandIcon: LucideIcon;
   export const Trash2Icon: LucideIcon;
+  export const TicketIcon: LucideIcon;
 }

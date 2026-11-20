@@ -1,7 +1,7 @@
-import { appDownload, appFailure, appJson, automationAppAccess, readAppRequest } from "@/lib/automation-app-server";
-import { AutomationAppError, MAX_APP_ZIP, parseAutomationAppArchive } from "@/lib/automation-app-package";
-import { automationExampleArchive, fileAutomationExample } from "@/lib/automation-app-example";
-import { browserAutomationExample } from "@/lib/automation-app-browser-example";
+import { appDownload, appFailure, appJson, automationAppAccess, readAppRequest } from "@/features/automation/runtime/automation-app-server";
+import { AutomationAppError, MAX_APP_ZIP, parseAutomationAppArchive } from "@/features/automation/runtime/automation-app-package";
+import { automationExampleArchive, fileAutomationExample } from "@/features/automation/runtime/automation-app-example";
+import { browserAutomationExample } from "@/features/automation/runtime/automation-app-browser-example";
 import { isApiRequestAllowed } from "@/lib/request-security";
 export const dynamic = "force-dynamic";
 

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { isApiRequestAllowed, hasJsonContentType } from "@/lib/request-security";
-import { readCommandEnvironment, writeCommandEnvironment } from "@/lib/command-environment-store";
+import { readCommandEnvironment, writeCommandEnvironment } from "@/server/agent/command-environment-store";
 
 export const dynamic = "force-dynamic";
 export async function GET(request: Request) {

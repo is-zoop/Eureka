@@ -76,7 +76,7 @@ jobs:
       - name: Check release identity and metadata
         run: node desktop/scripts/release-artifacts.mjs --check
       - name: Run release tests
-        run: node --test desktop/scripts/runtime-config.test.mjs desktop/scripts/release-artifacts.test.mjs desktop/scripts/publish-release.test.mjs desktop/scripts/standalone-resources.test.mjs desktop/scripts/verify-resources.test.mjs lib/release-version.test.mjs
+        run: node --test desktop/scripts/runtime-config.test.mjs desktop/scripts/release-artifacts.test.mjs desktop/scripts/publish-release.test.mjs desktop/scripts/standalone-resources.test.mjs desktop/scripts/verify-resources.test.mjs tests/release/release-version.test.mjs
       - name: Install Chromium
         run: npm run browser:install
       - name: Set up Rust

@@ -11,13 +11,13 @@ test("browser APIs reject guests, bind identity and dispose streaming subscripti
   globalThis.__browserApiFixture = fixture;
   t.after(async () => { delete globalThis.__browserApiFixture; await rm(root, { recursive: true, force: true }); });
   const files = {
-    "lib/browser-access.ts": await readFile("lib/browser-access.ts", "utf8"),
+    "server/browser/browser-access.ts": await readFile("server/browser/browser-access.ts", "utf8"),
     "lib/auth/session.ts": `exports.readAuthSession=async()=>{const f=globalThis.__browserApiFixture;return f.user?{principal:{subject:f.user}}:null}`,
     "lib/auth/runtime-session.ts": `exports.readRuntimeHazeSession=()=>{const f=globalThis.__browserApiFixture;return f.runtimeUser?{principal:{subject:f.runtimeUser}}:null}`,
     "lib/auth/config.ts": `exports.getAuthConfig=()=>({issuer:'https://haze.example'})`,
-    "lib/rpc-manager.ts": `exports.getRpcSession=id=>id==='chat'?{isAlive:()=>true}:null`,
-    "lib/session-reader.ts": `exports.resolveSessionPath=async()=>null`,
-    "lib/browser-runtime.ts": `
+    "server/agent/rpc-manager.ts": `exports.getRpcSession=id=>id==='chat'?{isAlive:()=>true}:null`,
+    "features/sessions/server/session-reader.ts": `exports.resolveSessionPath=async()=>null`,
+    "server/browser/browser-runtime.ts": `
       exports.browserOwner=(source,subject)=>JSON.stringify([source,subject]);
       exports.hasBrowser=()=>false;
       exports.browserState=(owner,sessionId)=>({sessionId,activeTabId:null,tabs:[]});

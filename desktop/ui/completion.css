@@ -1,0 +1,130 @@
+:root {
+  color-scheme: light;
+  --surface: #fff;
+  --border: #e2e2e2;
+  --text: #1a1a1a;
+  --muted: #575757;
+  --hover: #f0f0f0;
+  --action: #1a1a1a;
+  --action-text: #fff;
+  --error: #a62626;
+}
+
+:root.dark {
+  color-scheme: dark;
+  --surface: #242424;
+  --border: #404040;
+  --text: #f5f5f5;
+  --muted: #c5c5c5;
+  --hover: #383838;
+  --action: #f5f5f5;
+  --action-text: #1a1a1a;
+  --error: #ffadad;
+}
+
+body {
+  margin: 0;
+  padding: 6px;
+  color: var(--text);
+  font: 13px/1.4 "Segoe UI", "Microsoft YaHei UI", sans-serif;
+}
+
+.card {
+  box-sizing: border-box;
+  min-height: 176px;
+  padding: 9px 13px 10px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: 0 2px 6px #0003;
+}
+
+.card-header {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.dismiss {
+  width: 26px;
+  height: 26px;
+  flex: none;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 18px;
+}
+
+.dismiss:hover, .dismiss:focus-visible { background: var(--hover); }
+
+.task-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.summary {
+  display: -webkit-box;
+  min-height: 3lh;
+  overflow: hidden;
+  margin: 3px 0 0;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.reply-form {
+  display: flex;
+  gap: 8px;
+  margin-top: 9px;
+}
+
+.reply-form input,
+.reply-form button {
+  box-sizing: border-box;
+  height: 32px;
+  border-radius: 6px;
+  font: inherit;
+}
+
+.reply-form input {
+  flex: 1;
+  min-width: 0;
+  padding: 0 9px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+}
+
+.reply-form input::placeholder { color: var(--muted); }
+
+.reply-form button {
+  flex: none;
+  padding: 0 13px;
+  border: 0;
+  background: var(--action);
+  color: var(--action-text);
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.reply-form button:hover:not(:disabled) { opacity: 0.85; }
+.reply-form button:disabled { cursor: default; opacity: 0.45; }
+
+.reply-status {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.reply-status[data-error="true"] { color: var(--error); }

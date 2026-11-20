@@ -1,8 +1,8 @@
-import { appJson,appFailure,readAppRequest } from "@/lib/automation-app-server";
+import { appJson,appFailure,readAppRequest } from "@/features/automation/runtime/automation-app-server";
 import { isApiRequestAllowed,hasJsonContentType } from "@/lib/request-security";
-import { authorFromSession,authorSnapshot,refreshAuthor,saveAuthor,stopAuthor,readAuthor } from "@/lib/automation-authoring";
-import { AutomationAppError } from "@/lib/automation-app-package";
-import { validateUserInputResponse } from "@/lib/user-input";
+import { authorFromSession,authorSnapshot,refreshAuthor,saveAuthor,stopAuthor,readAuthor } from "@/features/automation/authoring/automation-authoring";
+import { AutomationAppError } from "@/features/automation/runtime/automation-app-package";
+import { validateUserInputResponse } from "@/features/chat/shared/user-input";
 export const dynamic="force-dynamic";
 export async function GET(request:Request){try{if(!isApiRequestAllowed(request))throw new AutomationAppError("来源无效",403);const sid=new URL(request.url).searchParams.get("sessionId");if(!sid||!/^[a-f0-9-]{36}$/.test(sid))return appJson(null);const a=await authorFromSession(sid,true);return appJson(a?await authorSnapshot(a):null);}catch(e){return appFailure(e);}}
 export async function POST(request:Request){try{

@@ -1,5 +1,5 @@
-import { consumeAppBrowserTicket, checkAppBrowserTicket } from "@/lib/automation-app-browser-runtime";
-import { readAppRequest } from "@/lib/automation-app-server";
+import { consumeAppBrowserTicket, checkAppBrowserTicket } from "@/features/automation/runtime/automation-app-browser-runtime";
+import { readAppRequest } from "@/features/automation/runtime/automation-app-server";
 import { isApiRequestAllowed } from "@/lib/request-security";
 export const dynamic = "force-dynamic";
 export async function POST(request: Request) {

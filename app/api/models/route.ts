@@ -7,13 +7,13 @@ import {
   withModelRuntimeError,
   withSafeModelLoadFailure,
   type ModelsData,
-} from "@/lib/models-cache";
-import { resolveVisibleModels, selectInitialModelScope } from "@/lib/model-scope";
-import { getAllowedFileRoots, isExistingFilePathAllowed } from "@/lib/file-access";
+} from "@/server/models/models-cache";
+import { resolveVisibleModels, selectInitialModelScope } from "@/server/models/model-scope";
+import { getAllowedFileRoots, isExistingFilePathAllowed } from "@/features/files/server/file-access";
 import { projectTrustReloadOptions } from "@/lib/project-trust";
-import { refreshDueModelDiscoveries } from "@/lib/model-discovery-refresh";
-import { schedulePiCatalogSync } from "@/lib/pi-catalog-sync";
-import { restoreLegacyAzureProvider, restoreKimiCodingCompatibility } from "@/lib/model-runtime-compat";
+import { refreshDueModelDiscoveries } from "@/server/models/model-discovery-refresh";
+import { schedulePiCatalogSync } from "@/server/models/pi-catalog-sync";
+import { restoreLegacyAzureProvider, restoreKimiCodingCompatibility } from "@/server/models/model-runtime-compat";
 import { isApiRequestAllowed } from "@/lib/request-security";
 
 export const dynamic = "force-dynamic";

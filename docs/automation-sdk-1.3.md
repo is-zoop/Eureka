@@ -20,10 +20,10 @@
 
 | 范围 | 主要文件 |
 | --- | --- |
-| 业务AI | `lib/automation-business-ai.ts`、`lib/automation-business-ai-store.ts`、`app/api/automation/apps/[id]/ai/route.ts`、`components/AutomationBusinessAi.tsx`、AI执行及运行记录模块 |
-| 文件产物 | `lib/automation-artifacts.ts`、`lib/save-artifact.ts`、运行API、`desktop/src-tauri/src/save_file.rs`、原生命令注册和权限声明 |
-| 定时计划 | `lib/automation-schedule.ts`、`lib/automation-scheduler.ts`、`app/api/automation/schedules/route.ts`、`instrumentation.ts`、`components/AutomationSchedules.tsx` |
-| 现有界面 | `components/AutomationApplication.tsx`、`components/AutomationSettings.tsx`、复用模型选择器、中英文文案 |
+| 业务AI | `features/automation/runtime/automation-business-ai.ts`、`features/automation/runtime/automation-business-ai-store.ts`、`app/api/automation/apps/[id]/ai/route.ts`、`features/automation/ui/AutomationBusinessAi.tsx`、AI执行及运行记录模块 |
+| 文件产物 | `features/automation/runtime/automation-artifacts.ts`、`features/files/shared/save-artifact.ts`、运行API、`desktop/src-tauri/src/save_file.rs`、原生命令注册和权限声明 |
+| 定时计划 | `features/automation/shared/automation-schedule.ts`、`features/automation/runtime/automation-scheduler.ts`、`app/api/automation/schedules/route.ts`、`instrumentation.ts`、`features/automation/ui/AutomationSchedules.tsx` |
+| 现有界面 | `features/automation/ui/AutomationApplication.tsx`、`features/settings/ui/AutomationSettings.tsx`、复用模型选择器、中英文文案 |
 | 共用定义 | SDK契约、模型参考说明、生成的参考手册与 `integrations/haze` 交付文件 |
 
 桌面文件分段“另存为”需要更新原生程序及权限文件，Web更新不能给旧安装包增加命令。Haze部署匹配契约、manifest及适配器；业务AI本地设置和定时计划本身不增加发布包字段。

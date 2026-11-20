@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { statSync, type Stats } from "fs";
 import { homedir } from "os";
 import { isAbsolute, resolve } from "path";
-import { allowFileRoot } from "@/lib/file-access";
+import { allowFileRoot } from "@/features/files/server/file-access";
 
 function normalizeCwd(cwd: string): string {
   if (cwd === "~") return homedir();

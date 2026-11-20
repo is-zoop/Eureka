@@ -1,4 +1,4 @@
-import { browserOwner, clearBrowserIdentity } from "../browser-runtime";
+import { browserOwner, clearBrowserIdentity } from "../../server/browser/browser-runtime";
 import "server-only";
 
 import { cookies } from "next/headers";

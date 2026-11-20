@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getMcpRuntime } from "@/lib/mcp-runtime";
+import { getMcpRuntime } from "@/server/mcp/mcp-runtime";
 
 export const dynamic = "force-dynamic";
 export async function GET(request: Request) {

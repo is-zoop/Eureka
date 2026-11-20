@@ -1,6 +1,6 @@
-import { applicationAccess, appJson, appFailure } from "@/lib/automation-app-server";
-import { AutomationAppError } from "@/lib/automation-app-package";
-import { getProviderModelRuntime } from "@/lib/provider-model-runtime";
+import { applicationAccess, appJson, appFailure } from "@/features/automation/runtime/automation-app-server";
+import { AutomationAppError } from "@/features/automation/runtime/automation-app-package";
+import { getProviderModelRuntime } from "@/server/models/provider-model-runtime";
 
 export const dynamic = "force-dynamic";
 export async function GET(request: Request) {

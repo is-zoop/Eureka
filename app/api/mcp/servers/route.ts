@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
-import { getAllowedFileRoots, isExistingFilePathAllowed } from "@/lib/file-access";
+import { getAllowedFileRoots, isExistingFilePathAllowed } from "@/features/files/server/file-access";
 import { hasJsonContentType, isApiRequestAllowed } from "@/lib/request-security";
-import { listMcpServers, mutateMcpServers } from "@/lib/mcp-config";
-import { listHazeManagedInstalls } from "@/lib/haze-managed-capabilities";
+import { listMcpServers, mutateMcpServers } from "@/server/mcp/mcp-config";
+import { listHazeManagedInstalls } from "@/server/extensions/haze-managed-capabilities";
 import type { McpConfigScope, McpServerInput } from "@/lib/api-types";
 import { getAuthConfig } from "@/lib/auth/config";
-import { pluginMcpName } from "@/lib/haze-plugin-resources";
+import { pluginMcpName } from "@/server/extensions/haze-plugin-resources";
 
 export const dynamic = "force-dynamic";
 const scope = (value: string | null | undefined): McpConfigScope => value === "global" ? "global" : "project";

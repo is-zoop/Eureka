@@ -1,7 +1,7 @@
-import { createAgentEventStream } from "@/lib/agent-event-stream";
-import { authorizeCreationSessionId } from "@/lib/automation-creation-auth";
-import { resolveSessionPath } from "@/lib/session-reader";
-import { getRpcSession, startRpcSession } from "@/lib/rpc-manager";
+import { createAgentEventStream } from "@/server/agent/agent-event-stream";
+import { authorizeCreationSessionId } from "@/features/automation/authoring/automation-creation-auth";
+import { resolveSessionPath } from "@/features/sessions/server/session-reader";
+import { getRpcSession, startRpcSession } from "@/server/agent/rpc-manager";
 
 export const dynamic = "force-dynamic";
 

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { fetchOrganizationExtensionDocumentationAsset, getHazeMarketplaceSession, OrganizationExtensionsError } from "@/lib/organization-extensions";
+import { fetchOrganizationExtensionDocumentationAsset, getHazeMarketplaceSession, OrganizationExtensionsError } from "@/server/extensions/organization-extensions";
 import { writeAuthSession } from "@/lib/auth/session";
 
 function errorResponse(error: OrganizationExtensionsError) {

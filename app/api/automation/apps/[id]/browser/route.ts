@@ -1,15 +1,15 @@
 import { join } from "node:path";
-import { appFailure, appJson, applicationAccess, readAppRequest } from "@/lib/automation-app-server";
-import { APP_BROWSER_POST_MAX_BYTES } from "@/lib/automation-data-limits";
-import { AutomationAppError } from "@/lib/automation-app-package";
-import { appWebService, appWebServices, lockAppBrowserGrants } from "@/lib/automation-app-browser-runtime";
-import { appBrowserSpec, stopAppRun } from "@/lib/automation-app-runtime";
-import { assertAppIdle } from "@/lib/automation-app-lease";
-import { isAppId } from "@/lib/automation-app";
-import type { AppWebGrant } from "@/lib/automation-app-browser";
+import { appFailure, appJson, applicationAccess, readAppRequest } from "@/features/automation/runtime/automation-app-server";
+import { APP_BROWSER_POST_MAX_BYTES } from "@/features/automation/shared/automation-data-limits";
+import { AutomationAppError } from "@/features/automation/runtime/automation-app-package";
+import { appWebService, appWebServices, lockAppBrowserGrants } from "@/features/automation/runtime/automation-app-browser-runtime";
+import { appBrowserSpec, stopAppRun } from "@/features/automation/runtime/automation-app-runtime";
+import { assertAppIdle } from "@/features/automation/runtime/automation-app-lease";
+import { isAppId } from "@/features/automation/shared/automation-app";
+import type { AppWebGrant } from "@/features/automation/runtime/automation-app-browser";
 import { hasJsonContentType } from "@/lib/request-security";
 export const dynamic = "force-dynamic";
-async function privateState(auth: {store:import("@/lib/automation-app-store").AutomationAppStore}, id: string, directory=auth.store.dataDirectory(id)) {
+async function privateState(auth: {store:import("@/features/automation/runtime/automation-app-store").AutomationAppStore}, id: string, directory=auth.store.dataDirectory(id)) {
   const read = async <T>(name: string, fallback: T):Promise<T> => { try { return JSON.parse((await auth.store.privateBytes(join(directory, name), 512 * 1024)).toString("utf8")) as T; } catch (e) { if ((e as NodeJS.ErrnoException).code === "ENOENT") return fallback; throw e; } };
   const settings=await read<{schemaVersion:1;environments:Record<string,string>}>("browser-settings.json", { schemaVersion: 1, environments: {} }), grants=await read<{schemaVersion:1;grants:AppWebGrant[]}>("browser-grants.json", { schemaVersion: 1, grants: [] });
   if(!settings||settings.schemaVersion!==1||!settings.environments||typeof settings.environments!=="object"||Array.isArray(settings.environments)||!grants||grants.schemaVersion!==1||!Array.isArray(grants.grants)||grants.grants.some((g:unknown)=>!g||typeof g!=="object"||typeof (g as {digest?:unknown}).digest!=="string"))throw new AutomationAppError("网页环境或授权记录损坏，请检查本机应用数据。",409);
@@ -19,7 +19,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   try {
     const { id } = await params, query = new URL(request.url).searchParams;
     const auth = await applicationAccess(request, query.has("ownerKey") || query.has("runtimeId") ? {ownerKey:query.get("ownerKey"),runtimeId:query.get("runtimeId")} : undefined), mode = query.get("mode");
-    if (mode === "spec") return appJson({ ownerKey: auth.ownerKey, native: "task" in auth ? await (await import("@/lib/automation-authoring")).authorBrowserSpec(auth,id,query.get("runId")??"",query.get("siteId")??"") : await appBrowserSpec(auth, id, query.get("runId") ?? "", query.get("siteId") ?? "") });
+    if (mode === "spec") return appJson({ ownerKey: auth.ownerKey, native: "task" in auth ? await (await import("@/features/automation/authoring/automation-authoring")).authorBrowserSpec(auth,id,query.get("runId")??"",query.get("siteId")??"") : await appBrowserSpec(auth, id, query.get("runId") ?? "", query.get("siteId") ?? "") });
     if (mode === "commands") {
       const bridgeId = query.get("bridgeId") ?? ""; if (!isAppId(bridgeId)) throw new AutomationAppError("面板连接 ID 无效");
       const requestedRun = query.get("runId");
@@ -29,7 +29,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       const command = service.presence(bridgeId,query.get("available")!=="false");
       return appJson({ runId: service.options.runId, owned: service.ownsBridge(bridgeId), native:service.nativeSession, hasOpened:service.hasOpened, command: command ? { id: command.id } : null, ...(query.has("commandId") ? { state: service.commandState(query.get("commandId")!) } : {}) });
     }
-    if("task" in auth){const state=await(await import("@/lib/automation-authoring")).readAuthor(auth);if(state.explorer?.detail.install.id===id){const detail=state.explorer.detail;return appJson({ownerKey:auth.ownerKey,runtimeId:auth.runtimeId,declaration:detail.manifest.automation.browser,...await privateState({store:auth.host},id,detail.dataDirectory)});}}
+    if("task" in auth){const state=await(await import("@/features/automation/authoring/automation-authoring")).readAuthor(auth);if(state.explorer?.detail.install.id===id){const detail=state.explorer.detail;return appJson({ownerKey:auth.ownerKey,runtimeId:auth.runtimeId,declaration:detail.manifest.automation.browser,...await privateState({store:auth.host},id,detail.dataDirectory)});}}
     const detail = await auth.store.detail(id), state = await privateState(auth, id); auth.assertIdentity();
     return appJson({ ownerKey: auth.ownerKey, runtimeId: auth.runtimeId, declaration: detail.manifest.automation.browser ?? null, ...state });
   } catch (e) { return appFailure(e); }
@@ -51,7 +51,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     }
     if (body.mode === "revoke") {
       if(!isAppId(body.grantId))throw new AutomationAppError("授权 ID 无效");
-      if("task" in auth){await(await import("@/lib/automation-authoring")).revokeAuthorGrant(auth,id,body.grantId);return appJson({ok:true});}
+      if("task" in auth){await(await import("@/features/automation/authoring/automation-authoring")).revokeAuthorGrant(auth,id,body.grantId);return appJson({ok:true});}
       for (const service of appWebServices(auth.ownerKey, id)) if (service.options.runtimeId === auth.runtimeId) await stopAppRun(auth, id, service.options.runId);
       return appJson(await auth.store.admitRun(id,body.revision,async detail=>{
       const directory = detail.dataDirectory;
@@ -72,7 +72,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     if (body.mode === "arm") return appJson({ ticket: await service.arm(body.commandId, body.lease) });
     if (body.mode === "complete") { if(body.error!==undefined&&typeof body.error!=="string")throw new AutomationAppError("网页结果格式无效"); service.complete(body.commandId, body.lease, body.result, body.error); return appJson({ ok: true }); }
     if (body.mode === "approve") { await service.approve(body.approvalId, body.operationIds); return appJson({ ok: true }); }
-    if (body.mode === "deny" || body.mode === "leave" && service.ownsBridge(body.bridgeId)) { if("task" in auth)await(await import("@/lib/automation-authoring")).stopAuthor(auth.task);else await stopAppRun(auth,id,body.runId); return appJson({ ok: true }); }
+    if (body.mode === "deny" || body.mode === "leave" && service.ownsBridge(body.bridgeId)) { if("task" in auth)await(await import("@/features/automation/authoring/automation-authoring")).stopAuthor(auth.task);else await stopAppRun(auth,id,body.runId); return appJson({ ok: true }); }
     throw new AutomationAppError("网页操作已过期或无效", 409);
   } catch (e) { return appFailure(e); }
 }

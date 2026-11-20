@@ -30,7 +30,7 @@
 
 ## 已执行验证
 
-`lib/native-mcp-sdk.integration.test.mjs` 使用公开 `createMcpExtension()`、真实 `AgentSession`、原生 `McpClient` 和独立模拟 MCP 服务，3 项测试通过：
+`tests/mcp/native-mcp-sdk.integration.test.mjs` 使用公开 `createMcpExtension()`、真实 `AgentSession`、原生 `McpClient` 和独立模拟 MCP 服务，3 项测试通过：
 
 1. 完成 MCP 初始化与版本协商，发现工具、调用工具、读取资源，取消挂起请求并收到取消通知。
 2. 原生直接工具进入真实 Agent 循环，参数 `"2"` 转换为数字 `2` 后才发给 MCP 服务，结果进入模型的下一回合。
@@ -56,12 +56,12 @@
 
 ## 代码依据
 
-- [原生 MCP 集成测试](../lib/native-mcp-sdk.integration.test.mjs)
-- [当前适配器入口](../lib/mcp-adapter.ts)
-- [Haze 服务登记及动态认证](../lib/haze-mcp-runtime.ts)
-- [插件授权](../lib/plugin-selection-runtime.ts)
-- [网页连接状态](../lib/mcp-runtime.ts)
-- [浏览器交接](../lib/plugin-browser.ts)
+- [原生 MCP 集成测试](../tests/mcp/native-mcp-sdk.integration.test.mjs)
+- [当前适配器入口](../server/mcp/mcp-adapter.ts)
+- [Haze 服务登记及动态认证](../server/mcp/haze-mcp-runtime.ts)
+- [插件授权](../server/extensions/plugin-selection-runtime.ts)
+- [网页连接状态](../server/mcp/mcp-runtime.ts)
+- [浏览器交接](../server/extensions/plugin-browser.ts)
 - [SDK 本地 MCP 文档](../node_modules/@earendil-works/pi-coding-agent/docs/mcp.md)
 - [独立 MCP 客户端范围](../node_modules/@earendil-works/pi-mcp/README.md)
 - [升级总清单](sdk-1.5-upgrade-checklist.md)

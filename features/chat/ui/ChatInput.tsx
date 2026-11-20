@@ -1,0 +1,2982 @@
+"use client";
+
+import { LabelTooltip } from "@/features/workspace/ui/LabelTooltip";
+import { LOCAL_AUTOMATION_SOURCE, dedupePlugins, retainedPluginSelection, splitPluginSelection, type ComposerPlugin, type SelectedPlugin } from "@/features/extensions/shared/plugin-selection";
+import { NotificationNotice } from "@/features/workspace/ui/Notifications";
+import { OrganizationCapabilityIcon } from "../../extensions/ui/OrganizationCapabilityIcon";
+import { MessageCapabilityIcon } from "./MessageResourceTags";
+import { AutomationIcon } from "../../automation/ui/AutomationIcon";
+import { invoke } from "@tauri-apps/api/core";
+import type { ComposerAttachments } from "@/features/chat/shared/composer-attachments";
+import { getRelativeFilePath } from "@/features/files/shared/file-paths";
+import { bindNativeFileDrop, containsPhysicalDrop } from "@/features/chat/shared/composer-drop";
+import { annotateSkillCommandCapabilities } from "@/features/extensions/shared/organization-capability";
+import { composerCommandLabel, parseComposerCommand, restoreComposerCommand } from "@/features/chat/shared/composer-command";
+
+
+import React, { useRef, useState, useCallback, useEffect, useLayoutEffect, useImperativeHandle, forwardRef, KeyboardEvent } from "react";
+import { Popover } from "@base-ui/react/popover";
+import { ChevronDownIcon } from "lucide-react";
+import selectorStyles from "./ComposerSelectors.module.css";
+import paletteStyles from "./CommandPalette.module.css";
+import type { BuiltinSlashCommandResult, CompactResultInfo, QueuedMessages, SlashCommandInfo } from "@/features/chat/client/useAgentSession";
+import type { SkillsResponse } from "@/lib/api-types";
+import type { TextContent, UserMessage } from "@/lib/types";
+import {
+  getDraft,
+  mergeRestoredSubmissionDraft,
+  mergeRestoredSubmissionText,
+  rekeyDraft as rekeyStoredDraft,
+  setDraft,
+  dedupeReferences,
+  type ChatDraftImage,
+  type ChatDraftReference,
+} from "@/features/chat/shared/draft-store";
+import {
+  MAX_ATTACHED_IMAGE_BYTES,
+  MAX_ATTACHED_IMAGES,
+  isBase64ImageWithinLimits,
+} from "@/features/chat/shared/image-attachments";
+import {
+  buildEntriesFromFiles, extractAtQuery, filterFileEntries,
+  type AtQueryMatch, type FileIndexEntry,
+} from "@/features/files/shared/file-fuzzy";
+import { FolderIcon, getFileIcon } from "../../files/ui/FileIcons";
+import { useTheme } from "@/features/workspace/client/useTheme";
+import { useIsMobile } from "@/features/workspace/client/useIsMobile";
+import { useFontSize } from "@/features/workspace/client/useFontSize";
+import { useI18n } from "@/hooks/useI18n";
+import type { ToolPreset } from "@/features/chat/shared/tool-presets";
+import type { EurekaPlanState } from "@/features/chat/shared/plan-mode";
+import {
+  DropdownMenu,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { Button } from "@/components/ui/button";
+import { PlanTaskRows } from "./PlanTaskRows";
+import { ImagePreview } from "../../../components/content/ImagePreview";
+
+export interface AttachedImage {
+  data: string;   // base64, no prefix
+  mimeType: string;
+  previewUrl: string; // object URL for display
+}
+
+interface ModelOption {
+  provider: string;
+  modelId: string;
+  name: string;
+}
+
+interface Props {
+  contextControl?: React.ReactNode;
+  onSend: (message: string, images?: AttachedImage[], references?: ChatDraftReference[], selectedPlugins?: SelectedPlugin[]) => void;
+  onAbort: () => void;
+  onSteer?: (message: string, images?: AttachedImage[], references?: ChatDraftReference[], selectedPlugins?: SelectedPlugin[]) => void;
+  onFollowUp?: (message: string, images?: AttachedImage[], references?: ChatDraftReference[], selectedPlugins?: SelectedPlugin[]) => void;
+  onPromptWithStreamingBehavior?: (message: string, behavior: "steer" | "followUp", images?: AttachedImage[], references?: ChatDraftReference[], selectedPlugins?: SelectedPlugin[]) => void;
+  isStreaming: boolean;
+  inputLocked?: boolean;
+  model?: { provider: string; modelId: string } | null;
+  isAutoModelSelection?: boolean;
+  modelNames?: Record<string, string>;
+  modelList?: { id: string; name: string; provider: string }[];
+  modelError?: string | null;
+  /** Diagnostics from resolving `enabledModels`, e.g. a pattern that matched nothing. */
+  modelScopeWarnings?: string[];
+  onModelChange?: (provider: string, modelId: string) => void;
+  modelSwitching?: boolean;
+  onCompact?: () => void;
+  onAbortCompaction?: () => void;
+  isCompacting?: boolean;
+  compactError?: string | null;
+  compactResult?: CompactResultInfo | null;
+  toolPreset?: ToolPreset;
+  onToolPresetChange?: (preset: ToolPreset) => void;
+  planMode?: EurekaPlanState;
+  onPlanModeChange?: (planning: boolean) => void;
+  automationMode?: { enabled: boolean; ready: boolean; changing: boolean; error?: string | null };
+  automationPrompt?: { taskId: string; text: string };
+  onAutomationModeChange?: (enabled: boolean) => Promise<void> | void;
+  onAutomationRetry?: () => void;
+  onCancelPlan?: () => Promise<unknown> | unknown;
+  onOpenPlanReview?: () => void;
+  thinkingLevel?: "auto" | "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
+  onThinkingLevelChange?: (level: "auto" | "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max") => void;
+  availableThinkingLevels?: string[] | null;
+  thinkingLevelMap?: Record<string, string | null> | null;
+  retryInfo?: { attempt: number; maxAttempts: number; errorMessage?: string } | null;
+  queuedMessages?: QueuedMessages | null;
+  inputHistory?: string[];
+  onRecallQueue?: () => void;
+  slashCommands?: SlashCommandInfo[];
+  slashCommandsLoading?: boolean;
+  onLoadSlashCommands?: () => Promise<SlashCommandInfo[]> | SlashCommandInfo[];
+  onBuiltinCommand?: (message: string) => Promise<BuiltinSlashCommandResult>;
+  onAudioUnlock?: () => void;
+  draftKey?: string;
+  /** Session working directory — enables the @ file autocomplete menu */
+  sessionId?: string;
+  cwd?: string | null;
+  onOpenReference?: (reference: ChatDraftReference) => void;
+}
+
+export interface ChatInputHandle {
+  insertText: (text: string) => void;
+  insertIfEmpty: (text: string) => void;
+  replaceMessage: (message: UserMessage) => void;
+  prependText: (text: string) => void;
+  addImages: (files: File[]) => void;
+  addFiles: (files: File[]) => void;
+  addReferences: (references: ChatDraftReference[]) => void;
+  rekeyDraft: (previousKey: string, nextKey: string) => void;
+  restoreSubmission: (text: string, images?: ChatDraftImage[], references?: ChatDraftReference[], targetDraftKey?: string, selectedPlugins?: SelectedPlugin[]) => void;
+}
+
+const COMPOSITION_END_ENTER_GRACE_MS = 100;
+const MODEL_OPTION_COLLATOR = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
+const ANCHORED_MENU_GAP = 8;
+
+export function getUpwardMenuMaxHeight(menuBottom: number, visibleTop: number, gap = ANCHORED_MENU_GAP): number {
+  return Math.max(0, Math.floor(menuBottom - visibleTop - gap));
+}
+
+function getVisibleTopBoundary(element: HTMLElement): number {
+  let visibleTop = window.visualViewport?.offsetTop ?? 0;
+
+  for (let parent = element.parentElement; parent; parent = parent.parentElement) {
+    const overflowY = window.getComputedStyle(parent).overflowY;
+    if (overflowY === "auto" || overflowY === "scroll" || overflowY === "hidden" || overflowY === "clip") {
+      visibleTop = Math.max(visibleTop, parent.getBoundingClientRect().top + parent.clientTop);
+    }
+  }
+
+  return visibleTop;
+}
+
+function compareModelOptions(a: ModelOption, b: ModelOption): number {
+  return MODEL_OPTION_COLLATOR.compare(a.name || a.modelId, b.name || b.modelId)
+    || MODEL_OPTION_COLLATOR.compare(a.provider, b.provider)
+    || MODEL_OPTION_COLLATOR.compare(a.modelId, b.modelId);
+}
+
+export function filterModelOptions(options: ModelOption[], query: string): ModelOption[] {
+  const normalizedQuery = query.trim().toLocaleLowerCase();
+  if (!normalizedQuery) return options;
+
+  return options.filter((option) => (
+    `${option.name} ${option.modelId}`
+      .toLocaleLowerCase()
+      .includes(normalizedQuery)
+  ));
+}
+
+const THINKING_LEVELS = ["auto", "off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
+const THINKING_LEVEL_DESC_KEYS: Record<typeof THINKING_LEVELS[number], string> = {
+  auto: "chat.thinkingUseDefault", off: "chat.thinkingOff", minimal: "chat.thinkingMinimal", low: "chat.thinkingLow",
+  medium: "chat.thinkingMedium", high: "chat.thinkingHigh", xhigh: "chat.thinkingXhigh", max: "chat.thinkingMax",
+};
+
+function formatTokenCount(tokens: number): string {
+  if (tokens >= 1_000_000) return `${(tokens / 1_000_000).toFixed(1)}M`;
+  if (tokens >= 1_000) return `${Math.round(tokens / 1_000)}k`;
+  return tokens.toLocaleString();
+}
+
+type SlashCommandPaletteItem = SlashCommandInfo | {
+  name: string;
+  description: string;
+  source: "builtin";
+} | {
+  name: string; description: string; source: "plugin"; plugin: ComposerPlugin;
+};
+
+type SlashCommandSource = SlashCommandPaletteItem["source"];
+
+const BUILTIN_SLASH_COMMANDS: SlashCommandPaletteItem[] = [
+  { name: "automation", description: "automation.command.description", source: "builtin" },
+  { name: "compact", description: "chat.commandCompact", source: "builtin" },
+  { name: "reload", description: "chat.commandReload", source: "builtin" },
+  { name: "name", description: "chat.commandName", source: "builtin" },
+  { name: "session", description: "chat.commandSession", source: "builtin" },
+  { name: "copy", description: "chat.commandCopy", source: "builtin" },
+];
+
+const SLASH_SOURCES: SlashCommandSource[] = ["builtin", "extension", "prompt", "skill", "plugin"];
+
+const HIDDEN_EXTENSION_COMMANDS = new Set(["mcp", "mcp-auth", "pi-mcp"]);
+
+const COMMAND_PALETTE_SOURCES = ["builtin", "plugin", "extension", "skill"] as const;
+type CommandPaletteSource = typeof COMMAND_PALETTE_SOURCES[number];
+
+const SLASH_SOURCE_GROUP_LABEL_KEYS: Record<SlashCommandSource, string> = {
+  plugin: "chat.plugins",
+  builtin: "chat.builtIn",
+  extension: "chat.extensions",
+  prompt: "chat.prompts",
+  skill: "chat.skills",
+};
+
+const SLASH_SOURCE_ORDER: Record<SlashCommandSource, number> = {
+  plugin: 4,
+  builtin: 0,
+  extension: 1,
+  prompt: 2,
+  skill: 3,
+};
+
+function slashMatchRank(command: SlashCommandPaletteItem, query: string, t: (key: string) => string): number {
+  const name = command.name.toLowerCase();
+  const description = getSlashDescription(command, t).toLowerCase();
+  if (name === query) return 0;
+  if (name.startsWith(query)) return 1;
+  if (name.includes(query)) return 2;
+  if (description.includes(query)) return 3;
+  return 4;
+}
+
+function getSlashDescription(command: SlashCommandPaletteItem, t: (key: string) => string): string {
+  return command.source === "builtin" ? t(command.description) : command.description ?? "";
+}
+
+// Skill slash commands are named "skill:<skillName>"; look the skill up in the
+// dormancy map fetched from /api/skills. Unknown skills are treated as active.
+function isDormantSkillCommand(command: SlashCommandPaletteItem, dormancy: Record<string, boolean>): boolean {
+  if (command.source !== "skill" || !command.name.startsWith("skill:")) return false;
+  return dormancy[command.name.slice("skill:".length)] === true;
+}
+
+export function buildSlashCommandLayout(
+  commands: SlashCommandPaletteItem[],
+  dormancy: Record<string, boolean>,
+) {
+  let index = 0;
+  const groups = COMMAND_PALETTE_SOURCES
+    .map((source) => {
+      // Prompt commands are presented with built-ins for now. Their original
+      // source remains intact, so we can expose a dedicated group later.
+      const sourceCommands = source === "builtin"
+        ? commands.filter((command) => command.source === "builtin" || command.source === "prompt")
+        : commands.filter((command) => command.source === source);
+      const orderedCommands = source === "skill"
+        ? [
+            ...sourceCommands.filter((command) => !isDormantSkillCommand(command, dormancy)),
+            ...sourceCommands.filter((command) => isDormantSkillCommand(command, dormancy)),
+          ]
+        : sourceCommands;
+      return {
+        source,
+        items: orderedCommands.map((command) => ({ command, index: index++ })),
+      };
+    })
+    .filter((group) => group.items.length > 0);
+
+  return {
+    commands: groups.flatMap((group) => group.items.map(({ command }) => command)),
+    groups,
+  };
+}
+
+function CommandPaletteIcon({ kind, commandName }: { kind: "add" | "plan" | CommandPaletteSource; commandName?: string }) {
+  const common = {
+    width: 16,
+    height: 16,
+    viewBox: "0 0 24 24",
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 1.6,
+    strokeLinecap: "round" as const,
+    strokeLinejoin: "round" as const,
+    "aria-hidden": true,
+  };
+
+  if (kind === "builtin") {
+    switch (commandName) {
+      case "automation":
+        return <AutomationIcon size={16} />;
+      case "compact":
+        return <svg {...common}><path d="m4 4 5 5M4 9h5V4m11 16-5-5m5 0h-5v5" /></svg>;
+      case "copy":
+        return <svg {...common}><rect x="9" y="9" width="11" height="11" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>;
+      case "name":
+        return <svg {...common}><path d="m16 3 5 5L8 21H3v-5L16 3ZM13 6l5 5" /></svg>;
+      case "reload":
+        return <svg {...common}><path d="M20 7v5h-5M4 17v-5h5" /><path d="M6.1 6.1a8 8 0 0 1 13.2 3.2L20 12M4 12l.7 2.7a8 8 0 0 0 13.2 3.2" /></svg>;
+      case "session":
+        return <svg {...common}><path d="M4 3v17h17M9 16v-4M14 16V8M19 16V5" /></svg>;
+    }
+  }
+
+  if (kind === "add") {
+    return <svg {...common}><path d="m21.4 11.6-9.2 9.2a6 6 0 0 1-8.5-8.5l10-10a4 4 0 0 1 5.7 5.7l-10 10a2 2 0 0 1-2.8-2.8l9.2-9.2" /></svg>;
+  }
+  if (kind === "plan") {
+    return <svg {...common}><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5" /><path d="M9 18h6" /><path d="M10 22h4" /></svg>;
+  }
+  if (kind === "extension") {
+    return <svg {...common}><path d="M17 19a1 1 0 0 1-1-1v-2a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2a1 1 0 0 1-1 1z" /><path d="M17 21v-2" /><path d="M19 14V6.5a1 1 0 0 0-7 0v11a1 1 0 0 1-7 0V10" /><path d="M21 21v-2" /><path d="M3 5V3" /><path d="M4 10a2 2 0 0 1-2-2V6a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2a2 2 0 0 1-2 2z" /><path d="M7 5V3" /></svg>;
+  }
+  if (kind === "skill") {
+    return <svg {...common}><path d="M12 5v16" /><path d="M16 13h2" /><path d="M16 9h2" /><path d="M20.001 19A2 2 0 0 0 22 17V5a2 2 0 0 0-1.999-2L16 3.002A5 5 0 0 0 12 5a5 5 0 0 0-4-2H4a2 2 0 0 0-2 2v12a2 2 0 0 0 1.999 2H8a5 5 0 0 1 4 2 5 5 0 0 1 4-2z" /><path d="M6 13h2" /><path d="M6 9h2" /></svg>;
+  }
+  return <svg {...common}><path d="M10 22v-8" /><path d="M2.336 8.89 10 14l11.715-7.029" /><path d="M22 14a2 2 0 0 1-.971 1.715l-10 6a2 2 0 0 1-2.138-.05l-6-4A2 2 0 0 1 2 16v-6a2 2 0 0 1 .971-1.715l10-6a2 2 0 0 1 2.138.05l6 4A2 2 0 0 1 22 8z" /></svg>;
+}
+
+export function SlashCommandPaletteIcon({ command, source }: { command: SlashCommandPaletteItem; source: CommandPaletteSource }) {
+  if (command.source === "plugin") return command.plugin.capabilityId.startsWith("automation:") ? <AutomationIcon size={16} /> : <OrganizationCapabilityIcon capability={command.plugin} size={16} />;
+  if ("organizationCapability" in command && command.organizationCapability)
+    return <OrganizationCapabilityIcon capability={command.organizationCapability} size={16} type={command.source === "skill" ? "Skill" : "MCP"} />;
+  return <CommandPaletteIcon kind={source} commandName={command.source === "builtin" ? command.name : undefined} />;
+}
+
+function CommandPaletteItem({ tooltip, ...props }: Omit<React.ComponentProps<typeof CommandItem>, "title"> & { tooltip?: string }) {
+  const itemRef = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+  const [paletteWidth, setPaletteWidth] = useState<number>();
+  const handleOpenChange = useCallback((nextOpen: boolean) => {
+    if (nextOpen) {
+      const truncated = Array.from(itemRef.current?.querySelectorAll<HTMLElement>("[data-command-description], [data-command-label]") ?? [])
+        .some((element) => element.scrollWidth > element.clientWidth);
+      if (!truncated) return;
+      setPaletteWidth(itemRef.current?.closest("[data-command-palette]")?.getBoundingClientRect().width);
+    }
+    setOpen(nextOpen);
+  }, []);
+  useEffect(() => {
+    const palette = itemRef.current?.closest("[data-command-palette]");
+    if (!open || !palette) return;
+    const observer = new ResizeObserver(() => {
+      setPaletteWidth(palette.getBoundingClientRect().width);
+      const truncated = Array.from(itemRef.current?.querySelectorAll<HTMLElement>("[data-command-description], [data-command-label]") ?? [])
+        .some((element) => element.scrollWidth > element.clientWidth);
+      if (!truncated) setOpen(false);
+    });
+    observer.observe(palette);
+    return () => observer.disconnect();
+  }, [open]);
+  const item = <CommandItem {...props} ref={itemRef} />;
+  if (!tooltip) return item;
+  return (
+    <Tooltip open={open} onOpenChange={handleOpenChange}>
+      <TooltipTrigger render={item} />
+      <TooltipContent className="w-max min-w-0 max-w-[calc(100vw-24px)] whitespace-normal break-words" style={{ maxWidth: paletteWidth ? `min(${paletteWidth}px, calc(100vw - 24px))` : undefined }}>{tooltip}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+function imageToDraftImage(image: AttachedImage): ChatDraftImage {
+  return { data: image.data, mimeType: image.mimeType };
+}
+
+function draftImageToAttachedImage(image: ChatDraftImage): AttachedImage {
+  return {
+    ...image,
+    previewUrl: `data:${image.mimeType};base64,${image.data}`,
+  };
+}
+
+function draftImagesToAttachedImages(images: ChatDraftImage[] | undefined): AttachedImage[] {
+  return (images ?? [])
+    .filter(isBase64ImageWithinLimits)
+    .slice(0, MAX_ATTACHED_IMAGES)
+    .map(draftImageToAttachedImage);
+}
+
+export function canRestoreUserMessage(
+  value: string,
+  attachedImageCount: number,
+  pendingImageCount: number,
+): boolean {
+  return !value.trim() && attachedImageCount === 0 && pendingImageCount === 0;
+}
+
+export function getUserMessageText(message: UserMessage): string {
+  if (typeof message.content === "string") return message.content;
+  return message.content
+    .filter((block): block is TextContent => block.type === "text")
+    .map((block) => block.text)
+    .join("\n");
+}
+
+export function getUserMessageDraftImages(message: UserMessage): ChatDraftImage[] {
+  if (typeof message.content === "string") return [];
+  return message.content.flatMap((block) => {
+    if (block.type !== "image") return [];
+
+    // Support both the current nested image format and older flat pi-ai entries.
+    const flat = block as unknown as { data?: unknown; mimeType?: unknown };
+    const data = block.source?.type === "base64" ? block.source.data : flat.data;
+    const mimeType = block.source?.type === "base64" ? block.source.media_type : flat.mimeType;
+    if (typeof data !== "string" || typeof mimeType !== "string") return [];
+
+    const image = { data, mimeType };
+    return isBase64ImageWithinLimits(image) ? [image] : [];
+  });
+}
+
+function revokeImagePreview(image: AttachedImage): void {
+  if (image.previewUrl.startsWith("blob:")) {
+    URL.revokeObjectURL(image.previewUrl);
+  }
+}
+
+function QueuedMessageRow({ kind, text }: { kind: "steer" | "follow-up"; text: string }) {
+  const selection = splitPluginSelection(text);
+  text = [selection.plugins.map((p) => `[${p.name}]`).join(" "), selection.text].filter(Boolean).join(" ");
+  return (
+    <LabelTooltip content={text}><div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+        padding: "3px 10px",
+        fontSize: 12,
+        color: "var(--text-muted)",
+        minWidth: 0,
+      }}
+    >
+      <span
+        style={{
+          flexShrink: 0,
+          fontSize: 10,
+          fontFamily: "var(--font-mono)",
+          padding: "1px 7px",
+          borderRadius: 999,
+          border: `1px solid ${kind === "steer" ? "color-mix(in srgb, var(--accent) 45%, transparent)" : "var(--border)"}`,
+          color: kind === "steer" ? "var(--accent)" : "var(--text-dim)",
+        }}
+      >
+        {kind}
+      </span>
+      <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{text}</span>
+    </div></LabelTooltip>
+  );
+}
+
+function ModelNoticeBanner({ tone, title, body }: { tone: "error" | "warning"; title: string; body: string }) {
+  return <NotificationNotice type={tone} title={title} message={body} eventKey={`model-notice:${tone}:${body}`} />;
+}
+
+export function ModelErrorBanner({ error }: { error?: string | null }) {
+  if (!error) return null;
+  return <ModelNoticeBanner tone="error" title="Model error" body={error} />;
+}
+
+/** Surfaces `enabledModels` patterns that matched nothing, so a typo is visible (#307). */
+export function ModelScopeWarningBanner({ warnings }: { warnings?: string[] }) {
+  if (!warnings || warnings.length === 0) return null;
+  return (
+    <ModelNoticeBanner
+      tone="warning"
+      title={warnings.length > 1 ? "Model scope warnings" : "Model scope warning"}
+      body={warnings.join("\n")}
+    />
+  );
+}
+
+export const ChatInput = React.memo(forwardRef<ChatInputHandle, Props>(function ChatInput({
+  contextControl,
+  onSend, onAbort, onSteer, onFollowUp, isStreaming, inputLocked = false, model, isAutoModelSelection, modelNames, modelList, modelError, modelScopeWarnings, onModelChange, modelSwitching,
+  onAbortCompaction, isCompacting, compactError, compactResult,
+  planMode, onPlanModeChange, onCancelPlan, onOpenPlanReview, automationMode, automationPrompt, onAutomationModeChange, onAutomationRetry,
+  thinkingLevel, onThinkingLevelChange, availableThinkingLevels, thinkingLevelMap,
+  retryInfo, queuedMessages, inputHistory = [], onRecallQueue,
+  slashCommands, slashCommandsLoading, onLoadSlashCommands,
+  onBuiltinCommand,
+  onAudioUnlock,
+  onPromptWithStreamingBehavior,
+  draftKey,
+  cwd, sessionId,
+  onOpenReference,
+}: Props, ref) {
+  const { t } = useI18n();
+  const isMobile = useIsMobile();
+  const { fontSize } = useFontSize();
+  const { isDark } = useTheme();
+  const [value, setValue] = useState(() => (draftKey ? getDraft(draftKey)?.value ?? "" : ""));
+  const composerCommandNames = React.useMemo(() => [...BUILTIN_SLASH_COMMANDS, ...(slashCommands ?? [])].map((command) => command.name), [slashCommands]);
+  const composerCommand = parseComposerCommand(value, composerCommandNames);
+  const composerPrefix = composerCommand?.prefix ?? "";
+  const composerText = composerCommand?.arguments ?? value;
+  const composerCommandName = composerCommand?.name;
+  const hasComposerCommand = composerCommand !== null;
+  const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
+  const [modelFilter, setModelFilter] = useState("");
+  const [thinkingDropdownOpen, setThinkingDropdownOpen] = useState(false);
+  const [controlsMenuOpen, setControlsMenuOpen] = useState(false);
+  const [pendingStreamingSubmission, setPendingStreamingSubmission] = useState<{ message: string; images: AttachedImage[]; references: ChatDraftReference[]; selectedPlugins?: SelectedPlugin[] } | null>(null);
+  const [deferredModel, setDeferredModel] = useState<{ provider: string; modelId: string } | null>(null);
+  const [deferredThinkingLevel, setDeferredThinkingLevel] = useState<Props["thinkingLevel"] | null>(null);
+  const [planModeGlowReady, setPlanModeGlowReady] = useState(false);
+  const [stopPlanConfirmOpen, setStopPlanConfirmOpen] = useState(false);
+  const [attachedImages, setAttachedImages] = useState<AttachedImage[]>(() => (
+    draftKey ? draftImagesToAttachedImages(getDraft(draftKey)?.images) : []
+  ));
+  const [references, setReferences] = useState<ChatDraftReference[]>(() => draftKey ? getDraft(draftKey)?.references ?? [] : []);
+  const [attachmentError, setAttachmentError] = useState("");
+  const [attachmentJobs, setAttachmentJobs] = useState(0);
+  const attachmentJobsRef = useRef(0);
+  const nativePasteRef = useRef<Promise<boolean> | null>(null);
+  const nativeDropTarget = useRef<HTMLDivElement>(null);
+  const [nativeFileDrag, setNativeFileDrag] = useState(false);
+  const [selectedPlugins, setSelectedPlugins] = useState<SelectedPlugin[]>(() => draftKey ? getDraft(draftKey)?.selectedPlugins ?? [] : []);
+  const selectedPluginsRef = useRef(selectedPlugins);
+  const removedPluginSelectionsRef = useRef(new Map<string, Set<string>>());
+  selectedPluginsRef.current = selectedPlugins;
+  const [composerPlugins, setComposerPlugins] = useState<ComposerPlugin[]>([]);
+  const [composerPluginsReady, setComposerPluginsReady] = useState(false);
+  const trimmedValue = value.trimStart();
+  const bashMode = attachedImages.length === 0 && trimmedValue.startsWith("!");
+  const bashExcluded = bashMode && trimmedValue.startsWith("!!");
+  const [addMenuOpen, setAddMenuOpen] = useState(false);
+  const [addMenuQuery, setAddMenuQuery] = useState("");
+  const [slashMenuOpen, setSlashMenuOpen] = useState(false);
+  const [slashActiveIndex, setSlashActiveIndex] = useState(0);
+  const [slashMenuMaxHeight, setSlashMenuMaxHeight] = useState<number | null>(null);
+  const [atQuery, setAtQuery] = useState<AtQueryMatch | null>(null);
+  const [atMenuOpen, setAtMenuOpen] = useState(false);
+  const [atActiveIndex, setAtActiveIndex] = useState(0);
+  const [historyMenuOpen, setHistoryMenuOpen] = useState(false);
+  const [historyActiveIndex, setHistoryActiveIndex] = useState(0);
+  const [fileIndex, setFileIndex] = useState<{ cwd: string; entries: FileIndexEntry[]; truncated: boolean } | null>(null);
+  const [fileIndexLoading, setFileIndexLoading] = useState(false);
+  const [atServerResult, setAtServerResult] = useState<{ cwd: string; query: string; matches: FileIndexEntry[] } | null>(null);
+  const [skillDormancyState, setSkillDormancyState] = useState<{
+    cwd: string;
+    values: Record<string, boolean>;
+    skills?: SkillsResponse["skills"];
+  } | null>(null);
+  const skillDormancy = cwd && skillDormancyState?.cwd === cwd
+    ? skillDormancyState.values
+    : {};
+
+  useEffect(() => {
+    if (isStreaming) return;
+    if (deferredModel && onModelChange) {
+      const next = deferredModel;
+      setDeferredModel(null);
+      onModelChange(next.provider, next.modelId);
+    }
+    if (deferredThinkingLevel && onThinkingLevelChange) {
+      const next = deferredThinkingLevel;
+      setDeferredThinkingLevel(null);
+      onThinkingLevelChange(next);
+    }
+  }, [isStreaming, deferredModel, deferredThinkingLevel, onModelChange, onThinkingLevelChange]);
+
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const commandChipRef = useRef<HTMLSpanElement>(null);
+  const controlsMenuRef = useRef<HTMLDivElement>(null);
+  const addMenuAnchorRef = useRef<HTMLDivElement>(null);
+  const addMenuRef = useRef<HTMLDivElement>(null);
+  const historyMenuRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const isComposingRef = useRef(false);
+  const lastCompositionEndAtRef = useRef(0);
+  const slashCommandsRequestedRef = useRef(false);
+  const slashMenuRef = useRef<HTMLDivElement>(null);
+  const atItemRefs = useRef<Array<HTMLElement | null>>([]);
+  const historyItemRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const fileIndexMetaRef = useRef<{ cwd: string; fetchedAt: number } | null>(null);
+  const fileIndexFetchingRef = useRef<string | null>(null);
+  const draftKeyRef = useRef(draftKey);
+  const valueRef = useRef(value);
+  const attachedImagesRef = useRef(attachedImages);
+  const referencesRef = useRef(references);
+  const pendingImageCountRef = useRef(0);
+  valueRef.current = value;
+  attachedImagesRef.current = attachedImages;
+  referencesRef.current = references;
+
+  const resizeTextarea = useCallback((target = textareaRef.current) => {
+    if (!target) return;
+    const maxHeight = 200;
+    const minHeight = isMobile ? 52 : 56;
+    // Chromium can size a textarea from its content without retaining a
+    // previous inline height. This avoids a stale 200px measurement after a
+    // multi-line draft has been shortened. Keep the manual path for older
+    // engines that do not support field-sizing.
+    if (typeof CSS !== "undefined" && CSS.supports("field-sizing", "content")) {
+      target.style.height = "";
+      // CSS handles the max-height/scrollbar without forcing a layout read.
+      target.style.overflowY = "auto";
+      return;
+    }
+    // Reset before measuring so deletion can shrink the fallback layout too.
+    target.style.height = "auto";
+    const contentHeight = target.scrollHeight;
+    const nextHeight = Math.max(minHeight, Math.min(contentHeight, maxHeight));
+    target.style.height = `${nextHeight}px`;
+    target.style.overflowY = contentHeight > maxHeight ? "auto" : "hidden";
+  }, [isMobile]);
+
+  const removeComposerCommand = useCallback(() => {
+    if (!composerCommand) return;
+    valueRef.current = composerCommand.arguments;
+    setValue(composerCommand.arguments);
+    setAtQuery(null);
+    requestAnimationFrame(() => {
+      const ta = textareaRef.current;
+      ta?.focus();
+      ta?.setSelectionRange(0, 0);
+    });
+  }, [composerCommand]);
+
+  const fillEmptyComposer = useCallback((text: string, caretAtEnd = false) => {
+    text = restoreComposerCommand(text, composerCommandNames);
+    const ta = textareaRef.current;
+    const destination = draftKeyRef.current;
+    const current = valueRef.current;
+    if (current.trim()) return;
+    valueRef.current = text;
+    setValue(text);
+    setAtQuery(null);
+    requestAnimationFrame(() => {
+      if (!ta || !ta.isConnected || textareaRef.current !== ta || draftKeyRef.current !== destination) return;
+      ta.focus();
+      if (caretAtEnd && valueRef.current === text) ta.setSelectionRange(text.length, text.length);
+      ta.style.height = "auto";
+      ta.style.height = `${Math.min(ta.scrollHeight, 200)}px`;
+    });
+  }, [composerCommandNames]);
+  useImperativeHandle(ref, () => ({
+    insertIfEmpty(text: string) { fillEmptyComposer(text); },
+    replaceMessage(message: UserMessage) {
+      const ta = textareaRef.current;
+      const current = valueRef.current;
+      if (!canRestoreUserMessage(current, attachedImagesRef.current.length, pendingImageCountRef.current)) return;
+
+      const restoredSelection = splitPluginSelection(getUserMessageText(message));
+      const restoredText = restoreComposerCommand(restoredSelection.text, composerCommandNames);
+      setSelectedPlugins(restoredSelection.plugins);
+      selectedPluginsRef.current = restoredSelection.plugins;
+      const restoredImages = draftImagesToAttachedImages(getUserMessageDraftImages(message));
+      valueRef.current = restoredText;
+      attachedImagesRef.current = restoredImages;
+      setValue(restoredText);
+      setAtQuery(null);
+      setHistoryMenuOpen(false);
+      setAttachedImages((prev) => {
+        prev.forEach(revokeImagePreview);
+        return restoredImages;
+      });
+      requestAnimationFrame(() => {
+        if (!ta) return;
+        ta.focus();
+        ta.style.height = "auto";
+        ta.style.height = `${Math.min(ta.scrollHeight, 200)}px`;
+      });
+    },
+    prependText(text: string) {
+      if (!text.trim()) return;
+      const ta = textareaRef.current;
+      const current = valueRef.current;
+      // Mirrors the TUI's queue restore: queued text first, then whatever
+      // the user already typed, separated by a blank line.
+      const combined = [text, current].filter((t) => t.trim()).join("\n\n");
+      valueRef.current = combined;
+      setValue(combined);
+      setAtQuery(null);
+      requestAnimationFrame(() => {
+        if (!ta) return;
+        ta.focus();
+        ta.setSelectionRange(combined.length, combined.length);
+        ta.style.height = "auto";
+        ta.style.height = `${Math.min(ta.scrollHeight, 200)}px`;
+      });
+    },
+    rekeyDraft(previousKey: string, nextKey: string) {
+      if (previousKey === nextKey) return;
+      const removed = removedPluginSelectionsRef.current.get(previousKey);
+      if (removed) {
+        removedPluginSelectionsRef.current.set(nextKey, new Set([...(removedPluginSelectionsRef.current.get(nextKey) ?? []), ...removed]));
+        removedPluginSelectionsRef.current.delete(previousKey);
+      }
+      if (draftKeyRef.current !== previousKey) {
+        rekeyStoredDraft(previousKey, nextKey);
+        return;
+      }
+
+      const currentDraft = {
+        value: valueRef.current,
+        images: attachedImagesRef.current.map(imageToDraftImage),
+        references: referencesRef.current,
+        selectedPlugins: selectedPluginsRef.current,
+      };
+      const moved = rekeyStoredDraft(previousKey, nextKey, currentDraft) ?? { value: "", images: [], references: [] };
+      const unchanged = JSON.stringify(moved.references ?? []) === JSON.stringify(currentDraft.references) && moved.value === currentDraft.value
+        && moved.images.length === currentDraft.images.length
+        && moved.images.every((image, index) => (
+          image.data === currentDraft.images[index]?.data
+          && image.mimeType === currentDraft.images[index]?.mimeType
+        ));
+      draftKeyRef.current = nextKey;
+      setSelectedPlugins(moved.selectedPlugins ?? []);
+      selectedPluginsRef.current = moved.selectedPlugins ?? [];
+      if (unchanged) return;
+
+      const movedImages = draftImagesToAttachedImages(moved.images);
+      valueRef.current = moved.value;
+      attachedImagesRef.current = movedImages;
+      setValue(moved.value);
+      setAttachedImages((current) => {
+        current.forEach(revokeImagePreview);
+        return movedImages;
+      });
+      setReferences(moved.references ?? []);
+      setAtQuery(null);
+      setHistoryMenuOpen(false);
+    },
+    restoreSubmission(text: string, images?: ChatDraftImage[], restoredReferences?: ChatDraftReference[], targetDraftKey?: string, restoredPlugins?: SelectedPlugin[]) {
+      text = restoreComposerCommand(text, composerCommandNames);
+      if (!text.trim() && !images?.length && !restoredReferences?.length && !restoredPlugins?.length) return;
+
+      // clearInput is queued before the submission handler runs. Compose with
+      // that queued state so a fast rejection cannot observe stale DOM text and
+      // then get overwritten by the clear.
+      const currentDraftKey = draftKeyRef.current;
+      const destinationDraftKey = targetDraftKey ?? currentDraftKey;
+      const targetsCurrentComposer = destinationDraftKey === currentDraftKey;
+      const storedDraft = !targetsCurrentComposer && destinationDraftKey
+        ? getDraft(destinationDraftKey)
+        : null;
+      const restoredDraft = mergeRestoredSubmissionDraft(
+        text,
+        images,
+        targetsCurrentComposer ? valueRef.current : (storedDraft?.value ?? ""),
+        targetsCurrentComposer
+          ? attachedImagesRef.current.map(imageToDraftImage)
+          : (storedDraft?.images ?? []),
+        restoredReferences,
+        targetsCurrentComposer ? referencesRef.current : (storedDraft?.references ?? []),
+        restoredPlugins?.filter((plugin) => !removedPluginSelectionsRef.current.get(destinationDraftKey ?? "")?.has(`${plugin.source}\0${plugin.capabilityId}`)),
+        targetsCurrentComposer ? selectedPluginsRef.current : storedDraft?.selectedPlugins,
+      );
+      // The first optimistic message switches ChatWindow out of its empty-state
+      // layout and remounts this component. Persist synchronously so recovery is
+      // not lost if this instance is the one being unmounted.
+      if (destinationDraftKey) setDraft(destinationDraftKey, restoredDraft);
+      if (!targetsCurrentComposer) return;
+      const restoredImages = images?.length
+        ? [
+            ...draftImagesToAttachedImages(images).slice(
+              0,
+              Math.max(0, MAX_ATTACHED_IMAGES - attachedImagesRef.current.length),
+            ),
+            ...attachedImagesRef.current,
+          ].slice(0, MAX_ATTACHED_IMAGES)
+        : attachedImagesRef.current;
+      // Session promotion can rekey this composer before React flushes the
+      // functional updates below, so update the imperative snapshot first.
+      valueRef.current = restoredDraft.value;
+      attachedImagesRef.current = restoredImages;
+      referencesRef.current = restoredDraft.references ?? [];
+      setValue((current) => {
+        const restored = mergeRestoredSubmissionText(text, current);
+        valueRef.current = restored;
+        return restored;
+      });
+      setAtQuery(null);
+      setHistoryMenuOpen(false);
+      setReferences(restoredDraft.references ?? []);
+      selectedPluginsRef.current = restoredDraft.selectedPlugins ?? [];
+      setSelectedPlugins(restoredDraft.selectedPlugins ?? []);
+      if (images?.length) {
+        setAttachedImages((current) => {
+          const available = Math.max(0, MAX_ATTACHED_IMAGES - current.length);
+          const restored = draftImagesToAttachedImages(images)
+            .slice(0, available);
+          const next = restored.length > 0 ? [...restored, ...current] : current;
+          attachedImagesRef.current = next;
+          return next;
+        });
+      }
+      requestAnimationFrame(() => {
+        const ta = textareaRef.current;
+        if (!ta) return;
+        ta.focus();
+        ta.setSelectionRange(ta.value.length, ta.value.length);
+        ta.style.height = "auto";
+        ta.style.height = `${Math.min(ta.scrollHeight, 200)}px`;
+      });
+    },
+    insertText(text: string) {
+      const ta = textareaRef.current;
+      if (!ta) {
+        setValue((v) => v + (v ? " " : "") + text);
+        return;
+      }
+      const start = ta.selectionStart ?? ta.value.length;
+      const end = ta.selectionEnd ?? ta.value.length;
+      const before = ta.value.slice(0, start);
+      const after = ta.value.slice(end);
+      const sep = before.length > 0 && !before.endsWith(" ") ? " " : "";
+      const newVal = before + sep + text + after;
+      valueRef.current = composerPrefix + newVal;
+      setValue(composerPrefix + newVal);
+      setAtQuery(null);
+      requestAnimationFrame(() => {
+        if (!ta) return;
+        const pos = start + sep.length + text.length;
+        ta.setSelectionRange(pos, pos);
+        ta.focus();
+        ta.style.height = "auto";
+        ta.style.height = `${Math.min(ta.scrollHeight, 200)}px`;
+      });
+    },
+    addImages(files: File[]) {
+      processImageFiles(files);
+    },
+    addFiles(files: File[]) {
+      void processAttachmentFiles(files);
+    },
+    addReferences(nextReferences: ChatDraftReference[]) {
+      const next = dedupeReferences([...referencesRef.current, ...nextReferences]);
+      referencesRef.current = next;
+      setReferences(next);
+      setAtQuery(null);
+      requestAnimationFrame(() => textareaRef.current?.focus());
+    },
+  }));
+
+  const processImageFiles = useCallback(async (files: File[]) => {
+    const destination = draftKeyRef.current;
+    const remaining = Math.max(
+      0,
+      MAX_ATTACHED_IMAGES - attachedImagesRef.current.length - pendingImageCountRef.current,
+    );
+    const imageFiles = files
+      .filter((f) => f.type.startsWith("image/") && f.size <= MAX_ATTACHED_IMAGE_BYTES)
+      .slice(0, remaining);
+    if (!imageFiles.length) return;
+    pendingImageCountRef.current += imageFiles.length;
+    try {
+      const newImages = await Promise.all(
+        imageFiles.map(
+          (file) =>
+            new Promise<AttachedImage>((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onload = () => {
+                const result = reader.result as string;
+                // result is "data:<mime>;base64,<data>"
+                const base64 = result.split(",")[1];
+                resolve({ data: base64, mimeType: file.type, previewUrl: URL.createObjectURL(file) });
+              };
+              reader.onerror = reject;
+              reader.readAsDataURL(file);
+            })
+        )
+      );
+      if (draftKeyRef.current !== destination) { newImages.forEach(revokeImagePreview); return; }
+      setAttachedImages((prev) => {
+        const accepted = newImages.slice(0, Math.max(0, MAX_ATTACHED_IMAGES - prev.length));
+        newImages.slice(accepted.length).forEach(revokeImagePreview);
+        const next = [...prev, ...accepted];
+        attachedImagesRef.current = next;
+        return next;
+      });
+    } finally {
+      pendingImageCountRef.current -= imageFiles.length;
+    }
+  }, []);
+
+  const attachResponse = useCallback(async (request: Promise<Response>, destination: string | undefined) => {
+    const response = await request;
+    const result = await response.json() as ComposerAttachments & { error?: string };
+    if (!response.ok) throw new Error(result.error ?? `HTTP ${response.status}`);
+    if (draftKeyRef.current !== destination) return;
+    if (result.images.length + attachedImagesRef.current.length + pendingImageCountRef.current > MAX_ATTACHED_IMAGES) throw new Error(t("chat.tooManyImages"));
+    const images = draftImagesToAttachedImages(result.images);
+    const next = dedupeReferences([...referencesRef.current, ...result.references.map(reference => ({ ...reference, path: getRelativeFilePath(reference.path, cwd ?? undefined) }))]);
+    referencesRef.current = next; setReferences(next);
+    if (images.length) {
+      const all = [...attachedImagesRef.current, ...images];
+      attachedImagesRef.current = all; setAttachedImages(all);
+    }
+    requestAnimationFrame(() => textareaRef.current?.focus());
+  }, [cwd, t]);
+
+  const attachPaths = useCallback(async (paths: string[]) => {
+    const destination = draftKeyRef.current;
+    attachmentJobsRef.current++; setAttachmentJobs(attachmentJobsRef.current); setAttachmentError("");
+    try {
+      await attachResponse(fetch("/api/attachments", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ paths }), signal: AbortSignal.timeout(60_000) }), destination);
+    } finally { attachmentJobsRef.current--; setAttachmentJobs(attachmentJobsRef.current); }
+  }, [attachResponse]);
+
+  const processAttachmentFiles = useCallback(async (files: File[]) => {
+    if (!files.length) return;
+    const destination = draftKeyRef.current;
+    attachmentJobsRef.current++; setAttachmentJobs(attachmentJobsRef.current); setAttachmentError("");
+    try {
+      const otherFiles = files.filter(file => !file.type.startsWith("image/"));
+      if (files.reduce((sum, file) => sum + file.size, 0) > 50 * 1024 * 1024) throw new Error(t("chat.attachmentsTooLarge"));
+      const images = files.filter(file => file.type.startsWith("image/"));
+      if (images.some(file => file.size > MAX_ATTACHED_IMAGE_BYTES)) throw new Error(t("chat.imageTooLarge"));
+      if (images.length + attachedImagesRef.current.length + pendingImageCountRef.current > MAX_ATTACHED_IMAGES) throw new Error(t("chat.tooManyImages"));
+      await processImageFiles(files);
+      if (otherFiles.length) {
+        const body = new FormData(); otherFiles.forEach(file => body.append("files", file));
+        await attachResponse(fetch("/api/attachments", { method: "POST", body, signal: AbortSignal.timeout(60_000) }), destination);
+      }
+    } catch (cause) { if (draftKeyRef.current === destination) setAttachmentError(cause instanceof Error ? cause.message : String(cause)); }
+    finally { attachmentJobsRef.current--; setAttachmentJobs(attachmentJobsRef.current); }
+  }, [attachResponse, processImageFiles, t]);
+
+  useEffect(() => {
+    if (!("__TAURI_INTERNALS__" in window)) return;
+    let disposed = false, stop: (() => void) | undefined;
+    void import("@tauri-apps/api/webview").then(({ getCurrentWebview }) => {
+      if (disposed) return;
+      stop = bindNativeFileDrop(handler => getCurrentWebview().onDragDropEvent(handler), {
+        contains(position) {
+          const target = nativeDropTarget.current, scale = window.devicePixelRatio || 1;
+          if (inputLocked || !target || !containsPhysicalDrop(target.getBoundingClientRect(), position, scale)) return false;
+          const hit = document.elementFromPoint(position.x / scale, position.y / scale);
+          return Boolean(hit && target.contains(hit));
+        },
+        hover: setNativeFileDrag,
+        drop(paths) {
+          const destination = draftKeyRef.current;
+          void attachPaths(paths).catch(cause => { if (draftKeyRef.current === destination) setAttachmentError(cause instanceof Error ? cause.message : String(cause)); });
+        },
+      });
+    }).catch(() => { if (!disposed) setNativeFileDrag(false); });
+    return () => { disposed = true; stop?.(); setNativeFileDrag(false); };
+  }, [attachPaths, inputLocked]);
+
+  const pasteDesktopFiles = useCallback(async () => {
+    if (!("__TAURI_INTERNALS__" in window)) return false;
+    const destination = draftKeyRef.current;
+    attachmentJobsRef.current++; setAttachmentJobs(attachmentJobsRef.current);
+    try {
+      let paths: string[];
+      try { paths = await invoke<string[]>("desktop_clipboard_files"); }
+      catch { return false; } // Older desktop shells retain normal browser file paste.
+      if (!paths.length) return false;
+      if (draftKeyRef.current !== destination) return true;
+      try { await attachPaths(paths); }
+      catch (cause) { if (draftKeyRef.current === destination) setAttachmentError(cause instanceof Error ? cause.message : String(cause)); }
+      return true;
+    } finally { attachmentJobsRef.current--; setAttachmentJobs(attachmentJobsRef.current); }
+  }, [attachPaths]);
+
+  const openAttachmentPicker = useCallback(async () => {
+    if (!("__TAURI_INTERNALS__" in window)) {
+      fileInputRef.current?.click();
+      return;
+    }
+    const destination = draftKeyRef.current;
+    try {
+      setAttachmentError("");
+      const paths = await invoke<string[]>("desktop_select_attachments", { cwd: cwd ?? null });
+      if (paths.length && draftKeyRef.current === destination) await attachPaths(paths);
+    } catch (cause) {
+      if (draftKeyRef.current === destination) setAttachmentError(cause instanceof Error ? cause.message : String(cause));
+    }
+  }, [attachPaths, cwd]);
+
+  useEffect(() => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    const paste = (event: Event) => { (event as CustomEvent<{ handled?: Promise<boolean> }>).detail.handled = pasteDesktopFiles(); };
+    textarea.addEventListener("eureka:paste-attachments", paste);
+    return () => textarea.removeEventListener("eureka:paste-attachments", paste);
+  }, [pasteDesktopFiles]);
+
+  const removeImage = useCallback((index: number) => {
+    setAttachedImages((prev) => {
+      const next = [...prev];
+      const [removed] = next.splice(index, 1);
+      if (removed) revokeImagePreview(removed);
+      attachedImagesRef.current = next;
+      return next;
+    });
+  }, []);
+
+  const clearImages = useCallback(() => {
+    attachedImagesRef.current = [];
+    setAttachedImages((prev) => {
+      prev.forEach(revokeImagePreview);
+      return [];
+    });
+  }, []);
+
+  const clearInput = useCallback(() => {
+    const retained = retainedPluginSelection(selectedPluginsRef.current);
+    valueRef.current = "";
+    setValue("");
+    setAtQuery(null);
+    setHistoryMenuOpen(false);
+    for (const key of new Set([draftKey, draftKeyRef.current])) if (key) setDraft(key, { value: "", images: [], selectedPlugins: retained });
+    clearImages();
+    referencesRef.current = [];
+    selectedPluginsRef.current = retained;
+    setSelectedPlugins(retained);
+    setReferences([]);
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "auto";
+    }
+  }, [clearImages, draftKey]);
+
+  useEffect(() => {
+    if (!draftKey || draftKeyRef.current !== draftKey) return;
+    setDraft(draftKey, {
+      value,
+      images: attachedImages.map(imageToDraftImage),
+      references, selectedPlugins,
+    });
+  }, [attachedImages, draftKey, references, selectedPlugins, value]);
+
+  useEffect(() => {
+    const previousDraftKey = draftKeyRef.current;
+    if (previousDraftKey === draftKey) return;
+    setAttachmentError("");
+    nativePasteRef.current = null;
+
+    if (previousDraftKey) {
+      setDraft(previousDraftKey, {
+        value: valueRef.current,
+        images: attachedImagesRef.current.map(imageToDraftImage),
+        references: referencesRef.current,
+        selectedPlugins: selectedPluginsRef.current,
+      });
+    }
+
+    const draft = draftKey ? getDraft(draftKey) : null;
+    draftKeyRef.current = draftKey;
+    const nextValue = draft?.value ?? "";
+    const nextImages = draftImagesToAttachedImages(draft?.images);
+    const nextReferences = draft?.references ?? [];
+    valueRef.current = nextValue;
+    attachedImagesRef.current = nextImages;
+    referencesRef.current = nextReferences;
+    setValue(nextValue);
+    setAtQuery(null);
+    setHistoryMenuOpen(false);
+    setAttachedImages((prev) => {
+      prev.forEach(revokeImagePreview);
+      return nextImages;
+    });
+    setReferences(nextReferences);
+    selectedPluginsRef.current = draft?.selectedPlugins ?? [];
+    setSelectedPlugins(draft?.selectedPlugins ?? []);
+  }, [draftKey]);
+
+  const seededAutomationTasks = useRef(new Set<string>());
+  useEffect(() => {
+    if (!automationPrompt || draftKeyRef.current !== draftKey || seededAutomationTasks.current.has(automationPrompt.taskId)) return;
+    seededAutomationTasks.current.add(automationPrompt.taskId);
+    // Seed once after normal draft recovery. Never replace user text, restore a
+    // deliberately cleared prefix, or reinsert it after sending/reloading state.
+    fillEmptyComposer(automationPrompt.text, true);
+  }, [automationPrompt, draftKey, fillEmptyComposer]);
+
+  const resizeFrameRef = useRef<number | null>(null);
+  const scheduleTextareaResize = useCallback(() => {
+    if (resizeFrameRef.current !== null) return;
+    resizeFrameRef.current = requestAnimationFrame(() => {
+      resizeFrameRef.current = null;
+      resizeTextarea();
+    });
+  }, [resizeTextarea]);
+  useLayoutEffect(() => {
+    scheduleTextareaResize();
+    return () => {
+      if (resizeFrameRef.current !== null) cancelAnimationFrame(resizeFrameRef.current);
+      resizeFrameRef.current = null;
+    };
+  }, [fontSize, scheduleTextareaResize, value]);
+
+  useLayoutEffect(() => {
+    const chip = commandChipRef.current;
+    const textarea = textareaRef.current;
+    if (!hasComposerCommand || !chip || !textarea) return;
+    // Reserve only the first line for the chip, so wrapped and pasted lines
+    // retain the full input width. Keep the native textarea for selection/IME.
+    const syncCommandLayout = () => {
+      textarea.style.setProperty("--composer-command-indent", `${Math.ceil(chip.getBoundingClientRect().width) + 8}px`);
+      chip.style.transform = `translateY(${-textarea.scrollTop}px)`;
+      resizeTextarea(textarea);
+    };
+    syncCommandLayout();
+    const observer = new ResizeObserver(syncCommandLayout);
+    observer.observe(chip);
+    return () => {
+      observer.disconnect();
+      textarea.style.removeProperty("--composer-command-indent");
+    };
+  }, [hasComposerCommand, composerCommandName, resizeTextarea]);
+
+  useEffect(() => {
+    return () => {
+      attachedImagesRef.current.forEach(revokeImagePreview);
+    };
+  }, []);
+
+  const handleSend = useCallback(async () => {
+    const msg = value.trim();
+    if (!msg && !attachedImages.length && !references.length) return;
+    if (isStreaming || inputLocked || attachmentJobsRef.current || automationMode?.enabled && (!automationMode.ready || automationMode.changing || automationMode.error)) return;
+    onAudioUnlock?.();
+    if (msg.startsWith("/") && onBuiltinCommand && (!attachedImages.length && !references.length || /^\/(?:automation|自动化)(?:\s|$)/.test(msg))) {
+      const result = await onBuiltinCommand(msg);
+      if (result.handled) {
+        if (!result.error) {
+          if (result.submission !== undefined) { clearInput(); onSend(result.submission, attachedImages.length ? attachedImages : undefined, references, selectedPlugins); }
+          else if (attachedImages.length || references.length) setValue("");
+          else clearInput();
+        }
+        return;
+      }
+    }
+    clearInput();
+    onSend(msg, attachedImages.length ? attachedImages : undefined, references, selectedPlugins);
+  }, [value, attachedImages, references, selectedPlugins, isStreaming, inputLocked, automationMode, onBuiltinCommand, onSend, clearInput, onAudioUnlock]);
+
+  const slashQuery = value.startsWith("/") && !/\s/.test(value.slice(1))
+    ? value.slice(1).toLowerCase()
+    : null;
+
+  const commandPaletteOpen = addMenuOpen || (slashMenuOpen && slashQuery !== null);
+  useEffect(() => {
+    if (!cwd) return;
+    const controller = new AbortController();
+    fetch(`/api/organization-extensions/composer?cwd=${encodeURIComponent(cwd)}${sessionId ? `&sessionId=${encodeURIComponent(sessionId)}` : ""}`, { signal: controller.signal })
+      .then(async (res) => res.ok ? res.json() : { plugins: [], ...(res.status === 401 ? { subject: null } : {}) })
+      .then((data) => {
+        if (controller.signal.aborted) return;
+        const plugins: ComposerPlugin[] = data.plugins ?? [];
+        setComposerPlugins(plugins);
+        setComposerPluginsReady(true);
+        if (data.subject === undefined) return;
+        setSelectedPlugins((current) => {
+          const next = current.filter((item) => item.source === LOCAL_AUTOMATION_SOURCE
+            ? plugins.some(p=>p.source===item.source&&p.capabilityId===item.capabilityId&&p.digest===item.digest)
+            : data.subject !== null && (!item.subject || item.subject === data.subject) && (!data.source || item.source === data.source)).map((item) => {
+            const actual = plugins.find((p) => p.source === item.source && p.capabilityId === item.capabilityId && p.digest === item.digest);
+            return actual ? { ...item, selectionMode: actual.selectionMode, subject: actual.subject } : item;
+          });
+          selectedPluginsRef.current = next;
+          return next;
+        });
+      })
+      .catch(() => {});
+    return () => controller.abort();
+  }, [commandPaletteOpen, cwd, sessionId, draftKey]);
+  const pluginCommands: SlashCommandPaletteItem[] = composerPlugins.map((plugin) => ({ source: "plugin", name: plugin.name, description: plugin.description, plugin }));
+  const skillCommands = annotateSkillCommandCapabilities(slashCommands ?? [], cwd && skillDormancyState?.cwd === cwd ? skillDormancyState.skills ?? [] : []);
+  const allSlashCommands = [...(isStreaming ? [] : BUILTIN_SLASH_COMMANDS), ...skillCommands, ...pluginCommands]
+    .filter((command) => command.source !== "extension" || !HIDDEN_EXTENSION_COMMANDS.has(command.name));
+  const activeComposerCommand: SlashCommandPaletteItem | undefined = composerCommand
+    ? [...BUILTIN_SLASH_COMMANDS, ...skillCommands].find((command) => command.name === composerCommand.name)
+      ?? { source: composerCommand.name.startsWith("skill:") ? "skill" : "extension", name: composerCommand.name }
+    : undefined;
+  const filterSlashCommands = (query: string) => {
+    const normalizedQuery = query.trim().toLowerCase();
+    return [...allSlashCommands]
+      .filter((command) => {
+        if (!normalizedQuery) return true;
+        const name = command.name.toLowerCase();
+        const description = getSlashDescription(command, t).toLowerCase();
+        return name.includes(normalizedQuery) || description.includes(normalizedQuery);
+      })
+      .sort((a, b) => {
+        const rankDelta = normalizedQuery
+          ? slashMatchRank(a, normalizedQuery, t) - slashMatchRank(b, normalizedQuery, t)
+          : 0;
+        if (rankDelta !== 0) return rankDelta;
+        return SLASH_SOURCE_ORDER[a.source] - SLASH_SOURCE_ORDER[b.source]
+          || MODEL_OPTION_COLLATOR.compare(a.name, b.name);
+      });
+  };
+
+  const filteredSlashCommands = slashQuery === null ? [] : filterSlashCommands(slashQuery);
+  const filteredAddMenuCommands = filterSlashCommands(addMenuQuery);
+
+  const {
+    commands: displayedSlashCommands,
+    groups: groupedSlashCommands,
+  } = buildSlashCommandLayout(filteredSlashCommands, skillDormancy);
+  const { groups: groupedAddMenuCommands } = buildSlashCommandLayout(filteredAddMenuCommands.filter(c => c.name !== "automation" || c.source !== "builtin"), skillDormancy);
+  const addImageMatches = !addMenuQuery.trim() || [
+    t("chat.addFiles"),
+    t("chat.chooseAttachments"),
+  ].join(" ").toLowerCase().includes(addMenuQuery.trim().toLowerCase());
+  const planModeSearchText = `${t("plan.mode")} ${t("plan.enableDescription")} plan planning`;
+  const planModeMatches = Boolean(onPlanModeChange) && !automationMode?.enabled && !planMode?.planModeActive && (!addMenuQuery.trim() || planModeSearchText.toLowerCase().includes(addMenuQuery.trim().toLowerCase()));
+  const automationMatches = Boolean(onAutomationModeChange) && !automationMode?.enabled && (!addMenuQuery.trim() || `${t("automation.command.label")} ${t("automation.command.description")} automation`.toLowerCase().includes(addMenuQuery.trim().toLowerCase()));
+  const stopCompactionMatches = Boolean(isCompacting && onAbortCompaction) && `${t("chat.stopCompaction")} compact`.toLowerCase().includes(addMenuQuery.trim().toLowerCase());
+  const addMenuHasResults = addImageMatches || planModeMatches || automationMatches || stopCompactionMatches || groupedAddMenuCommands.length > 0;
+  const commandPaletteBackground = isDark ? "var(--bg-panel)" : "#ffffff";
+  const commandPaletteRadius = 8;
+
+  const hasInputText = Boolean(value.trim());
+  const canQueueStreamingMessage = !inputLocked && !attachmentJobs && Boolean(onSteer || onFollowUp)
+    && (hasInputText || attachedImages.length > 0 || references.length > 0);
+  // The execution stop action is wider than the normal send action. Reserve
+  // enough room in the bottom controls so tool selectors never sit under it.
+  const composerActionReservation = (isStreaming && planMode?.phase === "executing" ? 148 : 112) + (contextControl ? 38 : 0);
+  const composerDrawerVisible = Boolean(pendingStreamingSubmission);
+  const planModeActive = Boolean(planMode?.planModeActive);
+
+  useEffect(() => {
+    if (!planModeActive) {
+      setPlanModeGlowReady(false);
+      return;
+    }
+    const animationFrame = requestAnimationFrame(() => setPlanModeGlowReady(true));
+    return () => cancelAnimationFrame(animationFrame);
+  }, [planModeActive]);
+
+  // ── @ file autocomplete ──────────────────────────────────────────────────
+  // Recomputed from the text before the caret on every change/caret move.
+  // Disabled entirely when there is no cwd (new session without a directory).
+  const updateAtQuery = useCallback((text: string, cursor: number | null) => {
+    if (!cwd) {
+      setAtQuery(null);
+      return;
+    }
+    const pos = cursor ?? text.length;
+    setAtQuery(extractAtQuery(text.slice(0, pos)));
+  }, [cwd]);
+
+  const atQueryText = atQuery?.query ?? null;
+  const atLocalMatches: FileIndexEntry[] = React.useMemo(() => (
+    atQueryText !== null && fileIndex && fileIndex.cwd === cwd
+      ? filterFileEntries(fileIndex.entries, atQueryText)
+      : []
+  ), [atQueryText, fileIndex, cwd]);
+
+  // When the client index is truncated (repo larger than the index cap),
+  // local filtering cannot see deep files, so queries are also ranked
+  // server-side against the full listing. Local matches render immediately
+  // and are replaced when the (debounced) server result for the current
+  // query arrives; stale responses are ignored via the query/cwd tag.
+  const needsServerSearch = Boolean(atQueryText && fileIndex?.truncated && fileIndex.cwd === cwd);
+  useEffect(() => {
+    if (!needsServerSearch || !cwd || !atQueryText) return;
+    const fetchCwd = cwd;
+    const query = atQueryText;
+    const timer = setTimeout(() => {
+      fetch(`/api/file-index?cwd=${encodeURIComponent(fetchCwd)}&q=${encodeURIComponent(query)}`)
+        .then((res) => {
+          if (!res.ok) throw new Error(`file search failed: ${res.status}`);
+          return res.json() as Promise<{ matches?: FileIndexEntry[] }>;
+        })
+        .then((data) => setAtServerResult({ cwd: fetchCwd, query, matches: data.matches ?? [] }))
+        .catch(() => {
+          // Keep showing local matches; the next keystroke retries.
+        });
+    }, 150);
+    return () => clearTimeout(timer);
+  }, [needsServerSearch, atQueryText, cwd]);
+
+  const serverResultInUse = needsServerSearch
+    && atServerResult !== null
+    && atServerResult.cwd === cwd
+    && atServerResult.query === atQueryText;
+  const atMatches: FileIndexEntry[] = serverResultInUse ? atServerResult.matches : atLocalMatches;
+
+  // Open/reset the menu whenever the @token appears or changes (mirrors the
+  // slash menu: Escape closes it, the next keystroke re-opens it).
+  const atTokenKey = atQuery === null ? null : `${atQuery.start}:${atQuery.quoted ? 1 : 0}:${atQuery.query}`;
+  useEffect(() => {
+    if (atTokenKey === null) {
+      setAtMenuOpen(false);
+      setAtActiveIndex(0);
+      return;
+    }
+    setAtMenuOpen(true);
+    setAtActiveIndex(0);
+  }, [atTokenKey]);
+
+  // Fetch the file index when the menu opens. The server caches per cwd for
+  // ~10s, so re-opening refreshes cheaply; while typing nothing refetches.
+  const atTokenActive = atQuery !== null;
+  useEffect(() => {
+    if (!atTokenActive || !cwd) return;
+    const meta = fileIndexMetaRef.current;
+    if (meta && meta.cwd === cwd && Date.now() - meta.fetchedAt < 10_000) return;
+    if (fileIndexFetchingRef.current === cwd) return;
+    fileIndexFetchingRef.current = cwd;
+    const fetchCwd = cwd;
+    setFileIndexLoading(true);
+    fetch(`/api/file-index?cwd=${encodeURIComponent(fetchCwd)}`)
+      .then((res) => {
+        if (!res.ok) throw new Error(`file index failed: ${res.status}`);
+        return res.json() as Promise<{ files?: string[]; truncated?: boolean }>;
+      })
+      .then((data) => {
+        setFileIndex({ cwd: fetchCwd, entries: buildEntriesFromFiles(data.files ?? []), truncated: !!data.truncated });
+        fileIndexMetaRef.current = { cwd: fetchCwd, fetchedAt: Date.now() };
+      })
+      .catch(() => {
+        // Leave any previous index in place; next open retries.
+        fileIndexMetaRef.current = null;
+      })
+      .finally(() => {
+        fileIndexFetchingRef.current = null;
+        setFileIndexLoading(false);
+      });
+  }, [atTokenActive, cwd]);
+
+  const applyAtCompletion = useCallback((entry: FileIndexEntry) => {
+    if (!atQuery) return;
+    const ta = textareaRef.current;
+    const cursor = ta ? ta.selectionStart + composerPrefix.length : value.length;
+    const before = value.slice(0, atQuery.start);
+    let after = value.slice(cursor);
+    // Completing inside a quoted token (@"my dir/… with the caret before the
+    // closing quote): the replacement carries its own closing quote, so drop
+    // the old one right after the caret (mirrors the TUI's applyCompletion).
+    if (atQuery.quoted && after.startsWith('"')) {
+      after = after.slice(1);
+    }
+    const newValue = before + after;
+    const newPos = Math.max(0, before.length - composerPrefix.length);
+    const nextReferences = dedupeReferences([...referencesRef.current, { path: entry.path, isDir: entry.isDir }]);
+    referencesRef.current = nextReferences;
+    setReferences(nextReferences);
+    setValue(newValue);
+    setAtQuery(null);
+    requestAnimationFrame(() => {
+      const el = textareaRef.current;
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(newPos, newPos);
+      el.style.height = "auto";
+      el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
+    });
+  }, [atQuery, value, composerPrefix]);
+
+  useEffect(() => {
+    if (atActiveIndex >= atMatches.length) {
+      setAtActiveIndex(Math.max(0, atMatches.length - 1));
+    }
+  }, [atMatches.length, atActiveIndex]);
+
+  useEffect(() => {
+    atItemRefs.current.length = atMatches.length;
+  }, [atMatches.length]);
+
+  useEffect(() => {
+    if (!atMenuOpen) return;
+    atItemRefs.current[atActiveIndex]?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [atActiveIndex, atMenuOpen]);
+
+  useEffect(() => {
+    if (historyActiveIndex >= inputHistory.length) {
+      setHistoryActiveIndex(Math.max(0, inputHistory.length - 1));
+    }
+  }, [inputHistory.length, historyActiveIndex]);
+
+  useEffect(() => {
+    historyItemRefs.current.length = inputHistory.length;
+  }, [inputHistory.length]);
+
+  useEffect(() => {
+    if (!historyMenuOpen) return;
+    historyItemRefs.current[historyActiveIndex]?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [historyActiveIndex, historyMenuOpen]);
+
+  const applyHistoryInput = useCallback((text: string) => {
+    setValue(restoreComposerCommand(text, composerCommandNames));
+    setHistoryMenuOpen(false);
+    setHistoryActiveIndex(0);
+    setAtQuery(null);
+    requestAnimationFrame(() => {
+      const ta = textareaRef.current;
+      if (!ta) return;
+      ta.focus();
+      ta.setSelectionRange(text.length, text.length);
+      ta.style.height = "auto";
+      ta.style.height = `${Math.min(ta.scrollHeight, 200)}px`;
+    });
+  }, [composerCommandNames]);
+
+  const applySlashCommand = useCallback((command: SlashCommandPaletteItem) => {
+    if (command.source === "builtin" && command.name === "automation") {
+      void onAutomationModeChange?.(true); setValue(text => text.startsWith("/") && !/\s/.test(text) ? "" : text); setAddMenuOpen(false); setAddMenuQuery(""); setSlashMenuOpen(false); requestAnimationFrame(() => textareaRef.current?.focus()); return;
+    }
+    if (command.source === "plugin") {
+      if (command.plugin.automation && (automationMode?.enabled || planMode?.planModeActive)) {
+        setAttachmentError("请先退出自动化创建或计划模式，再调用已保存的自动化应用。");
+        return;
+      }
+      if (!["installed", "loaded"].includes(command.plugin.state)) {
+        window.alert(`${command.name}（${command.plugin.state}）：请在组织插件详情检查认证、启用状态并重载会话。`);
+        return;
+      }
+      setSelectedPlugins((current) => { const next = dedupePlugins([...current, command.plugin]); selectedPluginsRef.current = next; return next; });
+      removedPluginSelectionsRef.current.get(draftKeyRef.current ?? "")?.delete(`${command.plugin.source}\0${command.plugin.capabilityId}`);
+      setAddMenuOpen(false); setSlashMenuOpen(false); setAddMenuQuery("");
+      setValue((text) => text.startsWith("/") && !/\s/.test(text) ? "" : text);
+      requestAnimationFrame(() => textareaRef.current?.focus());
+      return;
+    }
+    const nextValue = `/${command.name} `;
+    setValue(nextValue);
+    setAddMenuOpen(false);
+    setAddMenuQuery("");
+    setSlashMenuOpen(false);
+    setSlashActiveIndex(0);
+    requestAnimationFrame(() => {
+      const ta = textareaRef.current;
+      if (!ta) return;
+      ta.focus();
+      ta.setSelectionRange(nextValue.length, nextValue.length);
+      ta.style.height = "auto";
+      ta.style.height = `${Math.min(ta.scrollHeight, 200)}px`;
+    });
+  }, [onAutomationModeChange, automationMode?.enabled, planMode?.planModeActive]);
+
+  const sendQueued = useCallback((mode: "steer" | "followup", pending?: { message: string; images: AttachedImage[]; references: ChatDraftReference[]; selectedPlugins?: SelectedPlugin[] }) => {
+    if (attachmentJobsRef.current) return;
+    const msg = pending?.message ?? value.trim();
+    const images = pending?.images ?? attachedImages;
+    const queuedReferences = pending?.references ?? references;
+    const plugins = pending?.selectedPlugins ?? selectedPlugins;
+    if (!msg && !images.length && !queuedReferences.length) return;
+    onAudioUnlock?.();
+    const streamingBehavior = mode === "steer" ? "steer" : "followUp";
+    if (!queuedReferences.length && msg.startsWith("/") && onPromptWithStreamingBehavior) {
+      if (!pending) clearInput();
+      onPromptWithStreamingBehavior(msg, streamingBehavior, images.length ? images : undefined, queuedReferences, plugins);
+      return;
+    }
+    if (!pending) clearInput();
+    if (mode === "steer" && onSteer) {
+      onSteer(msg, images.length ? images : undefined, queuedReferences, plugins);
+    } else if (mode === "followup" && onFollowUp) {
+      onFollowUp(msg, images.length ? images : undefined, queuedReferences, plugins);
+    }
+  }, [value, attachedImages, references, selectedPlugins, onPromptWithStreamingBehavior, onSteer, onFollowUp, clearInput, onAudioUnlock]);
+
+  const stageStreamingSubmission = useCallback(() => {
+    if (inputLocked || attachmentJobsRef.current || (!onSteer && !onFollowUp)) return;
+    const message = value.trim();
+    if (!message && !attachedImages.length && !references.length) return;
+
+    setPendingStreamingSubmission({ message, images: attachedImages, references, selectedPlugins });
+    valueRef.current = "";
+    attachedImagesRef.current = [];
+    referencesRef.current = [];
+    const retained = retainedPluginSelection(selectedPlugins);
+    selectedPluginsRef.current = retained;
+    setSelectedPlugins(retained);
+    setValue("");
+    setAttachedImages(() => []);
+    setReferences([]);
+    setAtQuery(null);
+    setHistoryMenuOpen(false);
+    if (draftKey) setDraft(draftKey, { value: "", images: [], selectedPlugins: retained });
+  }, [value, attachedImages, references, selectedPlugins, draftKey, inputLocked, onSteer, onFollowUp]);
+
+  const restoreStagedStreamingSubmission = useCallback(() => {
+    if (!pendingStreamingSubmission) return;
+    valueRef.current = restoreComposerCommand(pendingStreamingSubmission.message, composerCommandNames);
+    attachedImagesRef.current = pendingStreamingSubmission.images;
+    referencesRef.current = pendingStreamingSubmission.references;
+    setValue(restoreComposerCommand(pendingStreamingSubmission.message, composerCommandNames));
+    setAttachedImages(() => pendingStreamingSubmission.images);
+    setReferences(pendingStreamingSubmission.references);
+    selectedPluginsRef.current = pendingStreamingSubmission.selectedPlugins ?? [];
+    setSelectedPlugins(pendingStreamingSubmission.selectedPlugins ?? []);
+    setPendingStreamingSubmission(null);
+    requestAnimationFrame(() => textareaRef.current?.focus());
+  }, [pendingStreamingSubmission, composerCommandNames]);
+
+  const confirmStagedStreamingSubmission = useCallback((mode: "steer" | "followup") => {
+    if (!pendingStreamingSubmission || inputLocked) return;
+    const pending = pendingStreamingSubmission;
+    setPendingStreamingSubmission(null);
+    // The current run may finish while the user is choosing a delivery mode.
+    // Submit as a normal prompt then, so the staged draft remains sendable.
+    if (!isStreaming) {
+      onAudioUnlock?.();
+      onSend(pending.message, pending.images.length ? pending.images : undefined, pending.references, pending.selectedPlugins);
+    } else {
+      sendQueued(mode, pending);
+    }
+  }, [pendingStreamingSubmission, inputLocked, isStreaming, onAudioUnlock, onSend, sendQueued]);
+
+  const getNextSlashIndex = useCallback((direction: "up" | "down" | "left" | "right") => {
+    const lastIndex = displayedSlashCommands.length - 1;
+    if (lastIndex < 0) return 0;
+
+    if (direction === "left") return Math.max(0, slashActiveIndex - 1);
+    if (direction === "right") return Math.min(lastIndex, slashActiveIndex + 1);
+
+    const itemNodes = Array.from(
+      slashMenuRef.current?.querySelectorAll<HTMLElement>("[data-slash-index]") ?? [],
+    );
+    const currentNode = itemNodes.find((node) => Number(node.dataset.slashIndex) === slashActiveIndex);
+    if (!currentNode) {
+      return direction === "down"
+        ? Math.min(lastIndex, slashActiveIndex + 1)
+        : Math.max(0, slashActiveIndex - 1);
+    }
+
+    const currentRect = currentNode.getBoundingClientRect();
+    const currentX = currentRect.left + currentRect.width / 2;
+    const currentY = currentRect.top + currentRect.height / 2;
+    let bestIndex = -1;
+    let bestScore = Number.POSITIVE_INFINITY;
+
+    for (let index = 0; index <= lastIndex; index += 1) {
+      if (index === slashActiveIndex) continue;
+      const node = itemNodes.find((item) => Number(item.dataset.slashIndex) === index);
+      if (!node) continue;
+      const rect = node.getBoundingClientRect();
+      const candidateY = rect.top + rect.height / 2;
+      const verticalDelta = candidateY - currentY;
+      if (direction === "down" ? verticalDelta <= 4 : verticalDelta >= -4) continue;
+
+      const candidateX = rect.left + rect.width / 2;
+      const score = Math.abs(verticalDelta) * 1000 + Math.abs(candidateX - currentX);
+      if (score < bestScore) {
+        bestIndex = index;
+        bestScore = score;
+      }
+    }
+
+    if (bestIndex >= 0) return bestIndex;
+    return direction === "down"
+      ? Math.min(lastIndex, slashActiveIndex + 1)
+      : Math.max(0, slashActiveIndex - 1);
+  }, [displayedSlashCommands.length, slashActiveIndex]);
+
+  const handleKeyDown = useCallback(
+    (e: KeyboardEvent<HTMLTextAreaElement>) => {
+      const nativeEvent = e.nativeEvent;
+      const sendShortcut = e.key === "Enter" && !e.shiftKey && (!isMobile || e.ctrlKey || e.metaKey);
+      const recentlyComposed = Date.now() - lastCompositionEndAtRef.current < COMPOSITION_END_ENTER_GRACE_MS;
+      const isComposing =
+        isComposingRef.current ||
+        nativeEvent.isComposing ||
+        nativeEvent.keyCode === 229;
+
+      if (sendShortcut && (isComposing || recentlyComposed)) {
+        if (recentlyComposed) e.preventDefault();
+        return;
+      }
+
+      if (historyMenuOpen && !isComposing) {
+        if (e.key === "ArrowDown") {
+          e.preventDefault();
+          setHistoryActiveIndex((i) => Math.min(Math.max(0, inputHistory.length - 1), i + 1));
+          return;
+        }
+        if (e.key === "ArrowUp") {
+          e.preventDefault();
+          setHistoryActiveIndex((i) => Math.max(0, i - 1));
+          return;
+        }
+        if (e.key === "Escape") {
+          e.preventDefault();
+          setHistoryMenuOpen(false);
+          return;
+        }
+        if ((e.key === "Tab" || sendShortcut) && inputHistory[historyActiveIndex]) {
+          e.preventDefault();
+          applyHistoryInput(inputHistory[historyActiveIndex]);
+          return;
+        }
+      }
+
+      if (slashMenuOpen && slashQuery !== null) {
+        if (e.key === "ArrowDown") {
+          e.preventDefault();
+          setSlashActiveIndex(getNextSlashIndex("down"));
+          return;
+        }
+        if (e.key === "ArrowUp") {
+          e.preventDefault();
+          setSlashActiveIndex(getNextSlashIndex("up"));
+          return;
+        }
+        if (e.key === "ArrowRight") {
+          e.preventDefault();
+          setSlashActiveIndex(getNextSlashIndex("right"));
+          return;
+        }
+        if (e.key === "ArrowLeft") {
+          e.preventDefault();
+          setSlashActiveIndex(getNextSlashIndex("left"));
+          return;
+        }
+        if (e.key === "Escape") {
+          e.preventDefault();
+          setSlashMenuOpen(false);
+          return;
+        }
+        if ((e.key === "Tab" || sendShortcut) && displayedSlashCommands[slashActiveIndex]) {
+          e.preventDefault();
+          applySlashCommand(displayedSlashCommands[slashActiveIndex]);
+          return;
+        }
+      }
+
+      // @ file menu — skip while composing so IME candidate navigation
+      // (arrows/Enter/Tab) is never intercepted.
+      if (atMenuOpen && atQuery !== null && !isComposing) {
+        if (e.key === "ArrowDown") {
+          e.preventDefault();
+          setAtActiveIndex((i) => Math.min(Math.max(0, atMatches.length - 1), i + 1));
+          return;
+        }
+        if (e.key === "ArrowUp") {
+          e.preventDefault();
+          setAtActiveIndex((i) => Math.max(0, i - 1));
+          return;
+        }
+        if (e.key === "Escape") {
+          e.preventDefault();
+          setAtMenuOpen(false);
+          return;
+        }
+        if ((e.key === "Tab" || sendShortcut) && atMatches[atActiveIndex]) {
+          e.preventDefault();
+          applyAtCompletion(atMatches[atActiveIndex]);
+          return;
+        }
+      }
+
+      if (e.key === "ArrowUp" && !isComposing && !isStreaming && inputHistory.length > 0 && value.trim().length === 0) {
+        e.preventDefault();
+        setSlashMenuOpen(false);
+        setAtMenuOpen(false);
+        setHistoryActiveIndex(inputHistory.length - 1);
+        setHistoryMenuOpen(true);
+        return;
+      }
+
+      if (e.key === "Backspace" && !isComposing && composerCommand && e.currentTarget.selectionStart === 0 && e.currentTarget.selectionEnd === 0) {
+        e.preventDefault();
+        removeComposerCommand();
+        return;
+      }
+
+      // Esc stops the agent when no slash/@/history menu or IME composition is active.
+      if (e.key === "Escape" && !isComposing && isStreaming && onAbort) {
+        e.preventDefault();
+        onAbort();
+        return;
+      }
+
+      if (sendShortcut) {
+        e.preventDefault();
+        if (isStreaming && (onSteer || onFollowUp)) {
+          stageStreamingSubmission();
+        } else {
+          handleSend();
+        }
+      }
+    },
+    [isMobile, isStreaming, onSteer, onFollowUp, onAbort, slashMenuOpen, slashQuery, displayedSlashCommands, slashActiveIndex, applySlashCommand, stageStreamingSubmission, handleSend, getNextSlashIndex, atMenuOpen, atQuery, atMatches, atActiveIndex, applyAtCompletion, historyMenuOpen, inputHistory, historyActiveIndex, applyHistoryInput, value, composerCommand, removeComposerCommand]
+  );
+
+  const handlePaste = useCallback((e: React.ClipboardEvent) => {
+    const items = Array.from(e.clipboardData?.items ?? []);
+    const files = items.filter(item => item.kind === "file").map(item => item.getAsFile()).filter((file): file is File => file !== null);
+    if (!files.length) {
+      if (!e.clipboardData.getData("text/plain") && !nativePasteRef.current) void pasteDesktopFiles();
+      return;
+    }
+    e.preventDefault();
+    const pending = nativePasteRef.current ?? pasteDesktopFiles();
+    nativePasteRef.current = null;
+    const destination = draftKeyRef.current;
+    void pending.then(handled => { if (!handled && draftKeyRef.current === destination) void processAttachmentFiles(files); });
+  }, [pasteDesktopFiles, processAttachmentFiles]);
+
+  useEffect(() => {
+    if (slashQuery === null) {
+      setSlashMenuOpen(false);
+      setSlashActiveIndex(0);
+      return;
+    }
+    setSlashMenuOpen(true);
+    setSlashActiveIndex(0);
+  }, [slashQuery]);
+
+  useEffect(() => {
+    if (!commandPaletteOpen && !composerCommandName) {
+      slashCommandsRequestedRef.current = false;
+      return;
+    }
+    if (!slashCommandsRequestedRef.current && onLoadSlashCommands) {
+      slashCommandsRequestedRef.current = true;
+      Promise.resolve(onLoadSlashCommands()).catch(() => {
+        slashCommandsRequestedRef.current = false;
+      });
+    }
+  }, [commandPaletteOpen, composerCommandName, onLoadSlashCommands]);
+
+  // Refresh both dormancy and enterprise icon ownership whenever the palette
+  // opens. Existing sessions may have command snapshots without icon metadata.
+  useEffect(() => {
+    if ((!commandPaletteOpen && !composerCommandName) || !cwd) return;
+    const requestCwd = cwd;
+    let cancelled = false;
+    setSkillDormancyState({ cwd: requestCwd, values: {} });
+    fetch(`/api/skills?cwd=${encodeURIComponent(requestCwd)}&metadataOnly=1`)
+      .then((res) => {
+        if (!res.ok) throw new Error(`skills fetch failed: ${res.status}`);
+        return res.json() as Promise<Partial<SkillsResponse>>;
+      })
+      .then((data) => {
+        if (cancelled) return;
+        const dormancy: Record<string, boolean> = {};
+        for (const skill of data.skills ?? []) dormancy[skill.name] = skill.disableModelInvocation;
+        setSkillDormancyState({ cwd: requestCwd, values: dormancy, skills: data.skills ?? [] });
+      })
+      .catch(() => {
+        if (!cancelled) setSkillDormancyState({ cwd: requestCwd, values: {} });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [commandPaletteOpen, cwd, composerCommandName]);
+
+  useEffect(() => {
+    if (slashActiveIndex >= displayedSlashCommands.length) {
+      setSlashActiveIndex(Math.max(0, displayedSlashCommands.length - 1));
+    }
+  }, [displayedSlashCommands.length, slashActiveIndex]);
+
+  useEffect(() => {
+    if (!slashMenuOpen) return;
+    slashMenuRef.current
+      ?.querySelector<HTMLElement>(`[data-slash-index="${slashActiveIndex}"]`)
+      ?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [slashActiveIndex, slashMenuOpen]);
+
+  useLayoutEffect(() => {
+    if (!slashMenuOpen || slashQuery === null) {
+      setSlashMenuMaxHeight(null);
+      return;
+    }
+
+    const menu = slashMenuRef.current;
+    if (!menu) return;
+
+    let frameId: number | null = null;
+    const update = () => {
+      frameId = null;
+      const nextHeight = getUpwardMenuMaxHeight(
+        menu.getBoundingClientRect().bottom,
+        getVisibleTopBoundary(menu),
+      );
+      setSlashMenuMaxHeight((current) => current === nextHeight ? current : nextHeight);
+    };
+    const scheduleUpdate = () => {
+      if (frameId !== null) cancelAnimationFrame(frameId);
+      frameId = requestAnimationFrame(update);
+    };
+
+    update();
+    const anchorObserver = typeof ResizeObserver === "undefined" || !menu.parentElement
+      ? null
+      : new ResizeObserver(scheduleUpdate);
+    if (menu.parentElement) anchorObserver?.observe(menu.parentElement);
+    const viewport = window.visualViewport;
+    viewport?.addEventListener("resize", scheduleUpdate);
+    viewport?.addEventListener("scroll", scheduleUpdate);
+    window.addEventListener("resize", scheduleUpdate);
+    window.addEventListener("scroll", scheduleUpdate, true);
+
+    return () => {
+      anchorObserver?.disconnect();
+      viewport?.removeEventListener("resize", scheduleUpdate);
+      viewport?.removeEventListener("scroll", scheduleUpdate);
+      window.removeEventListener("resize", scheduleUpdate);
+      window.removeEventListener("scroll", scheduleUpdate, true);
+      if (frameId !== null) cancelAnimationFrame(frameId);
+    };
+  }, [slashMenuOpen, slashQuery]);
+
+  // Build model options: prefer modelList (has provider info), fallback to modelNames
+  const modelOptions: ModelOption[] = React.useMemo(() => {
+    if (modelList && modelList.length > 0) {
+      return modelList.map((m) => ({ provider: m.provider, modelId: m.id, name: m.name })).sort(compareModelOptions);
+    }
+    return Object.entries(modelNames ?? {}).map(([modelId, name]) => ({
+      provider: model?.provider ?? "unknown",
+      modelId,
+      name,
+    })).sort(compareModelOptions);
+  }, [modelList, modelNames, model?.provider]);
+  const filteredModelOptions = React.useMemo(() => filterModelOptions(modelOptions, modelFilter), [modelOptions, modelFilter]);
+
+  // Group options by provider, preserving insertion order
+  const modelsByProvider = React.useMemo(() => {
+    const groups = new Map<string, ModelOption[]>();
+    for (const option of filteredModelOptions) {
+      const group = groups.get(option.provider);
+      if (group) group.push(option);
+      else groups.set(option.provider, [option]);
+    }
+    return [...groups].map(([provider, options]) => ({ provider, options }));
+  }, [filteredModelOptions]);
+
+  const effectiveModel = deferredModel ?? model;
+  const effectiveThinkingLevel = deferredThinkingLevel ?? thinkingLevel;
+  const displayModelName = effectiveModel
+    ? (modelOptions.find((o) => o.modelId === effectiveModel.modelId && o.provider === effectiveModel.provider)?.name ?? effectiveModel.modelId)
+    : null;
+  const currentName = displayModelName;
+
+  const compactSavedTokens = compactResult
+    ? Math.max(0, compactResult.tokensBefore - compactResult.estimatedTokensAfter)
+    : 0;
+  const compactResultText = compactResult
+    ? `${compactResult.reason && compactResult.reason !== "manual" ? `${compactResult.reason[0].toUpperCase()}${compactResult.reason.slice(1)} ` : t("chat.compacted")} ${formatTokenCount(compactResult.tokensBefore)} -> ${formatTokenCount(compactResult.estimatedTokensAfter)} tokens (${t("chat.tokensSaved", { saved: formatTokenCount(compactSavedTokens) })})`
+    : null;
+  const capitalizeDisplayLabel = (label: string) => label ? `${label[0].toUpperCase()}${label.slice(1)}` : label;
+  const thinkingLevelLabel = (level: string) => THINKING_LEVELS.includes(level as typeof THINKING_LEVELS[number])
+    ? t(`chat.reasoningLevel.${level}`)
+    : capitalizeDisplayLabel(level);
+  const thinkingDisplayLabel = thinkingLevelLabel((() => {
+    const lvl = effectiveThinkingLevel ?? "auto";
+    if (lvl === "auto" || !thinkingLevelMap) return lvl;
+    return thinkingLevelMap[lvl] ?? lvl;
+  })());
+  // Close dropdowns on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (controlsMenuRef.current && !controlsMenuRef.current.contains(e.target as Node)) {
+        setControlsMenuOpen(false);
+      }
+      if (historyMenuRef.current && !historyMenuRef.current.contains(e.target as Node) && !textareaRef.current?.contains(e.target as Node)) {
+        setHistoryMenuOpen(false);
+      }
+      if (
+        addMenuAnchorRef.current && !addMenuAnchorRef.current.contains(e.target as Node) &&
+        addMenuRef.current && !addMenuRef.current.contains(e.target as Node)
+      ) {
+        setAddMenuOpen(false);
+        setAddMenuQuery("");
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  useEffect(() => {
+    if (!addMenuOpen) return;
+    const frameId = requestAnimationFrame(() => {
+      addMenuRef.current?.querySelector<HTMLInputElement>("[data-slot='command-input']")?.focus();
+    });
+    return () => cancelAnimationFrame(frameId);
+  }, [addMenuOpen]);
+
+  useEffect(() => {
+    if (!isMobile) setControlsMenuOpen(false);
+  }, [isMobile]);
+
+
+
+  return (
+    <div
+      style={{
+        flexShrink: 0,
+        background: "transparent",
+        padding: isMobile ? "0 16px 8px" : "0 16px 30px",
+        paddingRight: isMobile ? 16 : 52, // desktop: 16px base + 36px for ChatMinimap alignment
+      }}
+    >
+      {/* Hidden file input */}
+      <NotificationNotice message={attachmentError} />
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        style={{ display: "none" }}
+        onChange={(e) => {
+          const files = Array.from(e.target.files ?? []);
+          void processAttachmentFiles(files);
+          e.target.value = "";
+        }}
+      />
+      <div style={{ maxWidth: "var(--chat-content-width)", margin: "0 auto" }}>
+        {attachmentJobs > 0 && <div role="status" className="px-3 py-1 text-xs text-[var(--text-muted)]">{t("chat.addingAttachments")}</div>}
+        <ModelErrorBanner error={modelError} />
+        <ModelScopeWarningBanner warnings={modelScopeWarnings} />
+        {/* Queued steering / follow-up messages (delivered by pi on upcoming turns) */}
+        {((queuedMessages?.steering.length ?? 0) + (queuedMessages?.followUp.length ?? 0)) > 0 && (
+          <div style={{
+            marginBottom: 8,
+            border: "1px solid var(--border)",
+            borderRadius: 6,
+            background: "var(--bg-panel)",
+            padding: "5px 0",
+          }}>
+            <div style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 8,
+              padding: "2px 8px 4px 10px",
+            }}>
+              <span style={{
+                fontSize: 10,
+                fontFamily: "var(--font-mono)",
+                color: "var(--text-dim)",
+                textTransform: "uppercase",
+                letterSpacing: 0.4,
+              }}>
+                {t("chat.queued", { count: (queuedMessages?.steering.length ?? 0) + (queuedMessages?.followUp.length ?? 0) })}
+              </span>
+              {onRecallQueue && (
+                <LabelTooltip content={t("chat.recallTitle")}><button
+                  onClick={onRecallQueue}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                    padding: "4px 12px",
+                    fontSize: 12,
+                    color: "var(--text)",
+                    background: "transparent",
+                    border: "1px solid var(--border)",
+                    borderRadius: 7,
+                    cursor: "pointer",
+                    transition: "background 0.12s, border-color 0.12s",
+                    whiteSpace: "nowrap",
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = "var(--bg-hover)";
+                    e.currentTarget.style.borderColor = "color-mix(in srgb, var(--accent) 45%, var(--border))";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = "transparent";
+                    e.currentTarget.style.borderColor = "var(--border)";
+                  }}
+                >
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="9 14 4 9 9 4" />
+                    <path d="M20 20v-7a4 4 0 0 0-4-4H4" />
+                  </svg>
+                   {t("chat.recall")}
+                </button></LabelTooltip>
+              )}
+            </div>
+            {queuedMessages?.steering.map((text, i) => (
+              <QueuedMessageRow key={`steer-${i}`} kind="steer" text={text} />
+            ))}
+            {queuedMessages?.followUp.map((text, i) => (
+              <QueuedMessageRow key={`followup-${i}`} kind="follow-up" text={text} />
+            ))}
+          </div>
+        )}
+        {/* Retry banner */}
+        {retryInfo && (
+          <div style={{
+            marginBottom: 8, padding: "5px 10px",
+            background: "rgba(234,179,8,0.08)", border: "1px solid rgba(234,179,8,0.25)",
+            borderRadius: 6, fontSize: 12, color: "rgba(180,130,0,0.9)",
+            display: "flex", alignItems: "center", gap: 6,
+          }}>
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+              <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+              <path d="M3 3v5h5" />
+            </svg>
+             {t("chat.retrying", { attempt: retryInfo.attempt, max: retryInfo.maxAttempts })}<NotificationNotice type="warning" message={retryInfo.errorMessage} title={t("chat.retrying", { attempt: retryInfo.attempt, max: retryInfo.maxAttempts })} />
+          </div>
+        )}
+        <NotificationNotice type="success" message={compactResultText} />
+        {compactError && (
+          <NotificationNotice message={compactError} type="error" />
+        )}
+        {planMode?.phase === "executing" && planMode.todos.length > 0 && (
+          <PlanTaskRows todos={planMode.todos} isStreaming={isStreaming} />
+        )}
+        {/* Main input */}
+        <div style={{ position: "relative", minWidth: 0 }}>
+          {addMenuOpen && (
+            <div
+              ref={addMenuRef}
+              data-command-palette="add"
+              className={paletteStyles.palette}
+              role="dialog"
+              aria-label={t("chat.addCommandMenu")}
+              style={{
+                position: "absolute",
+                left: 0,
+                right: 0,
+                bottom: "calc(100% + 8px)",
+                zIndex: 140,
+                height: isMobile ? 280 : 320,
+                border: "1px solid var(--border)",
+                borderRadius: commandPaletteRadius,
+                background: commandPaletteBackground,
+                boxShadow: "var(--shadow-overlay)",
+                overflow: "hidden",
+              }}
+            >
+              <Command shouldFilter={false} className="rounded-none bg-transparent text-[color:var(--text)]">
+                <CommandInput
+                  value={addMenuQuery}
+                  onValueChange={setAddMenuQuery}
+                  placeholder={t("chat.searchAddCommands")}
+                  onKeyDown={(event) => {
+                    if (event.key === "Escape") {
+                      event.preventDefault();
+                      setAddMenuOpen(false);
+                      setAddMenuQuery("");
+                    }
+                  }}
+                />
+                <CommandList className="max-h-none flex-1 px-1.5 pb-1.5" style={{ maxHeight: isMobile ? 224 : 264 }}>
+                  {!addMenuHasResults && <CommandEmpty>{t("chat.noMatchingCommands")}</CommandEmpty>}
+                  {(addImageMatches || planModeMatches || automationMatches || stopCompactionMatches) && (
+                    <CommandGroup heading={t("chat.add")}>
+                      {addImageMatches && <CommandPaletteItem
+                        value="add-files"
+                        onSelect={() => {
+                          setAddMenuOpen(false);
+                          setAddMenuQuery("");
+                          void openAttachmentPicker();
+                        }}
+                        className={`${paletteStyles.row} cursor-pointer`}
+                      >
+                        <span className={paletteStyles.icon}><CommandPaletteIcon kind="add" /></span>
+                        <span className={paletteStyles.text}>
+                          <span data-command-label className={paletteStyles.label}>{t("chat.addFiles")}</span>
+                        </span>
+                      </CommandPaletteItem>}
+                      {planModeMatches && <CommandPaletteItem value="plan-mode" tooltip={`${t("plan.mode")} · ${t("plan.enableDescription")}`} onSelect={() => {
+                        setAddMenuOpen(false); setAddMenuQuery(""); onPlanModeChange?.(true);
+                      }} className={`${paletteStyles.row} cursor-pointer`}>
+                        <span className={paletteStyles.icon}><CommandPaletteIcon kind="plan" /></span>
+                        <span className={paletteStyles.text}><span data-command-label className={paletteStyles.label}>{t("plan.mode")}</span><span data-command-description className={paletteStyles.description}>{t("plan.enableDescription")}</span></span>
+                      </CommandPaletteItem>}
+                      {automationMatches && <CommandPaletteItem value="automation-mode" disabled={isStreaming || inputLocked || !automationMode?.ready || automationMode?.changing} tooltip={t("automation.command.description")} onSelect={() => { setAddMenuOpen(false); setAddMenuQuery(""); void onAutomationModeChange?.(true); }} className={`${paletteStyles.row} cursor-pointer`}>
+                        <span className={paletteStyles.icon}><CommandPaletteIcon kind="builtin" commandName="automation" /></span><span className={paletteStyles.text}><span data-command-label className={paletteStyles.label}>{t("automation.command.label")}</span><span data-command-description className={paletteStyles.description}>{t("automation.command.description")}</span></span>
+                      </CommandPaletteItem>}
+                      {stopCompactionMatches && <CommandPaletteItem value="stop-compaction" onSelect={() => { onAbortCompaction?.(); setAddMenuOpen(false); setAddMenuQuery(""); }} data-destructive className={`${paletteStyles.row} cursor-pointer text-red-500`}>
+                        <span className="flex size-5 shrink-0 items-center justify-center"><svg width="14" height="14" viewBox="0 0 10 10" aria-hidden="true"><rect x="2" y="2" width="6" height="6" rx="1" fill="currentColor" /></svg></span>
+                        <span className="text-[13px] font-normal">{t("chat.stopCompaction")}</span>
+                      </CommandPaletteItem>}
+                    </CommandGroup>
+                  )}
+                  {slashCommandsLoading && (
+                    <div className="px-3 py-2 text-[11px] text-[color:var(--text-dim)]">{t("chat.loadingCommands")}</div>
+                  )}
+                  {groupedAddMenuCommands.map((group) => (
+                    <CommandGroup key={group.source} heading={t(SLASH_SOURCE_GROUP_LABEL_KEYS[group.source])}>
+                      {group.items.map(({ command }) => {
+                        const dormant = isDormantSkillCommand(command, skillDormancy);
+                        const description = getSlashDescription(command, t);
+                        const label = command.source === "builtin" && command.name === "automation" ? t("automation.command.label") : command.source === "plugin" ? command.name : composerCommandLabel(command.name);
+                        return (
+                          <CommandPaletteItem
+                            key={`${command.source}:${command.name}`}
+                            value={`${command.source}:${command.name}`}
+                            tooltip={description ? `${label} · ${description}` : label}
+                            onSelect={() => applySlashCommand(command)}
+                            className={`${paletteStyles.row} cursor-pointer`}
+                          >
+                            <span className={paletteStyles.icon}><SlashCommandPaletteIcon command={command} source={group.source} /></span>
+                            <span className={paletteStyles.text}>
+                              <span data-command-label className={paletteStyles.label}>{label}{dormant ? <span className="ml-1 text-[10px] font-normal text-[color:var(--text-dim)]">{t("chat.dormant")}</span> : null}</span>
+                              {description && <span data-command-description className={paletteStyles.description}>{description}</span>}
+                            </span>
+                          </CommandPaletteItem>
+                        );
+                      })}
+                    </CommandGroup>
+                  ))}
+                </CommandList>
+              </Command>
+            </div>
+          )}
+          {historyMenuOpen && inputHistory.length > 0 && (
+            <div
+              ref={historyMenuRef}
+              style={{
+                position: "absolute",
+                left: 0,
+                right: 0,
+                bottom: "calc(100% + 8px)",
+                zIndex: 120,
+                background: "var(--bg)",
+                border: "1px solid var(--border)",
+                borderRadius: 8,
+                boxShadow: "0 -6px 20px rgba(0,0,0,0.12)",
+                overflow: "hidden",
+                maxHeight: "min(44vh, 360px)",
+              }}
+            >
+              <LabelTooltip content="Input history"><div
+                style={{
+                  height: 30,
+                  padding: "0 10px",
+                  borderBottom: "1px solid var(--border)",
+                  display: "flex",
+                  alignItems: "center",
+                  color: "var(--text-dim)",
+                }}
+              >
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M3 12a9 9 0 1 0 3-6.7" />
+                  <path d="M3 4v5h5" />
+                  <path d="M12 7v5l3 2" />
+                </svg>
+              </div></LabelTooltip>
+              <div style={{ maxHeight: "calc(min(44vh, 360px) - 31px)", overflowY: "auto", padding: 4 }}>
+                {inputHistory.map((item, index) => {
+                  const active = index === historyActiveIndex;
+                  return (
+                    <button
+                      key={`${index}:${item}`}
+                      ref={(node) => {
+                        historyItemRefs.current[index] = node;
+                      }}
+                      type="button"
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        applyHistoryInput(item);
+                      }}
+                      onMouseEnter={() => setHistoryActiveIndex(index)}
+                      style={{
+                        width: "100%",
+                        display: "flex",
+                        alignItems: "flex-start",
+                        gap: 8,
+                        padding: "7px 8px",
+                        border: "none",
+                        borderRadius: 6,
+                        background: active ? "var(--bg-selected)" : "none",
+                        color: "var(--text)",
+                        cursor: "pointer",
+                        textAlign: "left",
+                        fontSize: 12.5,
+                        lineHeight: 1.45,
+                      }}
+                    >
+                      <span style={{ flexShrink: 0, fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-dim)", paddingTop: 1 }}>
+                        {index + 1}
+                      </span>
+                      <span style={{ minWidth: 0, display: "-webkit-box", WebkitBoxOrient: "vertical", WebkitLineClamp: 2, overflow: "hidden", overflowWrap: "anywhere" }}>
+                        {item}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+          {slashMenuOpen && slashQuery !== null && !addMenuOpen && (
+            <div
+              ref={slashMenuRef}
+              data-command-palette="slash"
+              className={paletteStyles.palette}
+              style={{
+                position: "absolute",
+                left: 0,
+                right: 0,
+                bottom: "calc(100% + 8px)",
+                zIndex: 140,
+                height: isMobile ? 280 : 320,
+                background: commandPaletteBackground,
+                border: "1px solid var(--border)",
+                borderRadius: commandPaletteRadius,
+                boxShadow: "var(--shadow-overlay)",
+                overflow: "hidden",
+                boxSizing: "border-box",
+                display: "flex",
+                flexDirection: "column",
+              }}
+            >
+              <Command shouldFilter={false} className="rounded-none bg-transparent text-[color:var(--text)]">
+                <CommandList className="max-h-none flex-1 px-1.5 py-1.5" style={{ maxHeight: isMobile ? 280 : 320 }}>
+                  {!slashCommandsLoading && filteredSlashCommands.length === 0 && <CommandEmpty>{t("chat.noCommands")}</CommandEmpty>}
+                  {groupedSlashCommands.map((group) => (
+                    <CommandGroup key={group.source} heading={t(SLASH_SOURCE_GROUP_LABEL_KEYS[group.source])}>
+                      {group.items.map(({ command, index }) => {
+                        const active = index === slashActiveIndex;
+                        const dormant = isDormantSkillCommand(command, skillDormancy);
+                        const description = getSlashDescription(command, t);
+                        const label = command.source === "builtin" && command.name === "automation" ? t("automation.command.label") : command.source === "plugin" ? command.name : composerCommandLabel(command.name);
+                        return (
+                          <CommandPaletteItem
+                            key={`${command.source}:${command.name}`}
+                            data-slash-index={index}
+                            value={`${command.source}:${command.name}`}
+                            tooltip={description ? `${label} · ${description}` : label}
+                            onSelect={() => applySlashCommand(command)}
+                            onMouseEnter={() => setSlashActiveIndex(index)}
+                            className={`${paletteStyles.row} cursor-pointer`}
+                            style={{ background: active ? "var(--bg-hover)" : undefined }}
+                          >
+                            <span className={paletteStyles.icon}><SlashCommandPaletteIcon command={command} source={group.source} /></span>
+                            <span className={paletteStyles.text}>
+                              <span data-command-label className={paletteStyles.label}>{label}{dormant ? <span className="ml-1 text-[10px] font-normal text-[color:var(--text-dim)]">{t("chat.dormant")}</span> : null}</span>
+                              {description && <span data-command-description className={paletteStyles.description}>{description}</span>}
+                            </span>
+                          </CommandPaletteItem>
+                        );
+                      })}
+                    </CommandGroup>
+                  ))}
+                </CommandList>
+              </Command>
+            </div>
+          )}
+          {atMenuOpen && atQuery !== null && (() => {
+            const indexLoading = fileIndexLoading && (!fileIndex || fileIndex.cwd !== cwd);
+             const matchCountLabel = atMatches.length === 1 ? t("chat.match") : t("chat.matches", { count: atMatches.length });
+            // With a truncated index, local results are provisional — the
+            // debounced server search over the full listing replaces them.
+            const truncatedHint = fileIndex?.truncated && !serverResultInUse
+               ? (atQuery.query ? t("chat.searchingAll") : t("chat.indexTruncated"))
+              : "";
+            return (
+              <div
+                style={{
+                  position: "absolute",
+                  left: 0,
+                  right: 0,
+                  bottom: "calc(100% + 8px)",
+                  zIndex: 120,
+                  background: commandPaletteBackground,
+                  border: "1px solid var(--border)",
+                  borderRadius: commandPaletteRadius,
+                  boxShadow: "var(--shadow-overlay)",
+                  overflow: "hidden",
+                  maxHeight: "min(48vh, 400px)",
+                  boxSizing: "border-box",
+                  display: "flex",
+                  flexDirection: "column",
+                }}
+              >
+                <Command shouldFilter={false} className="rounded-none bg-transparent text-[color:var(--text)]">
+                  <CommandList className="max-h-none flex-1 px-1.5 py-1.5" style={{ maxHeight: "min(48vh, 400px)" }}>
+                    <CommandGroup heading={indexLoading ? t("chat.loadingFiles") : t("chat.files", { label: matchCountLabel, hint: truncatedHint })}>
+                      {!indexLoading && atMatches.length === 0 ? (
+                        <CommandEmpty>{needsServerSearch && !serverResultInUse ? t("chat.searching") : t("chat.noMatchingFiles")}</CommandEmpty>
+                      ) : (
+                        atMatches.map((entry, index) => {
+                          const active = index === atActiveIndex;
+                          const name = entry.path.split("/").pop() ?? entry.path;
+                          const dirPrefix = entry.path.slice(0, entry.path.length - name.length);
+                          return (
+                            <CommandItem
+                              key={`${entry.isDir ? "d" : "f"}:${entry.path}`}
+                              ref={(node) => {
+                                atItemRefs.current[index] = node;
+                              }}
+                              value={entry.path}
+                              onSelect={() => applyAtCompletion(entry)}
+                              onMouseEnter={() => setAtActiveIndex(index)}
+                              className="cursor-pointer py-1.5 text-[color:var(--text)] data-[selected=true]:bg-[var(--bg-hover)]"
+                              style={{ background: active ? "var(--bg-hover)" : undefined }}
+                            >
+                              <span className="flex size-5 shrink-0 items-center justify-center">
+                                {entry.isDir ? <FolderIcon size={14} /> : getFileIcon(name, 14)}
+                              </span>
+                              <span className="flex min-w-0 flex-1 items-baseline gap-2 overflow-hidden whitespace-nowrap">
+                                <span className="shrink-0 text-[13px]">{name}{entry.isDir && "/"}</span>
+                                {dirPrefix && <span className="truncate text-[11px] text-[color:var(--text-muted)]">{dirPrefix}</span>}
+                              </span>
+                            </CommandItem>
+                          );
+                        })
+                      )}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </div>
+            );
+          })()}
+          {composerDrawerVisible && (
+            <div
+              aria-label="输入框状态抽屉"
+              style={{
+                position: "absolute",
+                left: isMobile ? 8 : 18,
+                right: isMobile ? 8 : 18,
+                bottom: "calc(100% - 16px)",
+                zIndex: 0,
+                background: "var(--input-bg)",
+                border: `1px solid ${bashMode ? "var(--tool-bg)" : "color-mix(in srgb, var(--border) 70%, transparent)"}`,
+                borderRadius: 16,
+                boxShadow: "var(--shadow-soft)",
+                overflow: "hidden",
+                paddingBottom: 16,
+              }}
+            >
+              {pendingStreamingSubmission && (
+                <div style={{
+                  display: "flex",
+                  alignItems: "center",
+                  flexWrap: isMobile ? "wrap" : "nowrap",
+                  gap: 8,
+                  minHeight: 48,
+                  padding: "8px 12px 8px 14px",
+                }}>
+                  <div style={{ minWidth: isMobile ? "100%" : 0, flex: 1 }}>
+                    <div style={{ marginBottom: 2, color: "var(--text-dim)", fontSize: 10, fontWeight: 600, letterSpacing: "0.4px" }}>{t("chat.pendingSend")}</div>
+                    <div style={{ overflow: "hidden", color: "var(--text)", fontSize: 13, textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {pendingStreamingSubmission.message || t("chat.attachedImageCount", { count: pendingStreamingSubmission.images.length })}
+                    </div>
+                  </div>
+                  <button type="button" onClick={restoreStagedStreamingSubmission} style={{ flexShrink: 0, padding: "5px 8px", border: "1px solid var(--border)", borderRadius: 7, background: "transparent", color: "var(--text-muted)", cursor: "pointer", fontSize: 12 }}>
+                    {t("chat.moveToInput")}
+                  </button>
+                  {(onFollowUp || !isStreaming) && <button type="button" disabled={inputLocked} onClick={() => confirmStagedStreamingSubmission("followup")} style={{ flexShrink: 0, padding: "5px 9px", border: "1px solid var(--border)", borderRadius: 7, background: "var(--bg-hover)", color: "var(--text)", cursor: "pointer", fontSize: 12, fontWeight: 500 }}>
+                    {t("chat.queueSend")}
+                  </button>}
+                  {(onSteer || !isStreaming) && <button type="button" disabled={inputLocked} onClick={() => confirmStagedStreamingSubmission("steer")} style={{ flexShrink: 0, padding: "5px 9px", border: "1px solid transparent", borderRadius: 7, background: isDark ? "#ffffff" : "#080707", color: isDark ? "#080707" : "#fff", cursor: "pointer", fontSize: 12, fontWeight: 600 }}>
+                    {t("chat.immediateSteer")}
+                  </button>}
+                </div>
+              )}
+            </div>
+          )}
+          <div
+            ref={nativeDropTarget}
+            data-native-file-drag={nativeFileDrag || undefined}
+            className={planModeActive ? `plan-mode-composer${planModeGlowReady ? " plan-mode-composer-active" : ""}` : undefined}
+            style={{
+              position: "relative",
+              // The bottom control bar deliberately overlaps the lower part of
+              // the composer. Do not create a stacking context here: both send
+              // and stop must stay above that bar, even with the drawer open.
+              zIndex: "auto",
+              minWidth: 0,
+              display: "flex",
+              flexDirection: "column",
+              gap: 8,
+              alignItems: "flex-start",
+              background: "var(--input-bg)",
+              border: `1px solid ${planModeActive && planModeGlowReady ? "color-mix(in srgb, #60a5fa 54%, var(--border))" : bashMode ? "var(--tool-bg)" : "color-mix(in srgb, var(--border) 70%, transparent)"}`,
+              borderRadius: "var(--radius-card)",
+              padding: "10px 10px 10px 14px",
+              boxShadow: planModeActive && planModeGlowReady
+                ? "0 9px 24px rgba(37, 99, 235, 0.16), 0 0 0 1px rgba(96, 165, 250, 0.3), 0 0 16px rgba(59, 130, 246, 0.16)"
+                : "var(--shadow-soft)",
+              transition: planModeActive
+                ? "border-color 860ms cubic-bezier(0.16, 1, 0.3, 1), background var(--transition-ui), box-shadow 860ms cubic-bezier(0.16, 1, 0.3, 1)"
+                : "border-color var(--transition-ui), background var(--transition-ui), box-shadow var(--transition-ui)",
+            } as React.CSSProperties}
+          >
+          {automationMode?.error && <div role="alert" className="mb-2 flex w-full items-center gap-2 text-xs text-destructive"><span className="min-w-0 flex-1 break-words">{automationMode.error}</span><Button type="button" variant="outline" size="sm" onClick={onAutomationRetry} disabled={!onAutomationRetry || automationMode.changing}>{t("automation.command.retry")}</Button></div>}
+          {attachedImages.length > 0 && (
+            <div aria-label={t("chat.attachedImageCount", { count: attachedImages.length })} style={{ display: "flex", gap: 8, width: "100%", minWidth: 0, overflowX: "auto", padding: "2px 0", boxSizing: "border-box" }}>
+              {attachedImages.map((img, i) => (
+                <div key={img.previewUrl + i} style={{ position: "relative", flexShrink: 0 }}>
+                  <ImagePreview src={img.previewUrl} alt={t("chat.attachedImage", { index: i + 1 })} style={{ width: 80, height: 80, borderRadius: 10, overflow: "hidden", border: "1px solid var(--border)", background: "var(--bg-panel)" }}>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={img.previewUrl} alt={t("chat.attachedImage", { index: i + 1 })} style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }} />
+                  </ImagePreview>
+                  <Tooltip>
+                    <TooltipTrigger render={<button
+                      type="button"
+                      onClick={() => removeImage(i)}
+                      aria-label={t("chat.removeImage", { index: i + 1 })}
+                      className="absolute right-1 top-1 flex size-5 cursor-pointer items-center justify-center rounded-full border border-[var(--border)] bg-[var(--bg-panel)] p-0 text-[var(--text-muted)] shadow-sm transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
+                    >
+                      <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden="true">
+                        <path d="m2 2 6 6M8 2 2 8" />
+                      </svg>
+                    </button>} />
+                    <TooltipContent>{t("chat.removeImage", { index: i + 1 })}</TooltipContent>
+                  </Tooltip>
+                </div>
+              ))}
+            </div>
+          )}
+          {(selectedPlugins.length > 0 || references.length > 0) && <div className="message-resource-tags composer-resource-tags">
+            {selectedPlugins.map((plugin) => {
+            const actual = composerPlugins.find((item) => item.source === plugin.source && item.capabilityId === plugin.capabilityId);
+            const unavailable = composerPluginsReady && (!actual || actual.digest !== plugin.digest || !["installed", "loaded"].includes(actual.state));
+            return <LabelTooltip key={`${plugin.source}:${plugin.capabilityId}`} content={unavailable ? "插件状态已变化，请检查安装、重新选择并重载会话" : plugin.selectionMode === "persistent" ? "持续使用此插件，点击 × 移除" : undefined}><span className="message-resource-tag message-resource-capability">
+              <MessageCapabilityIcon plugin={plugin} cwd={cwd ?? undefined} /><span className="message-resource-label">{plugin.name}</span>{unavailable && <span> · 待检查</span>}
+              <button type="button" className="message-resource-remove" aria-label={`移除 ${plugin.name}`} onClick={() => {
+                const next = selectedPluginsRef.current.filter((p) => p.source !== plugin.source || p.capabilityId !== plugin.capabilityId);
+                const key = draftKeyRef.current ?? "";
+                const removed = removedPluginSelectionsRef.current.get(key) ?? new Set<string>();
+                removed.add(`${plugin.source}\0${plugin.capabilityId}`); removedPluginSelectionsRef.current.set(key, removed);
+                selectedPluginsRef.current = next; setSelectedPlugins(next);
+                if (key) setDraft(key, { value: valueRef.current, images: attachedImagesRef.current.map(imageToDraftImage), references: referencesRef.current, selectedPlugins: next });
+              }}>×</button>
+            </span></LabelTooltip>;
+          })}
+            {references.map((reference) => {
+                const segments = reference.path.replace(/\\/g, "/").split("/");
+                const baseName = segments.at(-1) ?? reference.path;
+                const name = `${baseName}${reference.isDir ? "/" : ""}`;
+                return (
+                  <LabelTooltip key={`${reference.isDir ? "dir" : "file"}:${reference.path}`} content={reference.path}><div className="message-resource-tag">
+                    <button type="button" onClick={() => onOpenReference?.(reference)} aria-label={t("chat.openReference", { path: reference.path })} className="message-resource-open">
+                      <span className="message-resource-icon">{reference.isDir ? <FolderIcon size={16} /> : getFileIcon(baseName, 16)}</span>
+                      <span className="message-resource-label">{name}</span>
+                    </button>
+                    <LabelTooltip content={t("chat.removeReference", { path: reference.path })}><button type="button" onClick={() => setReferences((current) => { const next = current.filter((item) => item.path !== reference.path || item.isDir !== reference.isDir); referencesRef.current = next; return next; })} aria-label={t("chat.removeReference", { path: reference.path })} className="message-resource-remove">
+                      <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"><path d="m2 2 6 6M8 2 2 8" /></svg>
+                    </button></LabelTooltip>
+                  </div></LabelTooltip>
+                );
+              })}
+          </div>}
+          {/* The controls below intentionally overlap the composer. Keep their
+              reserved space outside the textarea so content sizing can never
+              consume it. */}
+          <div style={{ width: "100%", minWidth: 0, paddingBottom: 42 }}>
+          <div className="composer-command-editor" style={{ position: "relative", minWidth: 0 }}>
+          {composerCommand && activeComposerCommand ? <div style={{ position: "absolute", inset: 0, overflow: "hidden", pointerEvents: "none" }}>
+          <LabelTooltip content={composerCommand.label}><span ref={commandChipRef} className="composer-command-chip message-resource-tag message-resource-capability" style={{ display: "inline-flex", alignItems: "center", gap: 6, position: "absolute", top: 0, left: 0, zIndex: 1, pointerEvents: "auto", maxWidth: "calc(100% - 48px)", height: "max(28px, var(--message-line-height))", boxSizing: "border-box", padding: "2px 6px 2px 8px", border: "1px solid color-mix(in srgb, var(--accent) 12%, var(--border))", borderRadius: "var(--radius-card)", background: "color-mix(in srgb, var(--accent) 7%, var(--bg-panel))", color: "var(--accent)", fontWeight: 600, fontSize: "var(--message-font-size)", lineHeight: "20px" }}>
+            <SlashCommandPaletteIcon command={activeComposerCommand} source={activeComposerCommand.source === "prompt" ? "builtin" : activeComposerCommand.source} />
+            <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: 500 }}>{composerCommand.label}</span>
+            <button type="button" disabled={inputLocked} onClick={removeComposerCommand} aria-label={t("chat.removeCommand", { name: composerCommand.label })} style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0, width: 20, height: 20, border: 0, borderRadius: 4, background: "transparent", color: "inherit", cursor: inputLocked ? "default" : "pointer" }}>×</button>
+          </span></LabelTooltip></div> : null}
+          <textarea
+            ref={textareaRef}
+            value={composerText}
+            disabled={inputLocked}
+            onChange={(e) => {
+              const nextValue = composerPrefix + e.target.value;
+              valueRef.current = nextValue;
+              setValue(nextValue);
+              setHistoryMenuOpen(false);
+              updateAtQuery(nextValue, e.target.selectionStart + composerPrefix.length);
+            }}
+            onSelect={(e) => {
+              const el = e.currentTarget;
+              updateAtQuery(composerPrefix + el.value, el.selectionStart + composerPrefix.length);
+            }}
+            onKeyDown={handleKeyDown}
+            onCompositionStart={() => {
+              isComposingRef.current = true;
+            }}
+            onCompositionEnd={(e) => {
+              isComposingRef.current = false;
+              lastCompositionEndAtRef.current = Date.now();
+              const el = e.currentTarget;
+              updateAtQuery(composerPrefix + el.value, el.selectionStart + composerPrefix.length);
+            }}
+            onScroll={(event) => {
+              if (commandChipRef.current) commandChipRef.current.style.transform = `translateY(${-event.currentTarget.scrollTop}px)`;
+            }}
+            onPaste={handlePaste}
+            data-composer-attachments
+            onKeyDownCapture={event => {
+              if ((event.ctrlKey || event.metaKey) && !event.altKey && event.key.toLowerCase() === "v") {
+                nativePasteRef.current = pasteDesktopFiles();
+              }
+            }}
+            onKeyUpCapture={event => { if (event.key.toLowerCase() === "v") nativePasteRef.current = null; }}
+            placeholder={
+              inputLocked ? t("plan.answerRequired")
+                : hasComposerCommand ? ""
+                : isStreaming && (onSteer || onFollowUp)
+                ? t("chat.steerPlaceholder")
+                : isStreaming ? t("chat.agentPlaceholder")
+                : t("chat.messagePlaceholder")
+            }
+            rows={1}
+            style={{
+              minWidth: 0,
+              display: "block",
+              width: "100%",
+              background: "none",
+              border: "none",
+              outline: "none",
+              resize: "none",
+              color: "var(--text)",
+              opacity: inputLocked ? 0.55 : 1,
+              // Geometry must update immediately when the inline chip changes.
+              transitionProperty: "color, opacity",
+              fontSize: "var(--message-font-size)",
+              lineHeight: hasComposerCommand ? "max(26px, var(--message-line-height))" : "var(--message-line-height)",
+              fontFamily: "var(--font-ui)",
+              fontWeight: 400,
+              minHeight: isMobile ? 52 : 56,
+              maxHeight: 200,
+              overflowY: "hidden",
+              boxSizing: "border-box",
+              // Let modern Chromium grow and shrink this element from its
+              // content. The max height above takes over as a scroll limit.
+              fieldSizing: "content",
+              textIndent: hasComposerCommand ? "var(--composer-command-indent, 0px)" : undefined,
+              paddingTop: 0,
+              paddingLeft: 0,
+              paddingBottom: 0,
+              paddingRight: 0,
+            }}
+          />
+          </div>
+          </div>
+
+          <div data-composer-actions style={{ position: "absolute", zIndex: 3, right: 24, bottom: 10, display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+          {contextControl}
+          {isStreaming && canQueueStreamingMessage && planMode?.phase !== "executing" ? (
+            <div style={{ display: "flex", alignItems: "center", flexShrink: 0 }}>
+              <Tooltip>
+              <TooltipTrigger render={<button
+                  onClick={stageStreamingSubmission}
+                  aria-label={t("chat.send")}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 5,
+                    padding: "7px 14px", height: 32,
+                    background: isDark ? "#ffffff" : "#080707",
+                    border: "1px solid transparent",
+                    borderRadius: 16,
+                    color: isDark ? "#080707" : "#fff",
+                    cursor: "pointer",
+                    fontSize: 13, fontWeight: 500, letterSpacing: "-0.01em",
+                    boxShadow: "0 4px 12px rgba(0,0,0,0.25)",
+                    transition: "background var(--transition-ui), box-shadow var(--transition-ui)",
+                  }}
+                  onMouseEnter={(event) => { event.currentTarget.style.opacity = "0.86"; }}
+                  onMouseLeave={(event) => { event.currentTarget.style.opacity = "1"; }}
+                >
+                  <svg width="12" height="12" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M5 1 L9 5 L5 9" /><line x1="1" y1="5" x2="9" y2="5" />
+                  </svg>
+                  {t("chat.send")}
+                </button>} />
+                <TooltipContent>{t("chat.send")}</TooltipContent>
+                </Tooltip>
+            </div>
+          ) : isStreaming ? (
+            <Tooltip>
+            <TooltipTrigger render={<button
+              onClick={planMode?.phase === "executing" && onCancelPlan ? () => setStopPlanConfirmOpen(true) : onAbort}
+                  aria-label={planMode?.phase === "executing" ? t("plan.stop") : t("chat.stopAgent")}
+              style={{
+                pointerEvents: "auto",
+                display: "flex", alignItems: "center", gap: 6,
+                padding: "7px 14px", height: 32,
+                background: isDark ? "#ffffff" : "#080707",
+                border: "none", borderRadius: 16,
+                color: isDark ? "#080707" : "#fff",
+                cursor: "pointer", fontSize: 13, fontWeight: 500,
+                letterSpacing: "-0.01em", boxShadow: "0 4px 12px rgba(0,0,0,0.25)",
+              }}
+            >
+              <svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true"><rect x="1.5" y="1.5" width="7" height="7" rx="1.5" fill="currentColor" /></svg>
+              {planMode?.phase === "executing" ? t("plan.stop") : t("chat.stop")}
+            </button>} />
+            <TooltipContent>{t("chat.stopAgent")}</TooltipContent>
+            </Tooltip>
+          ) : !isStreaming && (
+            <button
+              type="button"
+              onClick={handleSend}
+              disabled={inputLocked || attachmentJobs > 0 || Boolean(automationMode?.enabled && (!automationMode.ready || automationMode.changing || automationMode.error)) || (!value.trim() && !attachedImages.length && !references.length)}
+              style={{
+                pointerEvents: "auto",
+                flexShrink: 0,
+                display: "flex", alignItems: "center", gap: 6,
+                padding: "7px 14px", height: 32,
+                background: (value.trim() || attachedImages.length || references.length) ? (isDark ? "#ffffff" : "#080707") : "var(--bg-panel)",
+                border: "none",
+                borderRadius: 16,
+                color: (value.trim() || attachedImages.length || references.length) ? (isDark ? "#080707" : "#fff") : "var(--text-dim)",
+                cursor: (value.trim() || attachedImages.length || references.length) ? "pointer" : "not-allowed",
+                fontSize: 13,
+                fontWeight: 500,
+                letterSpacing: "-0.01em",
+                boxShadow: (value.trim() || attachedImages.length || references.length) ? "0 4px 12px rgba(0,0,0,0.25)" : "none",
+                transition: "background var(--transition-ui), box-shadow var(--transition-ui)",
+              }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                <path d="M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z" />
+                <path d="m21.854 2.147-10.94 10.939" />
+              </svg>
+              {t("chat.send")}
+            </button>
+          )}
+          </div>
+          </div>
+          <AlertDialog open={stopPlanConfirmOpen} onOpenChange={setStopPlanConfirmOpen}>
+            <AlertDialogContent>
+              <div className="flex flex-col px-6 pb-5 pt-6 text-center">
+                <AlertDialogTitle>{t("plan.stopConfirmTitle")}</AlertDialogTitle>
+                <AlertDialogDescription className="mt-2">{t("plan.stopConfirmDescription")}</AlertDialogDescription>
+              </div>
+              <div className="flex gap-2 border-t border-[var(--border)] bg-[var(--bg)] px-4 py-3">
+                <Tooltip>
+                  <TooltipTrigger render={<AlertDialogCancel className="h-8 flex-1 justify-center overflow-hidden px-3.5 text-sm font-[550]"><span className="min-w-0 max-w-full truncate text-left">{t("plan.continueExecution")}</span></AlertDialogCancel>} />
+                  <TooltipContent>{t("plan.continueExecution")}</TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger render={<Button variant="destructive" size="sm" className="h-8 flex-1 justify-center overflow-hidden px-3.5 text-sm font-[550]" onClick={() => { void onCancelPlan?.(); setStopPlanConfirmOpen(false); }}><span className="min-w-0 max-w-full truncate text-left">{t("plan.stop")}</span></Button>} />
+                  <TooltipContent>{t("plan.stop")}</TooltipContent>
+                </Tooltip>
+              </div>
+            </AlertDialogContent>
+          </AlertDialog>
+        </div>
+
+        {/* Bash mode status label */}
+        {bashMode && (
+          <div className="text-xs px-2 py-1" style={{ color: bashExcluded ? "var(--text-muted)" : "var(--accent)", marginTop: 4 }}>
+             {t("chat.shell")} · {bashExcluded ? t("chat.outputLocal") : t("chat.outputModel")}
+          </div>
+        )}
+
+        {/* Bottom bar: left | center (context) | right */}
+        <div style={{
+          marginTop: isMobile ? 8 : -42,
+          padding: isMobile ? undefined : `0 ${composerActionReservation}px 0 6px`,
+          position: "relative",
+          zIndex: 1,
+          // Keep the model and reasoning selectors in one continuous row.  The
+          // former mobile grid stretched the model column to the available
+          // width, which visually detached "Auto" from the selected model.
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
+        }}>
+
+          {/* LEFT: attach + model selector (idle) or steer/followup toggle (streaming) */}
+          <div style={{ flex: "0 0 auto", minWidth: 0, display: "flex", alignItems: "center", gap: 2 }}>
+            <div ref={addMenuAnchorRef} style={{ flexShrink: 0 }}>
+              <Tooltip>
+              <TooltipTrigger render={<button
+                type="button"
+                onClick={() => {
+                  setSlashMenuOpen(false);
+                  setAddMenuOpen((open) => {
+                    if (open) setAddMenuQuery("");
+                    return !open;
+                  });
+                }}
+                aria-label={t("chat.openAddMenu")}
+                aria-expanded={addMenuOpen}
+                style={{
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  width: 32, height: 32, padding: 0,
+                  background: addMenuOpen ? "var(--bg-hover)" : "none", border: "none",
+                  borderRadius: 9,
+                  color: attachedImages.length ? "var(--accent)" : "var(--text-muted)",
+                  cursor: "pointer",
+                  transition: "background 0.12s, color 0.12s",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = "var(--bg-hover)";
+                  e.currentTarget.style.color = attachedImages.length ? "var(--accent)" : "var(--text)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = addMenuOpen ? "var(--bg-hover)" : "none";
+                  e.currentTarget.style.color = attachedImages.length ? "var(--accent)" : "var(--text-muted)";
+                }}
+              >
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
+                  <path d="M12 5v14M5 12h14" />
+                </svg>
+              </button>} />
+              <TooltipContent>{t("chat.openAddMenu")}</TooltipContent>
+              </Tooltip>
+
+            </div>
+            {/* Model selector: searchable provider groups. */}
+            {(modelOptions.length > 0 || currentName || modelError) && onModelChange && (
+              <Popover.Root open={modelDropdownOpen} onOpenChange={(open) => {
+                setModelDropdownOpen(open);
+                if (!open) setModelFilter("");
+                else setThinkingDropdownOpen(false);
+              }}>
+                <Tooltip>
+                  <Popover.Trigger render={<TooltipTrigger render={<button
+                    type="button"
+                    disabled={modelSwitching}
+                    aria-busy={modelSwitching || undefined}
+                    aria-label={currentName ? t("chat.changeModelTo", { model: currentName }) : t("chat.changeModel")}
+                    className={`${selectorStyles.trigger} ${selectorStyles.modelTrigger}`}
+                    onKeyDown={(event) => {
+                      if (event.key === "ArrowDown") {
+                        event.preventDefault();
+                        setModelDropdownOpen(true);
+                      }
+                    }}
+                  >
+                    {modelSwitching && <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" style={{ animation: "spin 0.8s linear infinite", flexShrink: 0 }} aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.64-6.36" /></svg>}
+                    <span className={selectorStyles.name}>{currentName ?? t(modelOptions.length > 0 ? "chat.selectModel" : "chat.noModels")}</span>
+                    <ChevronDownIcon size={13} aria-hidden="true" />
+                  </button>} />} />
+                  <TooltipContent>{t(modelSwitching ? "chat.switchingModel" : modelOptions.length > 0 ? "chat.changeModel" : "chat.noAvailableModels")}</TooltipContent>
+                </Tooltip>
+                <Popover.Portal>
+                  <Popover.Positioner side="top" align="start" sideOffset={6} collisionPadding={8} style={{ zIndex: 1200 }}>
+                    <Popover.Popup className={selectorStyles.modelPopup} aria-label={t("chat.filterModels")}>
+                      <Command shouldFilter={false} className="rounded-none bg-transparent text-[var(--text)]" style={{ flex: 1, minHeight: 0 }}>
+                        <CommandInput
+                          value={modelFilter}
+                          onValueChange={setModelFilter}
+                          placeholder={t("chat.filterModels")}
+                          aria-label={t("chat.filterModels")}
+                          autoComplete="off"
+                          spellCheck={false}
+                          style={{ fontSize: 12, color: "var(--text)" }}
+                        />
+                        <CommandList style={{ flex: 1, minHeight: 0, maxHeight: "none" }}>
+                          {modelsByProvider.length === 0 ? (
+                            <CommandEmpty style={{ display: "block", color: "var(--text-muted)", fontSize: 12 }}>
+                              {modelFilter.trim() ? t("chat.noMatchingModels") : t("chat.noAvailableModels")}
+                            </CommandEmpty>
+                          ) : modelsByProvider.map((group) => (
+                            <CommandGroup key={group.provider} heading={group.provider} className={selectorStyles.modelGroup}>
+                              {group.options.map((opt) => {
+                                const isActive = opt.modelId === effectiveModel?.modelId && opt.provider === effectiveModel?.provider;
+                                return <Tooltip key={`${opt.provider}:${opt.modelId}`}>
+                                <TooltipTrigger render={<CommandItem
+                                  value={`${opt.name} ${opt.modelId} ${opt.provider}`}
+                                  data-current={isActive}
+                                  className={selectorStyles.modelItem}
+                                  onSelect={() => {
+                                    setModelDropdownOpen(false);
+                                    setModelFilter("");
+                                    if (!isActive || isAutoModelSelection) {
+                                      if (isStreaming) setDeferredModel({ provider: opt.provider, modelId: opt.modelId });
+                                      else onModelChange(opt.provider, opt.modelId);
+                                    }
+                                  }}
+                                >
+                                  <span className={selectorStyles.name}>{opt.name}</span>
+                                </CommandItem>} />
+                                <TooltipContent side="right" className="break-words">{opt.name}</TooltipContent>
+                                </Tooltip>;
+                              })}
+                            </CommandGroup>
+                          ))}
+                        </CommandList>
+                      </Command>
+                    </Popover.Popup>
+                  </Popover.Positioner>
+                </Popover.Portal>
+              </Popover.Root>
+            )}
+          </div>
+
+          {/* Reasoning and tool controls follow the model selector on desktop. */}
+          <div ref={controlsMenuRef} style={{
+            flex: "1 1 auto",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "flex-end",
+            position: "relative",
+            marginLeft: 0,
+          }}>
+            {isMobile && (
+              <LabelTooltip content={controlsMenuOpen ? undefined : t("chat.moreControls")}><button
+                type="button"
+                 aria-label={t("chat.moreControls")}
+                aria-expanded={controlsMenuOpen}
+                aria-hidden={controlsMenuOpen || undefined}
+                tabIndex={controlsMenuOpen ? -1 : undefined}
+                onClick={() => {
+                  setModelDropdownOpen(false);
+                  setModelFilter("");
+                  setControlsMenuOpen(true);
+                }}
+                style={{
+                  display: "none",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  width: "100%",
+                  height: 32,
+                  padding: "8px 10px",
+                  background: "none",
+                  border: "none",
+                  borderRadius: 9,
+                  color: "var(--text-muted)",
+                  cursor: controlsMenuOpen ? "default" : "pointer",
+                  fontSize: 12,
+                  fontWeight: 500,
+                  visibility: controlsMenuOpen ? "hidden" : "visible",
+                  pointerEvents: controlsMenuOpen ? "none" : "auto",
+                  transition: "background 0.12s, color 0.12s",
+                }}
+                onMouseEnter={(e) => {
+                  if (controlsMenuOpen) return;
+                  e.currentTarget.style.background = "var(--bg-hover)";
+                  e.currentTarget.style.color = "var(--text)";
+                }}
+                onMouseLeave={(e) => {
+                  if (controlsMenuOpen) return;
+                  e.currentTarget.style.background = "none";
+                  e.currentTarget.style.color = "var(--text-muted)";
+                }}
+              >
+                {t("chat.moreControls")}
+              </button></LabelTooltip>
+            )}
+            <div style={{
+              display: "flex",
+              width: "100%",
+              alignItems: "center",
+              gap: 2,
+            }}>
+            {onThinkingLevelChange && (
+              <DropdownMenu open={thinkingDropdownOpen} onOpenChange={setThinkingDropdownOpen}>
+                <Tooltip>
+                  <DropdownMenuTrigger render={<TooltipTrigger render={<button
+                    type="button"
+                    aria-label={t("chat.changeReasoningLabel")}
+                    className={selectorStyles.trigger}
+                  >
+                    <span className={selectorStyles.effortLabel}>{t("chat.reasoningEffort")}</span>
+                    <span>{thinkingDisplayLabel}</span>
+                    <ChevronDownIcon size={13} aria-hidden="true" />
+                  </button>} />} />
+                  <TooltipContent>{t("chat.changeReasoning", { level: thinkingDisplayLabel })}</TooltipContent>
+                </Tooltip>
+                <DropdownMenuContent
+                  align={isMobile ? "start" : "end"}
+                  side="top"
+                  sideOffset={6}
+                  className={selectorStyles.reasoningPopup}
+                >
+                  <DropdownMenuRadioGroup
+                    value={effectiveThinkingLevel ?? "auto"}
+                    onValueChange={(value: typeof THINKING_LEVELS[number]) => {
+                      if (value !== (effectiveThinkingLevel ?? "auto")) {
+                        if (isStreaming) setDeferredThinkingLevel(value);
+                        else onThinkingLevelChange(value);
+                      }
+                      setThinkingDropdownOpen(false);
+                    }}
+                  >
+                    <DropdownMenuGroup>
+                      <DropdownMenuLabel style={{ padding: "6px 8px", color: "var(--text-muted)", fontSize: 12, fontWeight: 400 }}>
+                        {t("chat.reasoningEffort")}
+                      </DropdownMenuLabel>
+                      {THINKING_LEVELS.filter((lvl) => !availableThinkingLevels || lvl === "auto" || availableThinkingLevels.includes(lvl)).map((lvl) => {
+                        const mappedVal = (lvl !== "auto" && thinkingLevelMap) ? thinkingLevelMap[lvl] : undefined;
+                        const displayLabel = thinkingLevelLabel((mappedVal != null && mappedVal !== lvl) ? mappedVal : lvl);
+                        const showOriginal = mappedVal != null && mappedVal !== lvl;
+                        return (
+                          <Tooltip key={lvl}>
+                          <TooltipTrigger render={<DropdownMenuRadioItem value={lvl} closeOnClick label={displayLabel} className={selectorStyles.reasoningItem}>
+                            <span className={selectorStyles.level}>
+                              {displayLabel}
+                              {showOriginal && <span className={selectorStyles.originalLevel}>({thinkingLevelLabel(lvl)})</span>}
+                            </span>
+                          </DropdownMenuRadioItem>} />
+                          <TooltipContent side="right">{t(THINKING_LEVEL_DESC_KEYS[lvl])}</TooltipContent>
+                          </Tooltip>
+                        );
+                      })}
+                    </DropdownMenuGroup>
+                  </DropdownMenuRadioGroup>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+
+            {automationMode?.enabled && (
+              <>
+              <span aria-hidden="true" className={selectorStyles.modeDivider} />
+              <Tooltip>
+                <TooltipTrigger render={<button
+                  type="button"
+                  className={selectorStyles.modeTag}
+                  disabled={automationMode.changing}
+                  onClick={() => void onAutomationModeChange?.(false)}
+                  aria-label={t("automation.command.exit")}
+                >
+                  <span className="flex size-4 shrink-0 items-center justify-center"><CommandPaletteIcon kind="builtin" commandName="automation" /></span>
+                  <span style={{ whiteSpace: "nowrap" }}>{t("automation.command.label")}</span>
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="m18 6-12 12M6 6l12 12" /></svg>
+                </button>} />
+                <TooltipContent>{t("automation.command.exit")}</TooltipContent>
+              </Tooltip>
+              </>
+            )}
+            {(planMode?.planModeActive || planMode?.phase === "executing") && (
+              <>
+              <span aria-hidden="true" className={selectorStyles.modeDivider} />
+              <Tooltip>
+                <TooltipTrigger render={<button
+                  type="button"
+                  className={selectorStyles.modeTag}
+                  onClick={() => { if (planMode?.phase !== "executing") onPlanModeChange?.(false); }}
+                  disabled={planMode?.phase === "reviewing" || planMode?.phase === "executing"}
+                  aria-label={planMode?.phase === "executing" ? t("plan.mode") : t("plan.cancelMode")}
+                >
+                  <span className="flex size-4 shrink-0 items-center justify-center"><CommandPaletteIcon kind="plan" /></span>
+                  <span style={{ whiteSpace: "nowrap" }}>{t("plan.mode")}</span>
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="m18 6-12 12M6 6l12 12" /></svg>
+                </button>} />
+                <TooltipContent>{planMode?.phase === "executing" ? t("plan.mode") : t("plan.cancelMode")}</TooltipContent>
+              </Tooltip>
+              </>
+            )}
+            {isMobile && controlsMenuOpen && (
+              <LabelTooltip content={t("chat.collapseControls")}><button
+                type="button"
+                 aria-label={t("chat.collapseControls")}
+                aria-expanded={true}
+                onClick={() => {
+                  setThinkingDropdownOpen(false);
+                  setControlsMenuOpen(false);
+                }}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  width: 36,
+                  height: 32,
+                  padding: 0,
+                  marginLeft: 0,
+                  background: "var(--bg-hover)",
+                  border: "none",
+                  borderLeft: "1px solid color-mix(in srgb, var(--border) 72%, transparent)",
+                  borderRadius: "0 9px 9px 0",
+                  color: "var(--text)",
+                  cursor: "pointer",
+                  transition: "background 0.12s, color 0.12s",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = "var(--bg-selected)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = "var(--bg-hover)";
+                }}
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                  <line x1="18" y1="6" x2="6" y2="18" />
+                  <line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button></LabelTooltip>
+            )}
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  );
+}));

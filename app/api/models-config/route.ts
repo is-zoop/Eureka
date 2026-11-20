@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { readModelsConfig, writeModelsConfig } from "@/lib/models-config-store";
+import { readModelsConfig, writeModelsConfig } from "@/server/models/models-config-store";
 
 export const dynamic = "force-dynamic";
 

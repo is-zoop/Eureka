@@ -111,9 +111,8 @@ cpSync(join(rootDir, ".next", "static"), join(appDir, ".next", "static"), { recu
 writeRuntimeEnvironment(appDir, runtimeConfig);
 copyFileSync(process.execPath, join(nodeDir, process.platform === "win32" ? "node.exe" : "node"));
 
-// Playwright is imported dynamically by the server. Include its runtime and the
-// matching Chromium revision; never require a first-run browser download.
-for (const name of ["playwright", "playwright-core"]) {
+// Copy dynamically loaded packages, including the subscription usage TypeScript sources.
+for (const name of ["playwright", "playwright-core", "@specode/pi-subscription-usage"]) {
   cpSync(join(rootDir, "node_modules", name), join(appDir, "node_modules", name), { recursive: true, filter: isRuntimeAsset });
 }
 cpSync(chromiumRevisionDir, join(appDir, "browser", "chromium"), { recursive: true });

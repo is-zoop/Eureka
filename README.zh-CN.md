@@ -2,7 +2,7 @@
 
 **把 AI 对话、项目文件、业务插件和自动化应用放在同一个工作台。**
 
-[English](./README.md) · [日本語](./README.ja.md) · [Русский](./README.ru.md)
+[English](./README.md)
 
 Eureka 是基于 [pi coding agent](https://github.com/earendil-works/pi) 的本地 AI 工作台，提供 **Windows 桌面端和浏览器界面**。你可以让 AI 阅读项目、修改代码和处理文件，也可以连接组织提供的业务工具，把重复操作做成可反复运行的自动化应用。
 

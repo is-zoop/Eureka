@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import type { AppUpdateResponse } from "@/lib/api-types";
-import { APP_LATEST_RELEASE_API, APP_REPOSITORY_URL, APP_VERSION, getEurekaReleaseUrl, isNewerStableVersion } from "@/lib/app-update";
+import { APP_LATEST_RELEASE_API, APP_REPOSITORY_URL, APP_VERSION, getEurekaReleaseUrl, isNewerStableVersion } from "@/server/desktop/app-update";
 
 export const dynamic = "force-dynamic";
 

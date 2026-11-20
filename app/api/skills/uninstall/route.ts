@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
-import { getAllowedFileRoots, isExistingFilePathAllowed } from "@/lib/file-access";
+import { getAllowedFileRoots, isExistingFilePathAllowed } from "@/features/files/server/file-access";
 import { isApiRequestAllowed, hasJsonContentType } from "@/lib/request-security";
-import { loadSkillsWithInstallInfo } from "@/lib/skills-service";
-import { uninstallMarketSkill } from "@/lib/skill-uninstall";
+import { loadSkillsWithInstallInfo } from "@/server/extensions/skills-service";
+import { uninstallMarketSkill } from "@/server/extensions/skill-uninstall";
 import { samePath } from "@/lib/paths";
 
 export const dynamic = "force-dynamic";

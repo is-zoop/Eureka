@@ -5,7 +5,7 @@ export async function register(): Promise<void> {
     const { configureHttpDispatcher } = await import("@/lib/http-dispatcher");
     configureHttpDispatcher();
     if (process.env.NEXT_PHASE !== "phase-production-build") {
-      const { startAutomationScheduler } = await import("@/lib/automation-scheduler");
+      const { startAutomationScheduler } = await import("@/features/automation/runtime/automation-scheduler");
       startAutomationScheduler();
     }
   }

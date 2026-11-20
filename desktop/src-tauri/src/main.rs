@@ -3,6 +3,7 @@
 #[cfg(windows)]
 mod browser_opener;
 mod desktop_menu;
+mod desktop_completion;
 mod desktop_startup;
 mod desktop_tray;
 mod tray_dismissal;
@@ -665,6 +666,7 @@ fn create_window(app: &tauri::AppHandle) -> Result<(), String> {
                 }
             } else {
                 // If the OS could not create a tray, keep normal close usable.
+                desktop_completion::dispose(app);
                 record_window_size(&event_window);
                 save_window_preferences(app);
             }
@@ -777,6 +779,11 @@ fn main() {
             set_desktop_tray_state,
             desktop_tray_snapshot,
             desktop_tray_action,
+            desktop_completion::desktop_task_completed,
+            desktop_completion::desktop_completion_ready,
+            desktop_completion::desktop_completion_dismiss,
+            desktop_completion::desktop_completion_reply,
+            desktop_completion::desktop_completion_reply_result,
             set_desktop_theme
         ])
         .plugin(tauri_plugin_single_instance::init(|app, _, _| {
@@ -791,6 +798,7 @@ fn main() {
             let path = app.path().app_config_dir()?.join("window-state.json");
             let preferences = WindowPreferences::read(&path);
             app.manage(desktop_tray::TrayState::default());
+            app.manage(desktop_completion::CompletionState::default());
             app.manage(automation_browser::BrowserState::default());
             automation_browser::start_expiry(app.handle().clone());
             app.manage(DesktopState {
@@ -804,6 +812,9 @@ fn main() {
                 path,
             });
             create_window(app.handle()).map_err(std::io::Error::other)?;
+            if let Err(error) = desktop_completion::install(app.handle()) {
+                eprintln!("Could not create the desktop completion notification view: {error}");
+            }
             if let Err(error) = desktop_tray::install(app.handle()) {
                 eprintln!("Could not create the Eureka system tray: {error}");
             }

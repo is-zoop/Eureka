@@ -104,7 +104,7 @@ app-data/<用户摘要>/
 已经补充包边界、版本不可变、导出隔离、用户隔离、卸载保留数据和不执行代码的测试源码，未执行。如需自行运行小范围检查，可在根目录执行：
 
 ```powershell
-node --experimental-strip-types --test lib/automation-app-package.test.mjs lib/automation-app-store.test.mjs lib/haze-plugin-package.test.mjs
+node --experimental-strip-types --test tests/automation/automation-app-package.test.mjs tests/automation/automation-app-store.test.mjs tests/extensions/haze-plugin-package.test.mjs
 ```
 
 接口：`GET /api/automation/apps` 列表及保留数据；`GET /api/automation/apps/<id>` 最新详情；`POST /api/automation/apps` 启停／卸载／清理；`POST /api/automation/apps/package?mode=inspect|install` 预览或导入（原始 ZIP 请求体，`Content-Type: application/zip`）；`GET /api/automation/apps/package?id=` 导出最新包。所有 package 请求的查询参数还需带列表返回的 `ownerKey` 和 `runtimeId`，JSON 变更请求则放在请求体。变更使用登记修订号防止覆盖并发修改；卸载重装不复用旧修订号，导入同时核对预览内容摘要。示例下载走同一 package 接口，不向插件目录写文件。
